@@ -1,0 +1,106 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: subscriptions.operator.gnmic.dev
+spec:
+  group: operator.gnmic.dev
+  names:
+    kind: Subscription
+    listKind: SubscriptionList
+    plural: subscriptions
+    singular: subscription
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.mode
+      name: Mode
+      type: string
+    - jsonPath: .spec.sampleInterval
+      name: SampleInterval
+      type: string
+    - jsonPath: .spec.encoding
+      name: Encoding
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Subscription is the Schema for the subscriptions API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SubscriptionSpec defines the desired state of Subscription
+            properties:
+              depth:
+                description: The gNMI Subscription depth (Depth extension)
+                format: int32
+                type: integer
+              encoding:
+                description: The gNMI Subscription encoding (JSON, BYTES, PROTO, ASCII,
+                  JSON_IETF)
+                enum:
+                - JSON
+                - BYTES
+                - PROTO
+                - ASCII
+                - JSON_IETF
+                type: string
+              heartbeatInterval:
+                description: The gNMI Subscription heartbeat interval
+                type: string
+              mode:
+                description: The gNMI SubscriptionList mode (ONCE, STREAM/SAMPLE,
+                  STREAM/ON_CHANGE, STREAM/TARGET_DEFINED or POLL)
+                enum:
+                - ONCE
+                - STREAM/SAMPLE
+                - STREAM/ON_CHANGE
+                - STREAM/TARGET_DEFINED
+                - POLL
+                type: string
+              paths:
+                description: The gNMI paths to subscribe to
+                items:
+                  type: string
+                type: array
+              prefix:
+                description: The gNMI prefix to subscribe to
+                type: string
+              sampleInterval:
+                description: The gNMI Subscription sample interval
+                type: string
+              streamSubscriptions:
+                description: The gNMI Subscription stream subscriptions
+                items:
+                  type: string
+                type: array
+              updatesOnly:
+                description: Whether to only send updates or all data
+                type: boolean
+            type: object
+          status:
+            description: SubscriptionStatus defines the observed state of Subscription
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

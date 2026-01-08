@@ -1,0 +1,92 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: outputs.operator.gnmic.dev
+spec:
+  group: operator.gnmic.dev
+  names:
+    kind: Output
+    listKind: OutputList
+    plural: outputs
+    singular: output
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Output is the Schema for the outputs API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: OutputSpec defines the desired state of Output
+            properties:
+              config:
+                description: The output-specific config object.
+                x-kubernetes-preserve-unknown-fields: true
+              service:
+                description: |-
+                  The service configuration for outputs that expose an endpoint (e.g., prometheus).
+                  If not specified, a ClusterIP service will be created by default.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to add to the service
+                    type: object
+                  type:
+                    default: ClusterIP
+                    description: Type specifies the Kubernetes service type (ClusterIP,
+                      NodePort, LoadBalancer)
+                    enum:
+                    - ClusterIP
+                    - NodePort
+                    - LoadBalancer
+                    type: string
+                type: object
+              type:
+                description: The output type
+                enum:
+                - file
+                - kafka
+                - prometheus
+                - prometheus_write
+                - nats
+                - jetstream
+                - influxdb
+                - tcp
+                - udp
+                type: string
+            required:
+            - type
+            type: object
+          status:
+            description: OutputStatus defines the observed state of Output
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

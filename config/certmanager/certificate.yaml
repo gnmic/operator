@@ -1,0 +1,49 @@
+# Certificate for the controller to authenticate when talking to gNMIc pods
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: controller-client-cert
+  namespace: system
+spec:
+  secretName: controller-client-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  commonName: gnmic-controller
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+    group: cert-manager.io
+---
+# Serving certificate for the webhook server
+# The dnsNames will be patched by kustomize replacements
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: serving-cert
+  namespace: system
+spec:
+  secretName: webhook-server-cert
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - webhook-service.system.svc
+    - webhook-service.system.svc.cluster.local
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+    group: cert-manager.io
+

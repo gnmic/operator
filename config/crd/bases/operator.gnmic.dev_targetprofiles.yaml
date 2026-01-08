@@ -1,0 +1,141 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: targetprofiles.operator.gnmic.dev
+spec:
+  group: operator.gnmic.dev
+  names:
+    kind: TargetProfile
+    listKind: TargetProfileList
+    plural: targetprofiles
+    singular: targetprofile
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.credentialsRef
+      name: Credentials
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: TargetProfile is the Schema for the targetprofiles API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: TargetProfileSpec defines the desired state of TargetProfile
+            properties:
+              credentialsRef:
+                description: |-
+                  The credentials of the target
+                  username, password or token keys in the secret referenced by the field
+                type: string
+              encoding:
+                description: The gNMI Subscription encoding (JSON, BYTES, PROTO, ASCII,
+                  JSON_IETF)
+                enum:
+                - JSON
+                - BYTES
+                - PROTO
+                - ASCII
+                - JSON_IETF
+                type: string
+              grpcKeepAlive:
+                description: The gRPC keep-alive configuration
+                properties:
+                  permitWithoutStream:
+                    type: boolean
+                  time:
+                    type: string
+                  timeout:
+                    type: string
+                type: object
+              gzipCompression:
+                description: Whether to use gzip compression
+                type: boolean
+              labels:
+                additionalProperties:
+                  type: string
+                description: The labels to add to the target's updates
+                type: object
+              proxy:
+                description: The proxy to use to connect to the target
+                type: string
+              retryTimer:
+                default: 2s
+                description: default is 2 seconds
+                type: string
+                x-kubernetes-validations:
+                - message: RetryTimer must be at least 2 seconds
+                  rule: self == '' || duration(self) >= duration('2s')
+              tcpKeepAlive:
+                description: The TCP keep-alive interval
+                type: string
+              timeout:
+                description: Target connection timeout
+                type: string
+              tls:
+                description: Target TLS configuration
+                properties:
+                  cipherSuites:
+                    items:
+                      type: string
+                    type: array
+                  issuerRef:
+                    type: string
+                  maxVersion:
+                    type: string
+                  minVersion:
+                    type: string
+                  serverName:
+                    type: string
+                  trustBundleRef:
+                    type: string
+                type: object
+              yangSchema:
+                description: The YANG schema to use for the target
+                properties:
+                  dirs:
+                    items:
+                      type: string
+                    type: array
+                  excludes:
+                    items:
+                      type: string
+                    type: array
+                  files:
+                    items:
+                      type: string
+                    type: array
+                required:
+                - dirs
+                - excludes
+                - files
+                type: object
+            type: object
+          status:
+            description: TargetProfileStatus defines the observed state of TargetProfile
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

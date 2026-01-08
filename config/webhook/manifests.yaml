@@ -1,0 +1,412 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-cluster
+  failurePolicy: Fail
+  name: mcluster-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-input
+  failurePolicy: Fail
+  name: minput-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - inputs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-output
+  failurePolicy: Fail
+  name: moutput-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - outputs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-pipeline
+  failurePolicy: Fail
+  name: mpipeline-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pipelines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-processor
+  failurePolicy: Fail
+  name: mprocessor-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - processors
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-subscription
+  failurePolicy: Fail
+  name: msubscription-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - subscriptions
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-target
+  failurePolicy: Fail
+  name: mtarget-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targets
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-targetprofile
+  failurePolicy: Fail
+  name: mtargetprofile-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targetprofiles
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-targetsource
+  failurePolicy: Fail
+  name: mtargetsource-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targetsources
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-operator-gnmic-dev-v1alpha1-tunneltargetpolicy
+  failurePolicy: Fail
+  name: mtunneltargetpolicy-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - tunneltargetpolicies
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-cluster
+  failurePolicy: Fail
+  name: vcluster-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - clusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-input
+  failurePolicy: Fail
+  name: vinput-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - inputs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-output
+  failurePolicy: Fail
+  name: voutput-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - outputs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-pipeline
+  failurePolicy: Fail
+  name: vpipeline-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pipelines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-processor
+  failurePolicy: Fail
+  name: vprocessor-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - processors
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-subscription
+  failurePolicy: Fail
+  name: vsubscription-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - subscriptions
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-target
+  failurePolicy: Fail
+  name: vtarget-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targets
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-targetprofile
+  failurePolicy: Fail
+  name: vtargetprofile-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targetprofiles
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-targetsource
+  failurePolicy: Fail
+  name: vtargetsource-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targetsources
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-operator-gnmic-dev-v1alpha1-tunneltargetpolicy
+  failurePolicy: Fail
+  name: vtunneltargetpolicy-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - operator.gnmic.dev
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - tunneltargetpolicies
+  sideEffects: None

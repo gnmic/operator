@@ -1,0 +1,12 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Processor
+metadata:
+  labels:
+    app.kubernetes.io/name: processor
+    app.kubernetes.io/instance: processor-sample
+    app.kubernetes.io/part-of: gnmic-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: gnmic-operator
+  name: processor-sample
+spec:
+  # TODO(user): Add fields here

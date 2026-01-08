@@ -1,0 +1,31 @@
+# permissions for end users to edit targetprofiles.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: targetprofile-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: kustomize
+  name: targetprofile-editor-role
+rules:
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - targetprofiles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - targetprofiles/status
+  verbs:
+  - get

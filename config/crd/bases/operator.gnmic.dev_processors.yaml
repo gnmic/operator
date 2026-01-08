@@ -1,0 +1,89 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: processors.operator.gnmic.dev
+spec:
+  group: operator.gnmic.dev
+  names:
+    kind: Processor
+    listKind: ProcessorList
+    plural: processors
+    singular: processor
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Processor is the Schema for the processors API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ProcessorSpec defines the desired state of Processor
+            properties:
+              config:
+                description: |-
+                  Config is the processor-specific config object.
+                  Use x-kubernetes-preserve-unknown-fields so each processor type can carry its own schema.
+                x-kubernetes-preserve-unknown-fields: true
+              type:
+                description: The type of the processor
+                enum:
+                - event-add-tag
+                - event-allow
+                - event-combine
+                - event-convert
+                - event-data-convert
+                - event-date-string
+                - event-delete
+                - event-drop
+                - event-duration-convert
+                - event-extract-tags
+                - event-group-by
+                - event-ieee-float32
+                - event-jq
+                - event-merge
+                - event-override-ts
+                - event-plugin
+                - event-rate-limit
+                - event-starlark
+                - event-strings
+                - event-time-epoch
+                - event-to-tag
+                - event-trigger
+                - event-value-tag
+                - event-write
+                type: string
+            required:
+            - type
+            type: object
+          status:
+            description: ProcessorStatus defines the observed state of Processor
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

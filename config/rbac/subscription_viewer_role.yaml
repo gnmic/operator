@@ -1,0 +1,27 @@
+# permissions for end users to view subscriptions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: subscription-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: kb
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: kustomize
+  name: subscription-viewer-role
+rules:
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - subscriptions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - subscriptions/status
+  verbs:
+  - get

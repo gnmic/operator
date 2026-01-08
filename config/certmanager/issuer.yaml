@@ -1,0 +1,40 @@
+# Self-signed issuer for the operator's internal TLS
+# In production, you might want to use a ClusterIssuer that chains to your PKI
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: system
+spec:
+  selfSigned: {}
+---
+# CA certificate for signing controller and pod certificates
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca
+  namespace: system
+spec:
+  isCA: true
+  commonName: gnmic-operator-ca
+  secretName: ca-secret
+  duration: 87600h # 10 years
+  renewBefore: 720h # 30 days
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+---
+# CA issuer that uses the CA certificate to sign other certificates
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: ca-issuer
+  namespace: system
+spec:
+  ca:
+    secretName: ca-secret
+

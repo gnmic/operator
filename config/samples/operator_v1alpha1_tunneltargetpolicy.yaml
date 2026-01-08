@@ -1,0 +1,9 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TunnelTargetPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: gnmic-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: tunneltargetpolicy-sample
+spec:
+  # TODO(user): Add fields here

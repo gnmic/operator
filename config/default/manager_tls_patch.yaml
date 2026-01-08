@@ -1,0 +1,38 @@
+# Patch to mount TLS certificates into the controller manager
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        volumeMounts:
+        - name: client-certs
+          mountPath: /etc/gnmic-operator/certs
+          readOnly: true
+        - name: ca-cert
+          mountPath: /etc/gnmic-operator/ca
+          readOnly: true
+        env:
+        - name: GNMIC_TLS_CERT
+          value: /etc/gnmic-operator/certs/tls.crt
+        - name: GNMIC_TLS_KEY
+          value: /etc/gnmic-operator/certs/tls.key
+        - name: GNMIC_TLS_CA
+          value: /etc/gnmic-operator/ca/ca.crt
+      volumes:
+      - name: client-certs
+        secret:
+          secretName: controller-client-tls
+          optional: false
+      - name: ca-cert
+        secret:
+          secretName: ca-secret
+          items:
+          - key: tls.crt
+            path: ca.crt
+          optional: false
+

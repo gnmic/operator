@@ -1,0 +1,12 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  labels:
+    app.kubernetes.io/name: output
+    app.kubernetes.io/instance: output-sample
+    app.kubernetes.io/part-of: kb
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kb
+  name: output-sample
+spec:
+  # TODO(user): Add fields here

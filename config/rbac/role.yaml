@@ -1,0 +1,107 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - issuers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - clusters
+  - pipelines
+  - targets
+  - targetsources
+  - tunneltargetpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - clusters/finalizers
+  - pipelines/finalizers
+  - targetsources/finalizers
+  - tunneltargetpolicies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - clusters/status
+  - pipelines/status
+  - targetsources/status
+  - tunneltargetpolicies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - inputs
+  - outputs
+  - processors
+  - subscriptions
+  - targetprofiles
+  verbs:
+  - get
+  - list
+  - watch

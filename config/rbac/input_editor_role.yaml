@@ -1,0 +1,31 @@
+# permissions for end users to edit inputs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: input-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: gnmic-operator
+    app.kubernetes.io/part-of: gnmic-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: input-editor-role
+rules:
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - inputs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - inputs/status
+  verbs:
+  - get

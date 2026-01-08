@@ -1,0 +1,16 @@
+# Configure kustomize to update issuer references when namePrefix is applied
+nameReference:
+- kind: Issuer
+  group: cert-manager.io
+  fieldSpecs:
+  - kind: Certificate
+    group: cert-manager.io
+    path: spec/issuerRef/name
+- kind: Secret
+  fieldSpecs:
+  - kind: Issuer
+    group: cert-manager.io
+    path: spec/ca/secretName
+
+
+

@@ -1,0 +1,27 @@
+# permissions for end users to view inputs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: input-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: gnmic-operator
+    app.kubernetes.io/part-of: gnmic-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: input-viewer-role
+rules:
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - inputs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.gnmic.dev
+  resources:
+  - inputs/status
+  verbs:
+  - get
