@@ -1,9 +1,9 @@
 ---
 title: "Remote Write"
 linkTitle: "Remote Write"
-weight: 5
+weight: 2
 description: >
-  Learn by starting with ready made examples
+  Integrate gNMIc Operator with Prometheus Remote Write
 ---
 
 This section has a collection of deployment examples of gNMIc operator with differrent output types

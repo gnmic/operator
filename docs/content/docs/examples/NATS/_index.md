@@ -3,7 +3,5 @@ title: "NATS"
 linkTitle: "NATS"
 weight: 7
 description: >
-  Learn by starting with ready made examples
+  NATS and Jetstream deployments
 ---
-
-Comming soon.

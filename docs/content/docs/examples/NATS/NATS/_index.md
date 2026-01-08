@@ -1,9 +1,9 @@
 ---
 title: "NATS"
 linkTitle: "NATS"
-weight: 7
+weight: 1
 description: >
-  Learn by starting with ready made examples
+  NATS deployment
 ---
 
 Comming soon.

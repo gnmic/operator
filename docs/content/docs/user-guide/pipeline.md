@@ -6,7 +6,7 @@ description: >
   Configuring telemetry pipelines
 ---
 
-The `Pipeline` resource connects targets, subscriptions, outputs, and inputs together. It defines the flow of telemetry data through the system.
+The `Pipeline` resource connects targets, tunnelTargetPolicies, subscriptions, outputs, and inputs together. It defines the flow of telemetry data through the system.
 
 ## Basic Configuration
 

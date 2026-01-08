@@ -1,9 +1,9 @@
 ---
 title: "JetStream"
 linkTitle: "JetStream"
-weight: 7
+weight: 2
 description: >
-  Learn by starting with ready made examples
+  NATS Jetstream deployment
 ---
 
 Comming soon.

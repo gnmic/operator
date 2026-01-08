@@ -13,41 +13,38 @@ The gNMIc Operator uses a set of Custom Resource Definitions (CRDs) to model tel
 ## Resource Hierarchy
 
 ```
-                    ┌─────────────────┐
-                    │     Cluster     │
-                    │  (deployment)   │
-                    └────────┬────────┘
-                             │
-                             │ references
-                             ▼
-                    ┌─────────────────┐
-                    │    Pipeline     │
-                    │   (wiring)      │
-                    └────────┬────────┘
-                             │
-       ┌─────────────────────┼─────────────────────┐
-       │                     │                     │
-       ▼                     ▼                     ▼
-┌──────────────┐    ┌─────────────────┐    ┌──────────────┐
-│   Targets    │    │  Subscriptions  │    │   Outputs    │
-│  (devices)   │    │     (data)      │    │(destinations)│
-└──────┬───────┘    └─────────────────┘    └──────────────┘
-       │
-       │ references
-       ▼
-┌───────────────┐
-│ TargetProfile │◀────references────┐
-│ (credentials) │                   │
-└───────────────┘                   │
-                          ┌─────────────────────┐
-┌─────────────────┐       │ TunnelTargetPolicy  │
-│  TargetSource   │       │  (tunnel matching)  │
-│  (discovery)    │       └─────────────────────┘
-└────────┬────────┘
-         │
-         │ creates
-         ▼
-      Targets
+                                ┌─────────────────┐
+                                │     Cluster     │
+                                │  (deployment)   │
+                                └─────────────────┘
+                                         ▲
+                                         │ references
+                                         │ 
+                                ┌────────┴────────┐
+                                │    Pipeline     │
+                                │    (wiring)     │
+                                └────────┬────────┘
+                                         │ 
+                                         │  references or selects
+       ┌─────────────────────┬───────────┴─────────┬────────────────────┐
+       │                     │                     │                    │
+       ▼                     ▼                     ▼                    ▼
+┌──────────────┐    ┌─────────────────┐    ┌──────────────┐   ┌────────────────────┐
+│   Targets    │    │  Subscriptions  │    │   Outputs    │   │ TunnelTargetPolicy │
+│  (devices)   │    │    or Inputs    │    │(destinations)│   │  (tunnel matching) │
+└──────┬───────┘    │     (data)      │    └──────────────┘   └─────────┬──────────┘
+   ▲   │            └─────────────────┘                                 │
+   |   │                                                                │
+   |   │                                                                │
+   |   │                        ┌───────────────┐                       │
+   |   └────────references────▶ │ TargetProfile │◀────references────────┘
+   |                            │(cred, tls,...)│                 
+   |  creates                   └───────────────┘ 
+   |                      
+┌─────────────────┐       
+│  TargetSource   │
+│  (discovery)    │ 
+└─────────────────┘
 ```
 
 ## Separation of Concerns
@@ -170,7 +167,7 @@ Pipeline:
 # Result: Devices matching P1 or P2 get subscriptions S1 and S2
 ```
 
-**Note**: TunnelTargetPolicies require the Cluster to have `grpcTunnel` configured.
+**Note**: TunnelTargetPolicies require the referenced Cluster to have `grpcTunnel` configured.
 
 ## Cross-Pipeline Aggregation
 

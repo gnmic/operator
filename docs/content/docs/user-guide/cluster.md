@@ -6,7 +6,7 @@ description: >
   Configuring gNMIc Cluster deployments
 ---
 
-The `Cluster` resource defines a gNMIc collector deployment. It creates a StatefulSet, headless Service, and manages configuration for the gNMIc pods.
+The `Cluster` resource defines a gNMIc collector deployment. It creates a StatefulSet, headless Service, and manages the initial configuration for the gNMIc pods.
 
 ## Basic Configuration
 
@@ -123,7 +123,7 @@ spec:
     service:
       type: LoadBalancer  # Default
       annotations:
-        service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+        metallb.io/address-pool: "production-pool"
 ```
 
 ### Resources Created for Tunnel
