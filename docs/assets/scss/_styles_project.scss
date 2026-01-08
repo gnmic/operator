@@ -1,0 +1,71 @@
+
+.td-cover-block,
+.td-hero-block {
+  .hero-title {
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+    font-weight: 650;        
+    letter-spacing: -0.025em;
+    line-height: 1.06;
+    margin: 0 0 0.75rem 0;
+    font-size: clamp(2.2rem, 4.6vw, 3.6rem);
+    svg {
+      height: 1.5em;          /* scales with text */
+      width: auto;
+      display: inline-block;
+      vertical-align: middle;
+      margin-bottom: 0.1em;   /* inline with text ? */
+    }
+  }
+  .hero-subtitle {
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    line-height: 1.45;
+    opacity: 0.92;
+    margin: 0;
+    font-size: 1.075rem;
+    max-width: 52rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .hero-title-text {
+    font-size: 1.3em; /* needed to match the logo size */
+    line-height: 1;
+  }
+  .hero-kicker {
+    font-size: 0.95rem;
+    opacity: 0.75;
+    max-width: 60rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .btn.btn-lg {
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    padding: 0.55rem 1.05rem;
+  }
+}
+
+.td-content h1,
+.td-content h2,
+.td-content h3 {
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.td-content, .td-main {
+  font-size: 1.02rem;
+  line-height: 1.65;
+}
+
+.td-content p {
+  margin-bottom: 0.9rem;
+}
+
+.td-content code,
+.td-content pre code {
+  font-size: 0.95em;
+}
+
+

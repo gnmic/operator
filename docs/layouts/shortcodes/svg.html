@@ -1,0 +1,3 @@
+{{- $path := .Get 0 -}}
+{{- $full := printf "static/%s" $path -}}
+{{- readFile $full | safeHTML -}}
