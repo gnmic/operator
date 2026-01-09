@@ -27,4 +27,6 @@ Dockerfile.cross
 lab/
 design/
 notes/
-docs/public/
+docs/public
+docs/resources/_gen/
+docs/.hugo_build.lock

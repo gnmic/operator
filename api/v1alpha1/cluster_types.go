@@ -35,6 +35,10 @@ type ClusterSpec struct {
 	// The REST/gNMI server configuration
 	API *APIConfig `json:"api,omitempty"`
 
+	// The TLS configuration for the gNMI client certificates
+	// If not set, the gNMI client certificates are not enabled.
+	ClientTLS *ClusterTLSConfig `json:"clientTLS,omitempty"`
+
 	// The gRPC tunnel server endpoint configuration
 	// If not set, the gRPC tunnel server is not enabled on this cluster.
 	GRPCTunnel *GRPCTunnelConfig `json:"grpcTunnel,omitempty"`
@@ -79,14 +83,14 @@ type ServiceConfig struct {
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
+// TLS configuration for the gNMIc pods API or gNMI client certificates
 type ClusterTLSConfig struct {
-	// A CertManager Issuer user to sign the gNMIc pods API certificates.
+	// A CertManager Issuer user to sign the gNMIc pods API or gNMI client certificates.
 	IssuerRef string `json:"issuerRef,omitempty"`
-	// If true the operator will use CertManager CSI driver to request and mount the pods API certificates.
-	UseCSIDriver bool `json:"useCSIDriver,omitempty"`
-	// Additional trusted CA bundle to mount to the gNMIc pods.
-	// Useful when you intend other clients than the operator to connect to the gNMIc pods API.
+	// Additional trusted CA bundle to mount to the gNMIc pods API or gNMI client certificates.
 	BundleRef string `json:"bundleRef,omitempty"`
+	// If true the operator will use CertManager CSI driver to request and mount the pods API or gNMI client certificates.
+	UseCSIDriver bool `json:"useCSIDriver,omitempty"`
 }
 
 // ClusterStatus defines the observed state of Cluster

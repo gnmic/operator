@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: clusters.operator.gnmic.dev
 spec:
   group: operator.gnmic.dev
@@ -85,21 +85,39 @@ spec:
                       If not set, the TLS is not enabled.
                     properties:
                       bundleRef:
-                        description: |-
-                          Additional trusted CA bundle to mount to the gNMIc pods.
-                          Useful when you intend other clients than the operator to connect to the gNMIc pods API.
+                        description: Additional trusted CA bundle to mount to the
+                          gNMIc pods API or gNMI client certificates.
                         type: string
                       issuerRef:
                         description: A CertManager Issuer user to sign the gNMIc pods
-                          API certificates.
+                          API or gNMI client certificates.
                         type: string
                       useCSIDriver:
                         description: If true the operator will use CertManager CSI
-                          driver to request and mount the pods API certificates.
+                          driver to request and mount the pods API or gNMI client
+                          certificates.
                         type: boolean
                     type: object
                 required:
                 - restPort
+                type: object
+              clientTLS:
+                description: |-
+                  The TLS configuration for the gNMI client certificates
+                  If not set, the gNMI client certificates are not enabled.
+                properties:
+                  bundleRef:
+                    description: Additional trusted CA bundle to mount to the gNMIc
+                      pods API or gNMI client certificates.
+                    type: string
+                  issuerRef:
+                    description: A CertManager Issuer user to sign the gNMIc pods
+                      API or gNMI client certificates.
+                    type: string
+                  useCSIDriver:
+                    description: If true the operator will use CertManager CSI driver
+                      to request and mount the pods API or gNMI client certificates.
+                    type: boolean
                 type: object
               env:
                 description: Environment variables to set in the gNMIc pods
@@ -290,17 +308,17 @@ spec:
                     description: The TLS configuration for the gRPC tunnel
                     properties:
                       bundleRef:
-                        description: |-
-                          Additional trusted CA bundle to mount to the gNMIc pods.
-                          Useful when you intend other clients than the operator to connect to the gNMIc pods API.
+                        description: Additional trusted CA bundle to mount to the
+                          gNMIc pods API or gNMI client certificates.
                         type: string
                       issuerRef:
                         description: A CertManager Issuer user to sign the gNMIc pods
-                          API certificates.
+                          API or gNMI client certificates.
                         type: string
                       useCSIDriver:
                         description: If true the operator will use CertManager CSI
-                          driver to request and mount the pods API certificates.
+                          driver to request and mount the pods API or gNMI client
+                          certificates.
                         type: boolean
                     type: object
                 required:

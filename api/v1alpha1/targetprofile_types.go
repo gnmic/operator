@@ -25,8 +25,10 @@ type TargetProfileSpec struct {
 	// The credentials of the target
 	// username, password or token keys in the secret referenced by the field
 	CredentialsRef string `json:"credentialsRef,omitempty"`
+
 	// Target TLS configuration
 	TLS *TargetTLSConfig `json:"tls,omitempty"`
+
 	// Target connection timeout
 	Timeout metav1.Duration `json:"timeout,omitempty"`
 
@@ -38,24 +40,41 @@ type TargetProfileSpec struct {
 	// The gNMI Subscription encoding (JSON, BYTES, PROTO, ASCII, JSON_IETF)
 	// +kubebuilder:validation:Enum=JSON;BYTES;PROTO;ASCII;JSON_IETF
 	Encoding string `json:"encoding,omitempty"`
+
 	// The labels to add to the target's updates
 	Labels map[string]string `json:"labels,omitempty"`
+
 	// The proxy to use to connect to the target
 	Proxy string `json:"proxy,omitempty"`
+
 	// Whether to use gzip compression
 	GzipCompression bool `json:"gzipCompression,omitempty"`
+
 	// The TCP keep-alive interval
 	TCPKeepAlive *metav1.Duration `json:"tcpKeepAlive,omitempty"`
+
 	// The gRPC keep-alive configuration
 	GRCPKeepAlive *GRPCKeepAliveConfig `json:"grpcKeepAlive,omitempty"`
-	// The YANG schema to use for the target
-	YANGSchema *YANGSchemaConfig `json:"yangSchema,omitempty"`
 }
 
-type YANGSchemaConfig struct {
-	Files    []string `json:"files"`
-	Dirs     []string `json:"dirs"`
-	Excludes []string `json:"excludes"`
+type TargetTLSConfig struct {
+	// TLS serverName override value
+	ServerName string `json:"serverName,omitempty"`
+	// TLS Maximum version: 1.1, 1.2 or 1.3
+	MaxVersion string `json:"maxVersion,omitempty"`
+	// TLS Minimum version: 1.1, 1.2 or 1.3
+	MinVersion string `json:"minVersion,omitempty"`
+	// List of supported TLS cipher suites
+	CipherSuites []string `json:"cipherSuites,omitempty"`
+}
+
+type GRPCKeepAliveConfig struct {
+	// gRPC keep alive time (interval)
+	Time metav1.Duration `json:"time,omitempty"`
+	// gRPC keep alive timeout
+	Timeout metav1.Duration `json:"timeout,omitempty"`
+	// If true gRPC keepalives are sent when there is no active stream
+	PermitWithoutStream bool `json:"permitWithoutStream,omitempty"`
 }
 
 // TargetProfileStatus defines the observed state of TargetProfile

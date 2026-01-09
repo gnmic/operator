@@ -9,8 +9,12 @@ import (
 
 // PlanBuilder builds an ApplyPlan from pipeline data
 type PlanBuilder struct {
-	pipelines    map[string]PipelineData
+	// all currently active pipelines
+	pipelines map[string]PipelineData
+	// an impl to get credentials from a secret
 	credsFetcher CredentialsFetcher
+	// client TLS paths for target connections
+	clientTLS *ClientTLSPaths
 }
 
 // NewPlanBuilder creates a new PlanBuilder
@@ -19,6 +23,12 @@ func NewPlanBuilder(credsFetcher CredentialsFetcher) *PlanBuilder {
 		pipelines:    make(map[string]PipelineData),
 		credsFetcher: credsFetcher,
 	}
+}
+
+// WithClientTLS sets the client TLS paths for target connections
+func (b *PlanBuilder) WithClientTLS(clientTLS *ClientTLSPaths) *PlanBuilder {
+	b.clientTLS = clientTLS
+	return b
 }
 
 // AddPipeline adds pipeline data to the builder
@@ -45,7 +55,7 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 	outputProcessors := b.collectOutputProcessors()
 	inputProcessors := b.collectInputProcessors()
 
-	// 2) build the configs
+	// 2) build the configs (TODO: these are not needed the plan has the exact same maps)
 	processedTargets := make(map[string]struct{})
 	processedSubscriptions := make(map[string]struct{})
 	processedOutputs := make(map[string]struct{})
@@ -251,7 +261,7 @@ func (b *PlanBuilder) buildTargets(
 			}
 		}
 
-		targetConfig := buildTargetConfig(target, &profileSpec, creds)
+		targetConfig := buildTargetConfig(target, &profileSpec, creds, b.clientTLS)
 
 		// add subscriptions
 		if subs, ok := targetSubscriptions[targetNN]; ok {
@@ -428,7 +438,7 @@ func (b *PlanBuilder) buildTunnelTargetMatches(
 		}
 
 		// build the tunnel target match config
-		tunnelMatch := buildTunnelTargetMatch(&policySpec, &profileSpec, creds)
+		tunnelMatch := buildTunnelTargetMatch(&policySpec, &profileSpec, creds, b.clientTLS)
 		plan.TunnelTargetMatches[policyNN] = tunnelMatch
 	}
 

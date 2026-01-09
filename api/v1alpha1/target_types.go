@@ -28,22 +28,6 @@ type TargetSpec struct {
 	Profile string `json:"profile"`
 }
 
-type TargetTLSConfig struct {
-	IssuerRef      string `json:"issuerRef,omitempty"`
-	TrustBundleRef string `json:"trustBundleRef,omitempty"`
-	//
-	ServerName   string   `json:"serverName,omitempty"`
-	MaxVersion   string   `json:"maxVersion,omitempty"`
-	MinVersion   string   `json:"minVersion,omitempty"`
-	CipherSuites []string `json:"cipherSuites,omitempty"`
-}
-
-type GRPCKeepAliveConfig struct {
-	Time                metav1.Duration `json:"time,omitempty"`
-	Timeout             metav1.Duration `json:"timeout,omitempty"`
-	PermitWithoutStream bool            `json:"permitWithoutStream,omitempty"`
-}
-
 // TargetStatus defines the observed state of Target
 type TargetStatus struct {
 	// The connection state of the target

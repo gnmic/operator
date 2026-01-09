@@ -21,6 +21,16 @@ const (
 	TunnelKeyFilePath       = TunnelCertFilesBasePath + "/tls.key"
 	TunnelCAFilePath        = TunnelCertFilesBasePath + "/ca.crt" // TODO: consider pointing to a directory instead of a file instead of a file
 
+	// Paths for gNMIc pods client TLS (client certificates for connecting to targets)
+	ClientTLSCertFilesBasePath = "/etc/gnmic/client-tls"
+	ClientTLSCertFilePath      = ClientTLSCertFilesBasePath + "/tls.crt"
+	ClientTLSKeyFilePath       = ClientTLSCertFilesBasePath + "/tls.key"
+	ClientTLSCAFilePath        = ClientTLSCertFilesBasePath + "/ca.crt"
+
+	// Path where client CA bundle is mounted in gNMIc pods (for verifying target server certs)
+	ClientCABundleMountPath = "/etc/gnmic/client-ca"
+	ClientCABundleFilePath  = ClientCABundleMountPath + "/ca.crt"
+
 	// Path where tunnel CA bundle is mounted in gNMIc pods (for verifying tunnel client certs)
 	TunnelCABundleMountPath = "/etc/gnmic/tunnel-ca"
 	TunnelCABundleFilePath  = TunnelCABundleMountPath + "/ca.crt"
@@ -106,4 +116,34 @@ func TunnelServerTLSConfig(cluster *gnmicv1alpha1.Cluster) *TLSConfig {
 	}
 
 	return tlsConfig
+}
+
+// ClientTLSPaths holds the paths to client TLS certificates for connecting to targets
+type ClientTLSPaths struct {
+	CertFile string `json:"tls-cert,omitempty" yaml:"tls-cert,omitempty"`
+	KeyFile  string `json:"tls-key,omitempty" yaml:"tls-key,omitempty"`
+	CAFile   string `json:"tls-ca,omitempty" yaml:"tls-ca,omitempty"`
+}
+
+// ClientTLSConfigForCluster returns the client TLS paths for connecting to targets
+// Returns nil if ClientTLS is not configured on the cluster
+func ClientTLSConfigForCluster(cluster *gnmicv1alpha1.Cluster) *ClientTLSPaths {
+	if cluster.Spec.ClientTLS == nil {
+		return nil
+	}
+
+	tlsPaths := &ClientTLSPaths{}
+
+	// if issuerRef is configured, use the generated client certificates
+	if cluster.Spec.ClientTLS.IssuerRef != "" {
+		tlsPaths.CertFile = ClientTLSCertFilePath
+		tlsPaths.KeyFile = ClientTLSKeyFilePath
+	}
+
+	// if bundleRef is configured, use it as CA for verifying target server certificates
+	if cluster.Spec.ClientTLS.BundleRef != "" {
+		tlsPaths.CAFile = ClientCABundleFilePath
+	}
+
+	return tlsPaths
 }

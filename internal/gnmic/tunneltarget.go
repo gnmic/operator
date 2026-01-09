@@ -9,11 +9,13 @@ import (
 )
 
 // buildTunnelTargetMatch creates a TunnelTargetMatch from a TunnelTargetPolicy and TargetProfile
+// clientTLS contains paths to client certificates for mTLS with targets (from cluster.Spec.ClientTLS)
 // TODO: finish mapping fields from profile to config, reuse the same function as for Targets
 func buildTunnelTargetMatch(
 	policySpec *gnmicv1alpha1.TunnelTargetPolicySpec,
 	profile *gnmicv1alpha1.TargetProfileSpec,
 	creds *Credentials,
+	clientTLS *ClientTLSPaths,
 ) *TunnelTargetMatch {
 	match := &TunnelTargetMatch{}
 
@@ -44,15 +46,58 @@ func buildTunnelTargetMatch(
 			}
 		}
 
-		// TLS configuration
-		if profile.TLS != nil {
-			if profile.TLS.TrustBundleRef == "" {
-				config.SkipVerify = ptr.To(true)
-			}
-		} else {
+		// no client TLS configuration at the cluster level or target profile level
+		if clientTLS == nil && profile.TLS == nil {
 			config.Insecure = ptr.To(true)
+			match.Config = config
+			return match
+		}
+		// TLS not enabled at the cluster level but enabled at the target profile level
+		if clientTLS == nil && profile.TLS != nil {
+			config.SkipVerify = ptr.To(true)
+			if profile.TLS.MaxVersion != "" {
+				config.TLSMaxVersion = profile.TLS.MaxVersion
+			}
+			if profile.TLS.MinVersion != "" {
+				config.TLSMinVersion = profile.TLS.MinVersion
+			}
+			if len(profile.TLS.CipherSuites) > 0 {
+				config.CipherSuites = profile.TLS.CipherSuites
+			}
+			match.Config = config
+			return match
 		}
 
+		// use client TLS configuration from cluster (for mTLS with targets)
+		if clientTLS.CertFile != "" {
+			config.TLSCert = ptr.To(clientTLS.CertFile)
+		}
+		if clientTLS.KeyFile != "" {
+			config.TLSKey = ptr.To(clientTLS.KeyFile)
+		}
+		if clientTLS.CAFile != "" {
+			config.TLSCA = ptr.To(clientTLS.CAFile)
+			config.SkipVerify = ptr.To(false)
+		} else {
+			// TLS is enabled but without CA verification (TrustBundleRef not supported yet)
+			config.SkipVerify = ptr.To(true)
+		}
+		if profile.TLS == nil {
+			match.Config = config
+			return match
+		}
+		if profile.TLS.ServerName != "" {
+			config.TLSServerName = profile.TLS.ServerName
+		}
+		if profile.TLS.MaxVersion != "" {
+			config.TLSMaxVersion = profile.TLS.MaxVersion
+		}
+		if profile.TLS.MinVersion != "" {
+			config.TLSMinVersion = profile.TLS.MinVersion
+		}
+		if len(profile.TLS.CipherSuites) > 0 {
+			config.CipherSuites = profile.TLS.CipherSuites
+		}
 		match.Config = config
 	}
 

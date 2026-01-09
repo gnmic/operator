@@ -200,6 +200,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 					return ctrl.Result{}, cleanupErr
 				}
 			}
+			// cleanup client TLS certificates (only if not using CSI driver)
+			if cluster.Spec.ClientTLS != nil &&
+				cluster.Spec.ClientTLS.IssuerRef != "" && !cluster.Spec.ClientTLS.UseCSIDriver {
+				if cleanupErr := r.cleanupClientTLSCertificates(ctx, &cluster); cleanupErr != nil {
+					return ctrl.Result{}, cleanupErr
+				}
+			}
 			// cleanup tunnel service
 			if cluster.Spec.GRPCTunnel != nil {
 				if cleanupErr := r.cleanupTunnelService(ctx, &cluster); cleanupErr != nil {
@@ -265,6 +272,20 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	// if client TLS is enabled with cert-manager (non-CSI mode), reconcile client certificates
+	// these are used by gNMIc to connect to targets with mTLS
+	if cluster.Spec.ClientTLS != nil &&
+		cluster.Spec.ClientTLS.IssuerRef != "" && !cluster.Spec.ClientTLS.UseCSIDriver {
+		clientCertsReady, err := r.reconcileClientTLSCertificates(ctx, &cluster)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if !clientCertsReady {
+			logger.Info("waiting for client TLS certificates to be ready")
+			return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
+		}
+	}
+
 	// reconcile tunnel service if gRPC tunnel is configured
 	if cluster.Spec.GRPCTunnel != nil {
 		if err := r.reconcileTunnelService(ctx, &cluster); err != nil {
@@ -287,7 +308,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// build pipeline data for the gNMIc plan builder
-	planBuilder := gnmic.NewPlanBuilder(r)
+	planBuilder := gnmic.NewPlanBuilder(r).
+		WithClientTLS(gnmic.ClientTLSConfigForCluster(&cluster))
 	pipelineDataMap := make(map[string]gnmic.PipelineData)
 
 	for _, pipeline := range pipelines {
@@ -1507,6 +1529,174 @@ func (r *ClusterReconciler) cleanupTunnelCertificates(ctx context.Context, clust
 	return nil
 }
 
+// reconcileClientTLSCertificates creates/updates cert-manager Certificate resources for client TLS
+// (used by gNMIc to connect to targets with mTLS)
+// returns true if all certificates are ready, false otherwise
+func (r *ClusterReconciler) reconcileClientTLSCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	if cluster.Spec.ClientTLS == nil || cluster.Spec.ClientTLS.IssuerRef == "" {
+		return true, nil // client TLS not configured, skip
+	}
+
+	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
+	replicas := cluster.Spec.Replicas
+
+	allReady := true
+
+	// create/update certificates for each replica
+	for i := int32(0); i < replicas; i++ {
+		podName := fmt.Sprintf("%s-%d", stsName, i)
+		certName := fmt.Sprintf("%s-client-tls", podName)
+
+		cert := r.buildClientTLSCertificate(cluster, certName, podName, stsName)
+
+		if err := controllerutil.SetControllerReference(cluster, cert, r.Scheme); err != nil {
+			return false, err
+		}
+
+		var current certmanagerv1.Certificate
+		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
+		if errors.IsNotFound(err) {
+			logger.Info("creating client TLS certificate", "certificate", certName)
+			if err := r.Create(ctx, cert); err != nil {
+				return false, err
+			}
+			allReady = false
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+
+		// check if certificate needs update
+		if r.certificateNeedsUpdate(&current, cert) {
+			current.Spec = cert.Spec
+			if err := r.Update(ctx, &current); err != nil {
+				return false, err
+			}
+		}
+
+		// check if certificate is ready
+		if !r.isCertificateReady(&current) {
+			logger.Info("client TLS certificate not ready", "certificate", certName)
+			allReady = false
+		}
+	}
+
+	// clean up certificates for replicas that no longer exist (scale down)
+	var certList certmanagerv1.CertificateList
+	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
+		"operator.gnmic.dev/cluster-name": cluster.Name,
+		"operator.gnmic.dev/cert-type":    "client",
+	}); err != nil {
+		return false, err
+	}
+
+	for _, cert := range certList.Items {
+		// extract the ordinal from the certificate name (e.g., "gnmic-cluster1-2-client-tls" -> 2)
+		ordinal := r.extractOrdinalFromClientTLSCertName(cert.Name, stsName)
+		if ordinal >= int(replicas) {
+			logger.Info("deleting client TLS certificate for scaled-down replica", "certificate", cert.Name)
+			if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+				return false, err
+			}
+		}
+	}
+
+	return allReady, nil
+}
+
+// buildClientTLSCertificate creates a cert-manager Certificate spec for client TLS
+// (used by gNMIc to authenticate to targets)
+func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Cluster, certName, podName, stsName string) *certmanagerv1.Certificate {
+	// For client certificates, we typically use the pod name as the common name
+	// DNS names are less important for client certs, but we include them for consistency
+	dnsNames := []string{
+		podName,
+		fmt.Sprintf("%s.%s", podName, stsName),
+		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, stsName, cluster.Namespace),
+	}
+
+	return &certmanagerv1.Certificate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      certName,
+			Namespace: cluster.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":          "gnmic",
+				"app.kubernetes.io/managed-by":    "gnmic-operator",
+				"operator.gnmic.dev/cluster-name": cluster.Name,
+				"operator.gnmic.dev/cert-type":    "client",
+			},
+		},
+		Spec: certmanagerv1.CertificateSpec{
+			SecretName: certName,
+			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
+				Labels: map[string]string{
+					"operator.gnmic.dev/cluster-name": cluster.Name,
+					"operator.gnmic.dev/pod-name":     podName,
+					"operator.gnmic.dev/cert-type":    "client",
+				},
+			},
+			IssuerRef: cmmeta.ObjectReference{
+				Name: cluster.Spec.ClientTLS.IssuerRef,
+				Kind: "Issuer",
+			},
+			CommonName: podName,
+			DNSNames:   dnsNames,
+			Usages: []certmanagerv1.KeyUsage{
+				certmanagerv1.UsageClientAuth,
+				certmanagerv1.UsageDigitalSignature,
+				certmanagerv1.UsageKeyEncipherment,
+			},
+		},
+	}
+}
+
+// extractOrdinalFromClientTLSCertName extracts the pod ordinal from a client TLS certificate name
+// e.g., "gnmic-cluster1-2-client-tls" -> 2
+func (r *ClusterReconciler) extractOrdinalFromClientTLSCertName(certName, stsName string) int {
+	// certificate name format: <stsName>-<ordinal>-client-tls
+	suffix := "-client-tls"
+	if !strings.HasSuffix(certName, suffix) {
+		return -1
+	}
+	withoutSuffix := strings.TrimSuffix(certName, suffix)
+	if !strings.HasPrefix(withoutSuffix, stsName+"-") {
+		return -1
+	}
+	ordinalStr := strings.TrimPrefix(withoutSuffix, stsName+"-")
+	ordinal, err := strconv.Atoi(ordinalStr)
+	if err != nil {
+		return -1
+	}
+	return ordinal
+}
+
+// cleanupClientTLSCertificates deletes all client TLS certificates for a cluster
+func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
+	logger := log.FromContext(ctx)
+
+	var certList certmanagerv1.CertificateList
+	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
+		"operator.gnmic.dev/cluster-name": cluster.Name,
+		"operator.gnmic.dev/cert-type":    "client",
+	}); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	for _, cert := range certList.Items {
+		logger.Info("deleting client TLS certificate", "certificate", cert.Name)
+		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // reconcileTunnelService creates/updates the gRPC tunnel service for the cluster
 func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
 	logger := log.FromContext(ctx)
@@ -2466,6 +2656,105 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{
 				Name:      "tunnel-ca-bundle",
 				MountPath: gnmic.TunnelCABundleMountPath,
+				ReadOnly:  true,
+			})
+		}
+	}
+
+	// add client TLS volumes if ClientTLS is configured (for mTLS to targets)
+	if cluster.Spec.ClientTLS != nil {
+		// add client TLS certificates if issuerRef is configured
+		if cluster.Spec.ClientTLS.IssuerRef != "" {
+			if cluster.Spec.ClientTLS.UseCSIDriver {
+				// use cert-manager CSI driver for per-pod client certificates
+				volumes = append(volumes, corev1.Volume{
+					Name: "client-tls-certs",
+					VolumeSource: corev1.VolumeSource{
+						CSI: &corev1.CSIVolumeSource{
+							Driver:   "csi.cert-manager.io",
+							ReadOnly: pointer.Bool(true),
+							VolumeAttributes: map[string]string{
+								"csi.cert-manager.io/issuer-name": cluster.Spec.ClientTLS.IssuerRef,
+								"csi.cert-manager.io/issuer-kind": "Issuer",
+								"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc.cluster.local",
+							},
+						},
+					},
+				})
+			} else {
+				// use projected volume with subPathExpr to mount the correct certificate per pod
+				clientCertSources := []corev1.VolumeProjection{}
+				for i := int32(0); i < cluster.Spec.Replicas; i++ {
+					podName := fmt.Sprintf("%s-%d", stsName, i)
+					secretName := fmt.Sprintf("%s-client-tls", podName)
+					clientCertSources = append(clientCertSources, corev1.VolumeProjection{
+						Secret: &corev1.SecretProjection{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: secretName,
+							},
+							Items: []corev1.KeyToPath{
+								{Key: "tls.crt", Path: fmt.Sprintf("%s/tls.crt", podName)},
+								{Key: "tls.key", Path: fmt.Sprintf("%s/tls.key", podName)},
+								{Key: "ca.crt", Path: fmt.Sprintf("%s/ca.crt", podName)},
+							},
+							Optional: pointer.Bool(true),
+						},
+					})
+				}
+
+				volumes = append(volumes, corev1.Volume{
+					Name: "client-tls-certs",
+					VolumeSource: corev1.VolumeSource{
+						Projected: &corev1.ProjectedVolumeSource{
+							Sources: clientCertSources,
+						},
+					},
+				})
+			}
+
+			// add client TLS volume mount
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:        "client-tls-certs",
+				MountPath:   gnmic.ClientTLSCertFilesBasePath,
+				SubPathExpr: "$(POD_NAME)",
+				ReadOnly:    true,
+			})
+
+			// ensure POD_NAME env var is set (might already be set for API or tunnel TLS)
+			hasPodNameEnv := false
+			for _, env := range envVars {
+				if env.Name == "POD_NAME" {
+					hasPodNameEnv = true
+					break
+				}
+			}
+			if !hasPodNameEnv {
+				envVars = append(envVars, corev1.EnvVar{
+					Name: "POD_NAME",
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.name",
+						},
+					},
+				})
+			}
+		}
+
+		// add client CA bundle volume if bundleRef is configured for target server certificate verification
+		if cluster.Spec.ClientTLS.BundleRef != "" {
+			volumes = append(volumes, corev1.Volume{
+				Name: "client-ca-bundle",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: cluster.Spec.ClientTLS.BundleRef,
+						},
+					},
+				},
+			})
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:      "client-ca-bundle",
+				MountPath: gnmic.ClientCABundleMountPath,
 				ReadOnly:  true,
 			})
 		}

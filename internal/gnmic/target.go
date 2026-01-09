@@ -10,7 +10,8 @@ import (
 )
 
 // buildTargetConfig creates a gNMIc TargetConfig from a Target and TargetProfile
-func buildTargetConfig(target *gnmicv1alpha1.Target, profile *gnmicv1alpha1.TargetProfileSpec, creds *Credentials) *gapi.TargetConfig {
+// clientTLS contains paths to client certificates for mTLS with targets (from cluster.Spec.ClientTLS)
+func buildTargetConfig(target *gnmicv1alpha1.Target, profile *gnmicv1alpha1.TargetProfileSpec, creds *Credentials, clientTLS *ClientTLSPaths) *gapi.TargetConfig {
 	config := &gapi.TargetConfig{
 		Name:       target.Namespace + Delimiter + target.Name,
 		Address:    target.Spec.Address,
@@ -32,13 +33,54 @@ func buildTargetConfig(target *gnmicv1alpha1.Target, profile *gnmicv1alpha1.Targ
 		}
 	}
 
-	// TLS configuration
-	if profile.TLS != nil {
-		if profile.TLS.TrustBundleRef == "" {
-			config.SkipVerify = ptr.To(true)
-		}
-	} else {
+	// no client TLS configuration at the cluster level or target profile level
+	if clientTLS == nil && profile.TLS == nil {
 		config.Insecure = ptr.To(true)
+		return config
+	}
+	// TLS not enabled at the cluster level but enabled at the target profile level
+	if clientTLS == nil && profile.TLS != nil {
+		config.SkipVerify = ptr.To(true)
+		if profile.TLS.MaxVersion != "" {
+			config.TLSMaxVersion = profile.TLS.MaxVersion
+		}
+		if profile.TLS.MinVersion != "" {
+			config.TLSMinVersion = profile.TLS.MinVersion
+		}
+		if len(profile.TLS.CipherSuites) > 0 {
+			config.CipherSuites = profile.TLS.CipherSuites
+		}
+		return config
+	}
+
+	// use client TLS configuration from cluster (for mTLS with targets)
+	if clientTLS.CertFile != "" {
+		config.TLSCert = ptr.To(clientTLS.CertFile)
+	}
+	if clientTLS.KeyFile != "" {
+		config.TLSKey = ptr.To(clientTLS.KeyFile)
+	}
+	if clientTLS.CAFile != "" {
+		config.TLSCA = ptr.To(clientTLS.CAFile)
+		config.SkipVerify = ptr.To(false)
+	} else {
+		// TLS is enabled but without CA verification (TrustBundleRef not supported yet)
+		config.SkipVerify = ptr.To(true)
+	}
+	if profile.TLS == nil {
+		return config
+	}
+	if profile.TLS.ServerName != "" {
+		config.TLSServerName = profile.TLS.ServerName
+	}
+	if profile.TLS.MaxVersion != "" {
+		config.TLSMaxVersion = profile.TLS.MaxVersion
+	}
+	if profile.TLS.MinVersion != "" {
+		config.TLSMinVersion = profile.TLS.MinVersion
+	}
+	if len(profile.TLS.CipherSuites) > 0 {
+		config.CipherSuites = profile.TLS.CipherSuites
 	}
 
 	return config
