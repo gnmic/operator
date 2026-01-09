@@ -59,79 +59,9 @@ The Cluster Controller is the primary controller responsible for:
 
 1. **Creating StatefulSets**: Deploys gNMIc pods with intial config (REST API, TLS certs,...)
 2. **Managing Services**: Creates headless service for pod DNS and Prometheus services for metrics
-3. **Building Configuration**: Aggregates all pipelines and builds the gNMIc configuration
-4. **Distributing Targets**: Assigns targets to pods using bounded load rendezvous hashing
+3. **Building Configuration**: Aggregates all pipelines and builds the gNMIc pods configuration
+4. **Distributing Targets**: Assigns targets to pods
 5. **Applying Configuration**: Sends configuration to each pod via REST API
-
-### Reconciliation Flow
-
-```
-Cluster CR Changed
-       │
-       ▼
-┌──────────────────┐
-│ Reconcile Starts │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐ YES  ┌──────────────────┐
-│ Handle Deletion? │────▶ │ Cleanup Resources│
-└────────┬─────────┘      └──────────────────┘
-         │ No
-         ▼
-┌──────────────────┐
-│ Ensure Finalizer │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Reconcile        │
-│ Headless Service │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Reconcile        │
-│ StatefulSet      │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ List Pipelines   │
-│ for Cluster      │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Resolve Targets, │
-| TunnelTargetPols │
-│ Subscriptions,   │
-│ Outputs, Inputs  │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Build Apply Plan │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Reconcile        │
-│ Prometheus Svcs  │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Wait for Pods    │
-│ to be Ready      │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ Apply Config to  │
-│ Each Pod         │
-└──────────────────┘
-```
 
 ## Why StatefulSet?
 
@@ -147,7 +77,7 @@ The operator uses StatefulSets instead of Deployments for several reasons:
 Stable pod identities enable:
 - **Direct communication**: Operator can send config to specific pods
 - **Deterministic distribution**: Same target goes to same pod index
-- **Ordered scaling**: Predictable behavior when scaling up/down
+- **Ordered scaling**: Predictable behavior when scaling up/down. Paired with a pod drain strategy, it enables controlled cluster scaling
 
 ## Configuration Flow
 

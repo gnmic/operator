@@ -3,17 +3,20 @@ title: "TLS Configuration"
 linkTitle: "TLS"
 weight: 3
 description: >
-  Secure communication between the operator and gNMIc pods
+  Secure communication in gNMIc Operator
 ---
 
-The gNMIc Operator supports TLS encryption and mutual TLS (mTLS) for secure communication between the operator controller and gNMIc collector pods.
+The gNMIc Operator supports multiple TLS configurations for different communication paths:
 
-## Scope
+| TLS Type | Config Location | Purpose |
+|----------|-----------------|---------|
+| **API TLS** | `cluster.spec.api.tls` | Operator ↔ gNMIc pod REST API |
+| **Client TLS** | `cluster.spec.clientTLS` | gNMIc pod → Network target gNMI |
+| **Tunnel TLS** | `cluster.spec.grpcTunnel.tls` | Network device → gNMIc pod tunnel |
 
-This TLS configuration applies to the **REST API** communication between the operator and gNMIc pods. It does **not** apply to:
+## API TLS (Operator ↔ Pods)
 
-- **Target connections**: TLS for gNMI connections to network devices is configured in the `TargetProfile` CR
-- **Output connections**: TLS for outputs (Kafka, InfluxDB, etc.) is configured in the `Output` CR
+This TLS configuration secures the REST API communication between the operator controller and gNMIc collector pods.
 
 ## Overview
 
@@ -261,7 +264,7 @@ kubectl exec gnmic-my-cluster-0 -- ls -la /etc/certs/api/
 4. **Limit Issuer scope** - use namespace-scoped Issuers, not ClusterIssuers
 5. **Monitor certificate expiry** using cert-manager metrics
 
-## Example: Production Setup
+## Example: Production Setup (API TLS)
 
 ```yaml
 # CA Issuer with 1-year validity
@@ -310,4 +313,187 @@ spec:
       memory: "1Gi"
       cpu: "2"
 ```
+
+---
+
+## Client TLS (Pods → Targets)
+
+Client TLS enables gNMIc pods to authenticate to network devices using client certificates. This is essential when your network devices require mutual TLS (mTLS) for gNMI connections.
+
+### Use Cases
+
+- Network devices require client certificate authentication
+- Security policies mandate certificate-based authentication
+- Zero-trust network architecture
+
+### Configuration
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: mtls-cluster
+spec:
+  replicas: 3
+  image: ghcr.io/openconfig/gnmic:latest
+  clientTLS:
+    issuerRef: gnmic-client-ca-issuer
+    bundleRef: target-ca-bundle  # Optional: CA to verify target certs
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issuerRef` | string | cert-manager Issuer to sign client certificates |
+| `useCSIDriver` | bool | Use CSI driver for certificate mounting |
+| `bundleRef` | string | ConfigMap with CA bundle for target verification |
+
+### How Client TLS Works
+
+```
+┌──────────────────┐                    ┌──────────────────┐
+│  gNMIc Pod       │                    │  Network Device  │
+│                  │                    │                  │
+│  1. Connect      │───────────────────►│                  │
+│                  │                    │  2. Present      │
+│                  │◄───────────────────│     server cert  │
+│  3. Verify cert  │                    │                  │
+│     (if bundleRef│                    │                  │
+│      configured) │                    │                  │
+│                  │                    │                  │
+│  4. Present      │───────────────────►│                  │
+│     client cert  │                    │  5. Verify cert  │
+│                  │                    │     against CA   │
+│                  │                    │                  │
+│  6. gNMI         │◄──────────────────►│  Connection      │
+│     session      │                    │  established     │
+└──────────────────┘                    └──────────────────┘
+```
+
+### Certificate Paths
+
+Client certificates are mounted in gNMIc pods at:
+
+| File | Path |
+|------|------|
+| Certificate | `/etc/gnmic/client-tls/tls.crt` |
+| Private Key | `/etc/gnmic/client-tls/tls.key` |
+| CA (from issuer) | `/etc/gnmic/client-tls/ca.crt` |
+| CA Bundle (bundleRef) | `/etc/gnmic/client-ca/ca.crt` |
+
+### Target Configuration
+
+When `clientTLS` is configured, the operator automatically adds TLS settings to all target configurations:
+
+```yaml
+# Automatically applied to target configs
+tls-cert: /etc/gnmic/client-tls/tls.crt
+tls-key: /etc/gnmic/client-tls/tls.key
+tls-ca: /etc/gnmic/client-ca/ca.crt  # If bundleRef is set
+skip-verify: false  # If bundleRef is set
+```
+
+### Resources Created
+
+| Resource | Name Pattern | Purpose |
+|----------|--------------|---------|
+| Certificate | `gnmic-{cluster}-{index}-client-tls` | Per-pod client certificate |
+| Secret | `gnmic-{cluster}-{index}-client-tls` | Certificate and key |
+
+### Example: Full mTLS Setup
+
+```yaml
+# 1. Create CA for signing client certificates
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gnmic-client-ca
+spec:
+  isCA: true
+  commonName: gnmic-client-ca
+  secretName: gnmic-client-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+---
+# 2. Create Issuer using the CA
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: gnmic-client-ca-issuer
+spec:
+  ca:
+    secretName: gnmic-client-ca-secret
+---
+# 3. Create ConfigMap with target CA certificates
+# (The CA that signed your network devices' certificates)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: target-ca-bundle
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    # Your network devices' CA certificate here
+    -----END CERTIFICATE-----
+---
+# 4. Create Cluster with Client TLS
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: secure-telemetry
+spec:
+  replicas: 3
+  image: ghcr.io/openconfig/gnmic:latest
+  api:
+    restPort: 7890
+    tls:
+      issuerRef: gnmic-api-issuer  # Separate issuer for API TLS
+  clientTLS:
+    issuerRef: gnmic-client-ca-issuer
+    bundleRef: target-ca-bundle
+    useCSIDriver: true  # Recommended for production
+```
+
+### Troubleshooting Client TLS
+
+**Check client certificate status:**
+
+```bash
+kubectl get certificates -l operator.gnmic.dev/cert-type=client
+```
+
+**Verify certificate is mounted:**
+
+```bash
+kubectl exec gnmic-my-cluster-0 -- ls -la /etc/gnmic/client-tls/
+```
+
+**Check certificate details:**
+
+```bash
+kubectl get secret gnmic-my-cluster-0-client-tls -o jsonpath='{.data.tls\.crt}' | \
+  base64 -d | openssl x509 -text -noout
+```
+
+**Verify CA bundle:**
+
+```bash
+kubectl exec gnmic-my-cluster-0 -- cat /etc/gnmic/client-ca/ca.crt
+```
+
+---
+
+## TLS Summary
+
+| Configuration | Purpose | Key Fields |
+|---------------|---------|------------|
+| `api.tls` | Secure operator ↔ pod communication | `issuerRef`, `useCSIDriver`, `bundleRef` |
+| `clientTLS` | Secure pod → target gNMI connections | `issuerRef`, `useCSIDriver`, `bundleRef` |
+| `grpcTunnel.tls` | Secure device → pod tunnel connections | `issuerRef`, `useCSIDriver`, `bundleRef` |
+
+All three TLS configurations use the same `ClusterTLSConfig` structure and support both projected volumes and CSI driver modes.
 

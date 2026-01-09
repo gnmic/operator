@@ -6,9 +6,11 @@ description: >
   Configuring telemetry pipelines
 ---
 
-The `Pipeline` resource connects targets, tunnelTargetPolicies, subscriptions, outputs, and inputs together. It defines the flow of telemetry data through the system.
+The `Pipeline` resource connects targets, tunnelTargetPolicies, subscriptions, outputs, and inputs together. It defines the flow of telemetry data through the cluster.
 
 ## Basic Configuration
+
+The simplest way to configure a `Pipeline` is using direct references to `tagets`,`subscriptions` and `outputs`.
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -27,6 +29,40 @@ spec:
     outputRefs:
       - prometheus-output
 ```
+
+It can also be configured with `labelSelectors`:
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: core-telemetry
+spec:
+  clusterRef: telemetry-cluster
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        role: core
+        env: prod
+    - matchLabels:
+        role: edge
+        env: prod
+  subscriptionSelectors:
+    - matchLabels:
+        type: interface-stats
+  outputs:
+    outputSelectors:
+      - matchLabels:
+        type: prometheus
+        env: prod
+```
+
+The above example build a pipeline that includes:
+- Targets with the labels `role=core` AND `env=prod`, as well as targets with the labels `role=edge` AND `env=prod`
+- Subscriptions with the label `type=interface-stats`
+- Ooutputs with the labels `type=prometheus` AND `env=prod`
+
+Direct references and label selectors can be combined for the same selection type.
 
 ## Spec Fields
 
@@ -138,7 +174,6 @@ metadata:
 spec:
   clusterRef: telemetry-cluster
   enabled: true
-  # No targets - data comes from input
   inputs:
     inputRefs:
       - kafka-telemetry
@@ -179,7 +214,7 @@ spec:
   enabled: true
   targetSelectors:
     - matchLabels:
-        role: core  # Same targets!
+        role: core  # Same targets as Pipeline A
   subscriptionRefs:
     - bgp-state
   outputs:

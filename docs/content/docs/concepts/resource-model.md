@@ -20,31 +20,26 @@ The gNMIc Operator uses a set of Custom Resource Definitions (CRDs) to model tel
                                          ▲
                                          │ references
                                          │ 
-                                ┌────────┴────────┐
-                                │    Pipeline     │
-                                │    (wiring)     │
-                                └────────┬────────┘
-                                         │ 
-                                         │  references or selects
-       ┌─────────────────────┬───────────┴─────────┬────────────────────┐
-       │                     │                     │                    │
-       ▼                     ▼                     ▼                    ▼
+┌─────────────────┐             ┌────────┴────────┐
+│  TargetSource   │             │    Pipeline     │
+│  (discovery)    │             │    (wiring)     │
+└─────────────────┘             └────────┬────────┘
+    |                                    │ 
+    |                                    │  references or selects
+    |   ┌────────────────────┬───────────┴─────────┬────────────────────┐
+    |   │                    │                     │                    │
+    ▼   ▼                    ▼                     ▼                    ▼
 ┌──────────────┐    ┌─────────────────┐    ┌──────────────┐   ┌────────────────────┐
 │   Targets    │    │  Subscriptions  │    │   Outputs    │   │ TunnelTargetPolicy │
 │  (devices)   │    │    or Inputs    │    │(destinations)│   │  (tunnel matching) │
 └──────┬───────┘    │     (data)      │    └──────────────┘   └─────────┬──────────┘
-   ▲   │            └─────────────────┘                                 │
-   |   │                                                                │
-   |   │                                                                │
-   |   │                        ┌───────────────┐                       │
-   |   └────────references────▶ │ TargetProfile │◀────references────────┘
-   |                            │(cred, tls,...)│                 
-   |  creates                   └───────────────┘ 
-   |                      
-┌─────────────────┐       
-│  TargetSource   │
-│  (discovery)    │ 
-└─────────────────┘
+       │            └─────────────────┘                                 │
+       │                                                                │
+       │                                                                │
+       │                        ┌───────────────┐                       │
+       └────────references────▶ │ TargetProfile │◀────references────────┘
+                                │(cred,connOpts)│                 
+                                └───────────────┘ 
 ```
 
 ## Separation of Concerns
@@ -66,7 +61,7 @@ Each resource type handles a single concern:
 
 ## Resource Selection
 
-Resources can be selected in two ways:
+Resources can be selected by the Pipeline in two ways:
 
 ### Direct References
 

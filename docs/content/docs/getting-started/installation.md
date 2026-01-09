@@ -3,7 +3,7 @@ title: "Installation"
 linkTitle: "Installation"
 weight: 1
 description: >
-  Install the gNMIc Operator on your Kubernetes cluster
+  Install gNMIc Operator on your Kubernetes cluster
 ---
 
 ## Prerequisites
@@ -57,7 +57,7 @@ cd gnmic-operator
 make install
 
 # Deploy the operator
-make deploy IMG=ghcr.io/karimra/gnmic-operator:latest
+make deploy IMG=ghcr.io/karimra/gnmic-operator:dev
 ```
 
 ## Uninstall
