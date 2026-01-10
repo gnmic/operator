@@ -1707,26 +1707,33 @@ func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster 
 
 	serviceName := fmt.Sprintf("%s%s-grpc-tunnel", resourcePrefix, cluster.Name)
 
+	labels := map[string]string{
+		"app.kubernetes.io/name":          "gnmic",
+		"app.kubernetes.io/managed-by":    "gnmic-operator",
+		"operator.gnmic.dev/cluster-name": cluster.Name,
+		"operator.gnmic.dev/service-type": "tunnel",
+	}
+	annotations := map[string]string{}
+
 	// default to LoadBalancer if not specified
 	serviceType := corev1.ServiceTypeLoadBalancer
-	var annotations map[string]string
+
 	if cluster.Spec.GRPCTunnel.Service != nil {
 		if cluster.Spec.GRPCTunnel.Service.Type != "" {
 			serviceType = cluster.Spec.GRPCTunnel.Service.Type
 		}
-		annotations = cluster.Spec.GRPCTunnel.Service.Annotations
+		if len(cluster.Spec.GRPCTunnel.Service.Labels) > 0 {
+			maps.Copy(labels, cluster.Spec.GRPCTunnel.Service.Labels)
+		}
+		if len(cluster.Spec.GRPCTunnel.Service.Annotations) > 0 {
+			maps.Copy(annotations, cluster.Spec.GRPCTunnel.Service.Annotations)
+		}
 	}
-
 	desired := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
-			Namespace: cluster.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/name":          "gnmic",
-				"app.kubernetes.io/managed-by":    "gnmic-operator",
-				"operator.gnmic.dev/cluster-name": cluster.Name,
-				"operator.gnmic.dev/service-type": "tunnel",
-			},
+			Name:        serviceName,
+			Namespace:   cluster.Namespace,
+			Labels:      labels,
 			Annotations: annotations,
 		},
 		Spec: corev1.ServiceSpec{

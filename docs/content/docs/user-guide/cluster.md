@@ -145,6 +145,8 @@ spec:
       annotations:
         metallb.io/address-pool: "production-pool"
         metallb.io/loadBalancerIPs: "10.1.1.100"
+      labels:
+        external-dns: "true"
 ```
 
 ### Resources Created for gRPC Tunnel enabled clusters 

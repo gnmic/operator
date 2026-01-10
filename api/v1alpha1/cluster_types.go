@@ -81,11 +81,14 @@ type ServiceConfig struct {
 	// Annotations to add to the service
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+	// Labels to add to the service
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // TLS configuration for the gNMIc pods API or gNMI client certificates
 type ClusterTLSConfig struct {
-	// A CertManager Issuer user to sign the gNMIc pods API or gNMI client certificates.
+	// A CertManager Issuer used to sign the gNMIc pods API or gNMI client certificates.
 	IssuerRef string `json:"issuerRef,omitempty"`
 	// Additional trusted CA bundle to mount to the gNMIc pods API or gNMI client certificates.
 	BundleRef string `json:"bundleRef,omitempty"`
