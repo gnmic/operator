@@ -6,9 +6,11 @@ description: >
   Configuring gNMIc Cluster deployments
 ---
 
-The `Cluster` resource defines a gNMIc collector deployment. It creates a StatefulSet, headless Service, and manages the initial configuration for the gNMIc pods.
+The `Cluster` resource defines a gNMIc collector deployment. It creates a StatefulSet, headless Service, Certificates, and manages the initial configuration for the gNMIc pods.
 
 ## Basic Configuration
+
+This CR creates a gNMIc cluster of 3 pods based on the referenced container image.
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -26,13 +28,19 @@ spec:
 |-------|------|----------|---------|-------------|
 | `replicas` | int32 | Yes | 1 | Number of gNMIc pods to run |
 | `image` | string | Yes | | Container image for gNMIc |
-| `api.restPort` | int32 | Yes | 7890 | Port for REST API |
+| **API** | | | | |
+| `api` | APIConfig | No | | REST API and gNMI server configurations |
+| `api.restPort` | int32 | No | 7890 | Port for REST API |
 | `api.gnmiPort` | int32 | No | | Port for gNMI server (optional) |
 | `api.tls` | ClusterTLSConfig | No | | TLS for REST API (operator ↔ pods) |
+| `api.tls.issuerRef` | string | No | | CertManager Issuer reference, used to sign the REST API certificates |
+| `api.tls.bundleRef` | string | No | | ConfigMap reference, used to add API server trust bundles to the POD (key=`ca.crt`) |
+| `api.tls.useCSIDriver` | bool | No | | If true the API certificates are generated and mounted using CertManager CSI Driver |
+| **gNMI client TLS** | | | | |
 | `clientTLS` | ClusterTLSConfig | No | | TLS for gNMI client (pods → targets) |
-| `grpcTunnel` | GRPCTunnelConfig | No | | gRPC tunnel server configuration |
-| `resources` | ResourceRequirements | No | | CPU/memory requests and limits |
-| `env` | []EnvVar | No | | Environment variables for pods |
+| `clientTLS.issuerRef` | string | No | | CertManager Issuer reference, used to sign the gNMI client certificates |
+| `clientTLS.bundleRef` | string | No | | ConfigMap reference, used to add gNMI client trust bundles to the POD (key=`ca.crt`) |
+| `clientTLS.useCSIDriver` | bool | No | | If true the gNMI client certificates are generated and mounted using CertManager CSI Driver |
 
 ## Resource Configuration
 
@@ -97,10 +105,13 @@ spec:
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `port` | int32 | Yes | - | Port for the gRPC tunnel server |
-| `tls` | ClusterTLSConfig | No | - | TLS configuration for tunnel |
-| `service.type` | ServiceType | No | LoadBalancer | Kubernetes service type |
-| `service.annotations` | map[string]string | No | - | Service annotations |
+| `grpcTunnel.port` | in32 | No | | gRPC tunnel server port number |
+| `grpcTunnel.tls.issuerRef` | string | No | | CertManager Issuer reference, used to sign the gRPC Tunnel server certificates |
+| `grpcTunnel.tls.bundleRef` | string | No | | ConfigMap reference, used to add gRPC Tunnel server trust bundles to the POD (key=`ca.crt`) |
+| `grpcTunnel.tls.useCSIDriver` | bool | No | | If true the gRPC Tunnel server certificates are generated and mounted using CertManager CSI Driver |
+| `grpcTunnel.service.type` | corev1.ServiceType | No | Loadbalancer | gRPC Tunnel Kubernetes Service type |
+| `grpcTunnel.service.labels` | map[string]string | No | | Set of labels to add to the create gRPC tunnel Service |
+| `grpcTunnel.service.annotations` | map[string]string | No | | Set of annotations to add to the create gRPC tunnel Service |
 
 ### Tunnel with TLS
 

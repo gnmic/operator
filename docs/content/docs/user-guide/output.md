@@ -15,11 +15,9 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: Output
 metadata:
   name: prometheus-output
-  labels:
-    type: prometheus
 spec:
-  type: prometheus
-  config:
+  type: prometheus  # The output type
+  config:           # Output specific config fields
     listen: ":9804"
     path: /metrics
 ```
@@ -32,9 +30,52 @@ spec:
 | `config` | object | Yes | Type-specific configuration (schemaless) |
 | `service` | ServiceSpec | No | Kubernetes Service configuration (Prometheus only) |
 
+- It is recommended to label outputs for flexible selection when building Pipelines.
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: prometheus-output
+  labels:
+    type: prometheus
+    env: production
+    team: platform
+spec:
+  type: prometheus
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: core-telemetry
+spec:
+  # ...
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          type: prometheus
+          env: production
+          team: platform
+```
+
+
 ## Prometheus Output
 
-Exposes metrics via HTTP endpoint:
+### Scrape based
+
+- The minmal Promehteus output configuration is:
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: prometheus-metrics
+spec:
+  type: prometheus
+```
+The above snippet will create a `prometheus` type output in the gNMIc pods with some defaults values `listen:: :9804` and `path: /metrics`.
+
+- The output can further be customized by adding the relevant fields to the `config` section (see [gNMIc prometheus output config](https://gnmic.openconfig.net/user_guide/outputs/prometheus_output/)):
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -51,9 +92,40 @@ spec:
     strings-as-labels: true
 ```
 
-### Service Configuration
+#### Kubernetes Service
 
-Configure the Kubernetes Service for Prometheus output:
+To ease integration with [Prometheus Server](https://prometheus.io/) and [Prometheus Operator](https://prometheus-operator.dev), 
+gNMIc operator creates a Kubernetes Server for each Prometheus output with handy labels and annotations to be discoverable 
+using [Prometheus Kubernetes SD](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#kubernetes_sd_config)
+or monitored using a Prometheus Operator [ServiceMonitor](https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.ServiceMonitor).
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/path: /metrics    # <-- tells prometheus server which path to scrape. Populated from config.path
+    prometheus.io/port: "9804"      # <-- tells proemtheus server which port to scrape. Populated from config.listen
+    prometheus.io/scrape: "true"    # <-- can be toggled to enable/disable the scrape.
+  labels:                           # <-- Group of labels that can be used in a ServiceMonitor 
+    app.kubernetes.io/managed-by: gnmic-operator
+    app.kubernetes.io/name: gnmic
+    operator.gnmic.dev/cluster-name: cluster1            # <-- Populated from the cluster name
+    operator.gnmic.dev/output-name: prom-output1         # <-- Populated from the output name
+    operator.gnmic.dev/service-type: prometheus-output   # <-- Always set to `prometheus-output` for an output type `prometheus`
+  name: gnmic-cluster1-prom-prom-output1
+spec:
+  type: ClusterIP
+  selector:
+    operator.gnmic.dev/cluster-name: cluster1
+  ports:
+  - name: metrics      # static port name
+    port: 9804         # <-- Populated from config.listen
+    protocol: TCP
+    targetPort: 9804   # <-- Populated from config.listen
+```
+
+If there a need to further customize the Service, a `service` section can be configured to select the service type and add more `labels` and `annotations`
 
 ```yaml
 spec:
@@ -61,9 +133,11 @@ spec:
   config:
     listen: ":9804"
   service:
-    type: LoadBalancer  # ClusterIP, NodePort, or LoadBalancer
+    type: ClusterIP  # ClusterIP, NodePort, or LoadBalancer
     annotations:
-      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      metallb.io/address-pool: internal
+    labels:
+      service: my-prom-output
 ```
 
 The operator automatically creates a Service for each Prometheus output.
@@ -206,17 +280,5 @@ outputs:
         purpose: archival
     - matchLabels:
         purpose: analytics
-```
-
-## Using Labels
-
-Label outputs for flexible selection:
-
-```yaml
-metadata:
-  labels:
-    type: prometheus
-    env: production
-    team: platform
 ```
 

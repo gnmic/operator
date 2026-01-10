@@ -38,7 +38,7 @@ Install the operator in minutes using Helm or manifests.
 [Get started →]({{< relref "/docs/getting-started/installation" >}})
 {{% /blocks/feature %}}
 
-{{% blocks/feature icon="fa-book" title="Learn the CRDs" %}}
+{{% blocks/feature icon="fa-book" title="Learn the Concepts" %}}
 Understand the model: Cluster, Target, Subscription, Output, Processor, Pipeline.
 
 [Read the docs →]({{< relref "/docs/concepts" >}})

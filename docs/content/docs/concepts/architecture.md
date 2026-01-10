@@ -12,46 +12,17 @@ The gNMIc Operator follows the Kubernetes operator pattern to manage gNMIc telem
 
 ## Components
 
-```
-┌───────────────────────────────────────────────────────────────────────┐
-│                         Kubernetes Cluster                            │
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────────┐  │
-│  │                    gNMIc Operator                               │  │
-│  │                                                                 │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │  │
-│  │  │ Cluster         │  │ Pipeline        │  │ Other           │  │  │
-│  │  │ Controller      │  │ Controller      │  │ Controllers     │  │  │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │  │
-│  └───────────┼────────────────────┼────────────────────────────────┘  │
-│              │                    │                                   │
-│              ▼                    ▼                                   │
-│  ┌──────────────────────────────────────────────────────────────────┐ │
-│  │                    Custom Resources                              │ │
-│  │  ┌─────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐ ┌────────┐ │ │
-│  │  │ Cluster │ │ Pipeline │ │ Target │ │ Subscription │ │ Output │ │ │
-│  │  └─────────┘ └──────────┘ └────────┘ └──────────────┘ └────────┘ │ │
-│  └──────────────────────────────────────────────────────────────────┘ │
-│              │                                                        │
-│              ▼                                                        │
-│  ┌───────────────────────────────────────────────────────────────────┐│
-│  │                    Managed Resources                              ││
-│  │  ┌─────────────┐ ┌─────────────────┐ ┌───────────┐ ┌───────────┐  ││
-│  │  │ StatefulSet │ │ Headless Service│ │ ConfigMap │ │ Services  │  ││
-│  │  └─────────────┘ └─────────────────┘ └───────────┘ └───────────┘  ││
-│  └───────────────────────────────────────────────────────────────────┘│
-│              │                                                        │
-│              ▼                                                        │
-│  ┌───────────────────────────────────────────────────────────────────┐│
-│  │                       gNMIc Pods                                  ││
-│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐                  ││
-│  │  │ gnmic-0     │ │ gnmic-1     │ │ gnmic-2     │                  ││
-│  │  │ (targets    │ │ (targets    │ │ (targets    │                  ││
-│  │  │  A, B, C)   │ │  D, E, F)   │ │  G, H, I)   │                  ││
-│  │  └─────────────┘ └─────────────┘ └─────────────┘                  ││
-│  └───────────────────────────────────────────────────────────────────┘│
-└───────────────────────────────────────────────────────────────────────┘
-```
+This diagram illustrates how the gNMIc Operator orchestrates gNMIc deployments inside a Kubernetes cluster by reconciling Custom Resources into concrete Kubernetes primitives and gNMIc configurations.
+
+At the core, the Cluster Controller watches a set of CRDs. 
+It uses their desired state to create and manage resources like ConfigMaps, Secrets, Services, and a StatefulSet. 
+The StatefulSet, together with the associated Services, materializes as multiple gNMIc pods (e.g. gnmic-0, gnmic-1, gnmic-2), each responsible for a subset of targets.
+
+In parallel, the TargetSource Controller handles discovery use cases by watching TargetSource resources and creating concrete Target objects, which are then consumed by the Cluster Controller as part of the reconciliation flow.
+
+<a href="">
+  <img src="/images/architecture.svg" style="display:block; margin:auto; width: 900px; max-width: 100%; height: auto;">
+</a>
 
 ## Cluster Controller
 
@@ -63,57 +34,13 @@ The Cluster Controller is the primary controller responsible for:
 4. **Distributing Targets**: Assigns targets to pods
 5. **Applying Configuration**: Sends configuration to each pod via REST API
 
-## Why StatefulSet?
-
-The operator uses StatefulSets instead of Deployments for several reasons:
-
-| Feature | StatefulSet | Deployment |
-|---------|-------------|------------|
-| Pod naming | Predictable (`gnmic-0`, `gnmic-1`) | Random (`gnmic-xyz123`) |
-| Pod DNS | Individual DNS records | No individual DNS |
-| Scaling | Ordered (add/remove from end) | Random |
-| Identity | Stable across restarts | Changes on restart |
-
-Stable pod identities enable:
-- **Direct communication**: Operator can send config to specific pods
-- **Deterministic distribution**: Same target goes to same pod index
-- **Ordered scaling**: Predictable behavior when scaling up/down. Paired with a pod drain strategy, it enables controlled cluster scaling
-
 ## Configuration Flow
 
 Configuration flows from Custom Resources to gNMIc pods:
 
-```
-┌─────────┐  ┌──────────┐  ┌────────────┐  ┌────────┐
-│ Targets │  │ Subs     │  │ Outputs    │  │ Inputs │
-└────┬────┘  └────┬─────┘  └─────┬──────┘  └───┬────┘
-     │            │              │             │
-     └────────────┴──────────────┴─────────────┘
-                        │
-                        ▼
-               ┌────────────────┐
-               │    Pipeline    │
-               │  (references)  │
-               └───────┬────────┘
-                       │
-                       ▼
-               ┌────────────────┐
-               │ Plan Builder   │
-               └───────┬────────┘
-                       │
-                       ▼
-               ┌────────────────┐
-               │ Target         │
-               │ Distribution   │
-               └───────┬────────┘
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-     ┌─────────┐  ┌─────────┐  ┌─────────┐
-     │ Pod 0   │  │ Pod 1   │  │ Pod 2   │
-     │ REST API│  │ REST API│  │ REST API│
-     └─────────┘  └─────────┘  └─────────┘
-```
+<a href="">
+  <img src="/images/configuration_flow.svg" alt="Resource Model CRD Diagram" style="display:block; margin:auto;">
+</a>
 
 ## Watches and Triggers
 
@@ -124,13 +51,14 @@ The Cluster Controller watches multiple resources to react to changes:
 | Cluster | Primary (For) | Spec changes |
 | StatefulSet | Owned | Any Change |
 | Service | Owned | Spec changes |
+| Certificate| Owned | Any Change |
 | Pipeline | Watch | Spec changes |
-| Target | Watch | Spec changes |
+| Target | Watch | Spec or label changes |
+| TunnelTargetPolicy | Watch | Spec or label changes |
 | TargetProfile | Watch | Spec changes |
-| Subscription | Watch | Spec changes|
-| Output | Watch | Spec changes |
-| Input | Watch | Spec changes |
-| Processor | Watch | Spec changes |
+| Subscription | Watch | Spec or label changes |
+| Output | Watch | Spec or label changes |
+| Input | Watch | Spec or label changes |
+| Processor | Watch | Spec or label changes |
 
 Changes to any watched resource trigger Cluster reconciliation, ensuring configuration stays synchronized.
-

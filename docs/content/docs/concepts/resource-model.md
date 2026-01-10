@@ -12,35 +12,9 @@ The gNMIc Operator uses a set of Custom Resource Definitions (CRDs) to model tel
 
 ## Resource Hierarchy
 
-```
-                                ┌─────────────────┐
-                                │     Cluster     │
-                                │  (deployment)   │
-                                └─────────────────┘
-                                         ▲
-                                         │ references
-                                         │ 
-┌─────────────────┐             ┌────────┴────────┐
-│  TargetSource   │             │    Pipeline     │
-│  (discovery)    │             │    (wiring)     │
-└─────────────────┘             └────────┬────────┘
-    |                                    │ 
-    |                                    │  references or selects
-    |   ┌────────────────────┬───────────┴─────────┬────────────────────┐
-    |   │                    │                     │                    │
-    ▼   ▼                    ▼                     ▼                    ▼
-┌──────────────┐    ┌─────────────────┐    ┌──────────────┐   ┌────────────────────┐
-│   Targets    │    │  Subscriptions  │    │   Outputs    │   │ TunnelTargetPolicy │
-│  (devices)   │    │    or Inputs    │    │(destinations)│   │  (tunnel matching) │
-└──────┬───────┘    │     (data)      │    └──────────────┘   └─────────┬──────────┘
-       │            └─────────────────┘                                 │
-       │                                                                │
-       │                                                                │
-       │                        ┌───────────────┐                       │
-       └────────references────▶ │ TargetProfile │◀────references────────┘
-                                │(cred,connOpts)│                 
-                                └───────────────┘ 
-```
+<a href="">
+  <img src="/images/resources_model.svg" alt="Resource Model CRD Diagram" style="display:block; margin:auto;">
+</a>
 
 ## Separation of Concerns
 
