@@ -47,6 +47,9 @@ type OutputServiceSpec struct {
 	// Annotations to add to the service
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+	// Labels to add to the service
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // OutputStatus defines the observed state of Output

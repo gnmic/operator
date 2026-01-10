@@ -56,6 +56,11 @@ spec:
                       type: string
                     description: Annotations to add to the service
                     type: object
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels to add to the service
+                    type: object
                   type:
                     default: ClusterIP
                     description: Type specifies the Kubernetes service type (ClusterIP,
