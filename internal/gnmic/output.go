@@ -1,8 +1,15 @@
 package gnmic
 
 import (
+	"fmt"
+
 	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
 	"gopkg.in/yaml.v2"
+)
+
+const (
+	PrometheusDefaultPort = 9804
+	PrometheusDefaultPath = "/metrics"
 )
 
 // buildOutputConfig creates a gNMIc output config map from an OutputSpec
@@ -18,6 +25,17 @@ func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec) (map[string]any, error) {
 
 	// set the type
 	config["type"] = spec.Type
+
+	// Apply default values
+	switch spec.Type {
+	case "prometheus":
+		if config["listen"] == nil {
+			config["listen"] = fmt.Sprintf(":%d", PrometheusDefaultPort)
+		}
+		if config["path"] == nil {
+			config["path"] = PrometheusDefaultPath
+		}
+	}
 
 	return config, nil
 }

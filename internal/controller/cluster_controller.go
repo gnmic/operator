@@ -2970,22 +2970,24 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	// create/update services for each Prometheus output
 	desiredServiceNames := make(map[string]struct{})
 	for outputNN, outputSpec := range prometheusOutputs {
-		port, err := parseListenPort(outputSpec.Config.Raw)
+		port, urlPath, err := parseListenPortAndPath(outputSpec.Config.Raw)
 		if err != nil {
-			logger.Error(err, "failed to parse listen port for Prometheus output", "output", outputNN)
+			logger.Error(err, "failed to parse listen port and path for Prometheus output", "output", outputNN)
 			continue
 		}
 		if port == 0 {
-			logger.Info("skipping Prometheus output without listen port", "output", outputNN)
-			continue
+			port = 9804 // TODO: find next free port for prometheus output?
 		}
 
+		if urlPath == "" {
+			urlPath = "/metrics"
+		}
 		// generate service name from output name
 		_, outputName := utils.SplitNN(outputNN)
 		serviceName := fmt.Sprintf("%s%s-prom-%s", resourcePrefix, cluster.Name, outputName)
 		desiredServiceNames[serviceName] = struct{}{}
 
-		if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, port, &outputSpec); err != nil {
+		if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, port, urlPath, &outputSpec); err != nil {
 			logger.Error(err, "failed to reconcile Prometheus service", "service", serviceName)
 			return err
 		}
@@ -3036,8 +3038,8 @@ func (r *ClusterReconciler) cleanupPrometheusServices(ctx context.Context, clust
 }
 
 // reconcilePrometheusService creates or updates a service for a Prometheus output
-func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, cluster *gnmicv1alpha1.Cluster, serviceName, outputName string, port int32, outputSpec *gnmicv1alpha1.OutputSpec) error {
-	desired := r.buildPrometheusService(cluster, serviceName, outputName, port, outputSpec)
+func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, cluster *gnmicv1alpha1.Cluster, serviceName, outputName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) error {
+	desired := r.buildPrometheusService(cluster, serviceName, outputName, port, urlPath, outputSpec)
 
 	if err := controllerutil.SetControllerReference(cluster, desired, r.Scheme); err != nil {
 		return err
@@ -3078,7 +3080,7 @@ func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, clus
 }
 
 // buildPrometheusService builds a service for a Prometheus output
-func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluster, serviceName, outputName string, port int32, outputSpec *gnmicv1alpha1.OutputSpec) *corev1.Service {
+func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluster, serviceName, outputName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) *corev1.Service {
 	labels := map[string]string{
 		"app.kubernetes.io/name":          "gnmic",
 		"app.kubernetes.io/managed-by":    "gnmic-operator",
@@ -3087,16 +3089,23 @@ func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluste
 		"operator.gnmic.dev/output-name":  outputName,
 	}
 
+	annotations := map[string]string{
+		"prometheus.io/scrape": "true",
+		"prometheus.io/port":   strconv.Itoa(int(port)),
+		"prometheus.io/path":   urlPath,
+	}
 	// default to ClusterIP if no service config is provided
 	serviceType := corev1.ServiceTypeClusterIP
-	var annotations map[string]string
 
 	if outputSpec.Service != nil {
 		if outputSpec.Service.Type != "" {
 			serviceType = outputSpec.Service.Type
 		}
 		if len(outputSpec.Service.Annotations) > 0 {
-			annotations = outputSpec.Service.Annotations
+			maps.Copy(annotations, outputSpec.Service.Annotations)
+		}
+		if len(outputSpec.Service.Labels) > 0 {
+			maps.Copy(labels, outputSpec.Service.Labels)
 		}
 	}
 
@@ -3140,39 +3149,45 @@ func servicePortsEqual(a, b []corev1.ServicePort) bool {
 	return true
 }
 
-// parseListenPort parses the listen field from output config and returns the port
-// supports formats: ":9804", "0.0.0.0:9804", "localhost:9804", "[::1]:9804", "[2001:db8::8a2e:370:7334]:9804"
-func parseListenPort(configRaw []byte) (int32, error) {
+type listenPortAndPath struct {
+	Listen string `yaml:"listen,omitempty" json:"listen,omitempty"`
+	Path   string `yaml:"path,omitempty" json:"path,omitempty"`
+}
+
+// parseListenPortAndPath parses the "listen" and "path" fields from output config and returns the port and path.
+// supports formats: "listen: ":9804", "0.0.0.0:9804", "localhost:9804", "[::1]:9804", "[2001:db8::8a2e:370:7334]:9804".
+// returns the default port 9804 if not specified.
+// returns the default path /metrics if not specified.
+func parseListenPortAndPath(configRaw []byte) (int32, string, error) {
 	if configRaw == nil {
-		return 0, nil
+		return 0, "", nil
 	}
 
-	var config map[string]any
+	var config listenPortAndPath
 	if err := yaml.Unmarshal(configRaw, &config); err != nil {
-		return 0, err
+		return 0, "", err
 	}
 
-	listen, ok := config["listen"]
-	if !ok {
-		return 0, nil
+	config.Listen = strings.TrimSpace(config.Listen)
+	if config.Listen == "" {
+		config.Listen = fmt.Sprintf(":%d", gnmic.PrometheusDefaultPort)
+	}
+	config.Path = strings.TrimSpace(config.Path)
+	if config.Path == "" {
+		config.Path = gnmic.PrometheusDefaultPath
 	}
 
-	listenStr, ok := listen.(string)
-	if !ok {
-		return 0, fmt.Errorf("listen field is not a string")
-	}
-
-	// parse the port from the listen string
-	idx := strings.LastIndex(listenStr, ":")
+	// parse the port from the listen string value
+	idx := strings.LastIndex(config.Listen, ":")
 	if idx == -1 {
-		return 0, fmt.Errorf("invalid listen format: %s", listenStr)
+		return 0, "", fmt.Errorf("invalid listen format: %s", config.Listen)
 	}
 
-	portStr := listenStr[idx+1:]
+	portStr := config.Listen[idx+1:]
 	port, err := strconv.ParseInt(portStr, 10, 32)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse port from listen: %s", listenStr)
+		return 0, "", fmt.Errorf("failed to parse port from listen: %s", config.Listen)
 	}
 
-	return int32(port), nil
+	return int32(port), config.Path, nil
 }
