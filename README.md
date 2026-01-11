@@ -21,32 +21,9 @@ gNMIc Operator automates the deployment, configuration, and lifecycle management
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      Kubernetes Cluster                      │
-│                                                              │
-│  ┌──────────────┐    ┌────────────────────────────────────┐  │ 
-│  │              │    │           gNMIc Cluster            │  │             ┌─────────────────────────────┐
-│  │   Operator   │───▶│  ┌────────┐ ┌────────┐ ┌────────┐  │  │    gNMI     │      Network Devices        │
-│  │  Controller  │───▶│  │ Pod-0  │ │ Pod-1  │ │ Pod-2  │  │  │-------------│  (routers, switches, etc.)  │
-│  │              │    │  └────────┘ └────────┘ └────────┘  │  │             └─────────────────────────────┘
-│  └──────────────┘    └────────────────────────────────────┘  │
-│         │                          │                         │
-│         ▼                          ▼                         │
-│  ┌────────────────┐         ┌──────────────┐                 │
-│  │    CRDs        │         │   Outputs    │                 │
-│  │ ───────────────│         │ ───────────  │                 │
-│  │ • Cluster      │         │ • Prometheus │                 │
-│  │ • Pipeline     │         │ • Kafka      │                 │
-│  │ • Target       │         │ • InfluxDB   │                 │
-│  │ • Subscription │         │ • NATS       │                 │
-│  │ • Output       │         │ • ...        |                 │
-│  │ • Input        │         └──────────────┘                 │
-│  │ • Processor    │                                          |
-│  | • ...          |                                          │
-│  └────────────────┘                                          │
-└──────────────────────────────────────────────────────────────┘
-```
+<a href="/images/architecture_3.svg" target="_blank">
+  <img src="docs/static/images/architecture_3.svg" style="display:block; margin:auto; width: 100%; max-width: none; height: auto;cursor: zoom-in;">
+</a>
 
 ## Quick Start
 
@@ -181,7 +158,7 @@ spec:
 
 ## Documentation
 
-Full documentation available at: **[operator.gnmic.dev](https://operator.gnmic.dev)** *(coming soon)*
+Full documentation available at: **[operator.gnmic.dev](https://operator.gnmic.dev)**
 
 - [Installation Guide](docs/content/docs/getting-started/installation.md)
 - [User Guide](docs/content/docs/user-guide/)

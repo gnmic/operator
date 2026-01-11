@@ -20,8 +20,8 @@ The StatefulSet, together with the associated Services, materializes as multiple
 
 In parallel, the TargetSource Controller handles discovery use cases by watching TargetSource resources and creating concrete Target objects, which are then consumed by the Cluster Controller as part of the reconciliation flow.
 
-<a href="">
-  <img src="/images/architecture.svg" style="display:block; margin:auto; width: 900px; max-width: 100%; height: auto;">
+<a href="/images/architecture_3.svg" target="_blank">
+  <img src="/images/architecture_3.svg" style="display:block; margin:auto; width: 100%; max-width: none; height: auto;cursor: zoom-in;">
 </a>
 
 ## Cluster Controller
@@ -36,10 +36,12 @@ The Cluster Controller is the primary controller responsible for:
 
 ## Configuration Flow
 
-Configuration flows from Custom Resources to gNMIc pods:
+Configuration flows from Custom Resources to gNMIc pods.
 
-<a href="">
-  <img src="/images/configuration_flow.svg" alt="Resource Model CRD Diagram" style="display:block; margin:auto;">
+The Pipeline resource is the main building block where all the components of a telemetry pipeline come together. It ties Targets, Subscriptions, Output and Inputs together so that the Operator can build each cluster pod configuration.
+
+<a>
+  <img src="/images/configuration_flow.svg" alt="Configuration Flow" style="display:block; margin:auto; width: 80%; max-width: 100%; height: auto;">
 </a>
 
 ## Watches and Triggers
