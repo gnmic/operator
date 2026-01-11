@@ -296,7 +296,7 @@ gnmic-core-cluster-prom-prometheus-output   ClusterIP   10.96.xxx.xxx   9804/TCP
 ## Access Prometheus Metrics
 
 Configure your Prometheus server to scrape the created `gnmic-core-cluster-prom-prometheus-output.
-The Service is labeled and annotated to facilitate discovery using Promehteuss Kubernetes SD and Prometheus Operator ServiceMonitor
+The Service is labeled and annotated to facilitate discovery using [Prometheus Kubernetes SD](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#kubernetes_sd_config) and [Prometheus Operator ServiceMonitor](https://github.com/prometheus-operator/prometheus-operator)
 
 ## Next Steps
 
