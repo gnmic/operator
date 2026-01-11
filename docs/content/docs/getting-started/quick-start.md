@@ -67,6 +67,8 @@ Define a network device to collect telemetry from.
 
 Set the name, address and port to match your environment.
 
+{{% alert title="Note" color="info" %}} Notice the labels, they will come in handy later on. {{% /alert %}}
+
 {{< tabpane >}}
 {{< tab header="YAML" lang="yaml" >}}
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -142,11 +144,9 @@ kind: Output
 metadata:
   name: prometheus-output
   labels:
-    type: prometheus
+    type: metrics
 spec:
   type: prometheus
-  config:
-    listen: ":9804"
 {{< /tab >}}
 {{< tab header="kubectl" lang="bash" >}}
 cat << 'EOF' | kubectl apply -f -
@@ -158,8 +158,6 @@ metadata:
     type: prometheus
 spec:
   type: prometheus
-  config:
-    listen: ":9804"
 EOF
 {{< /tab >}}
 {{< /tabpane >}}
@@ -167,6 +165,7 @@ EOF
 ## Step 5: Create a Pipeline
 
 Connect targets, subscriptions, and outputs:
+Remeber those labels from the previous resources ? They are used in the Pipeline resource to bring targets, subscriptions and outputs together without having to reference them by name.
 
 {{< tabpane >}}
 {{< tab header="YAML" lang="yaml" >}}
@@ -190,7 +189,7 @@ spec:
   outputs:
     outputSelectors:
       - matchLabels:
-          type: prometheus
+          type: metrics
 {{< /tab >}}
 {{< tab header="kubectl" lang="bash" >}}
 cat << 'EOF' | kubectl apply -f -
@@ -218,6 +217,9 @@ spec:
 EOF
 {{< /tab >}}
 {{< /tabpane >}}
+
+
+{{% alert title="Note" color="info" %}} If label selectors are too "magical" for you, the Pipeline CR supports direct references for all resources. {{% /alert %}}
 
 ## Step 6: Create a Cluster
 
@@ -294,7 +296,8 @@ gnmic-core-cluster-prom-prometheus-output   ClusterIP   10.96.xxx.xxx   9804/TCP
 ## Access Prometheus Metrics
 
 Configure your Prometheus server to scrape the created `gnmic-core-cluster-prom-prometheus-output.
-Or even better, annotate
+The Service is labeled and annotated to facilitate discovery using Promehteuss Kubernetes SD and Prometheus Operator ServiceMonitor
+
 ## Next Steps
 
 - [Cluster Configuration]({{< relref "../user-guide/cluster" >}}) - Advanced cluster settings
