@@ -7,7 +7,7 @@ import (
 
 // buildInputConfig creates a gNMIc input config map from an InputSpec
 // outputs is the list of output names this input should send data to
-func buildInputConfig(spec *gnmicv1alpha1.InputSpec, outputs []string) (map[string]any, error) {
+func buildInputConfig(spec *gnmicv1alpha1.InputSpec, outputs []string, processors []string) (map[string]any, error) {
 	config := make(map[string]any)
 
 	// parse the config YAML/JSON
@@ -23,6 +23,11 @@ func buildInputConfig(spec *gnmicv1alpha1.InputSpec, outputs []string) (map[stri
 	// set outputs if provided
 	if len(outputs) > 0 {
 		config["outputs"] = outputs
+	}
+
+	// set event-processors if provided
+	if len(processors) > 0 {
+		config["event-processors"] = processors
 	}
 
 	return config, nil

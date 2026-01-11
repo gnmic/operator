@@ -15,6 +15,16 @@ type PlanBuilder struct {
 	credsFetcher CredentialsFetcher
 	// client TLS paths for target connections
 	clientTLS *ClientTLSPaths
+	//
+	relationships resourceRelationship
+}
+
+type resourceRelationship struct {
+	subscriptionOutputs map[string]map[string]struct{}
+	targetSubscriptions map[string]map[string]struct{}
+	inputOutputs        map[string]map[string]struct{}
+	outputProcessors    map[string][]string
+	inputProcessors     map[string][]string
 }
 
 // NewPlanBuilder creates a new PlanBuilder
@@ -22,6 +32,13 @@ func NewPlanBuilder(credsFetcher CredentialsFetcher) *PlanBuilder {
 	return &PlanBuilder{
 		pipelines:    make(map[string]PipelineData),
 		credsFetcher: credsFetcher,
+		relationships: resourceRelationship{
+			subscriptionOutputs: make(map[string]map[string]struct{}),
+			targetSubscriptions: make(map[string]map[string]struct{}),
+			inputOutputs:        make(map[string]map[string]struct{}),
+			outputProcessors:    make(map[string][]string),
+			inputProcessors:     make(map[string][]string),
+		},
 	}
 }
 
@@ -47,48 +64,36 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 		Processors:          make(map[string]map[string]any),
 		TunnelTargetMatches: make(map[string]*TunnelTargetMatch),
 	}
-
 	// 1) collect relationships across all pipelines
-	subscriptionOutputs := b.collectSubscriptionOutputs()
-	targetSubscriptions := b.collectTargetSubscriptions()
-	inputOutputs := b.collectInputOutputs()
-	outputProcessors := b.collectOutputProcessors()
-	inputProcessors := b.collectInputProcessors()
+	b.collectRelationships()
 
-	// 2) build the configs (TODO: these are not needed the plan has the exact same maps)
-	processedTargets := make(map[string]struct{})
-	processedSubscriptions := make(map[string]struct{})
-	processedOutputs := make(map[string]struct{})
-	processedInputs := make(map[string]struct{})
-	processedProcessors := make(map[string]struct{})
-	processedTunnelPolicies := make(map[string]struct{})
-
+	// 2) build the configs
 	for _, pipelineData := range b.pipelines {
 		// 2.1) build target configs
-		if err := b.buildTargets(plan, pipelineData, targetSubscriptions, processedTargets); err != nil {
+		if err := b.buildTargets(plan, pipelineData); err != nil {
 			return nil, err
 		}
 
 		// 2.2) build subscription configs
-		b.buildSubscriptions(plan, pipelineData, subscriptionOutputs, processedSubscriptions)
+		b.buildSubscriptions(plan, pipelineData)
 
 		// 2.3) build output configs
-		if err := b.buildOutputs(plan, pipelineData, outputProcessors, processedOutputs); err != nil {
+		if err := b.buildOutputs(plan, pipelineData); err != nil {
 			return nil, err
 		}
 
 		// 2.4) build input configs
-		if err := b.buildInputs(plan, pipelineData, inputOutputs, inputProcessors, processedInputs); err != nil {
+		if err := b.buildInputs(plan, pipelineData); err != nil {
 			return nil, err
 		}
 
 		// 2.5) build processor configs (merged from output and input processors)
-		if err := b.buildProcessors(plan, pipelineData, processedProcessors); err != nil {
+		if err := b.buildProcessors(plan, pipelineData); err != nil {
 			return nil, err
 		}
 
 		// 2.6) build tunnel target match configs
-		if err := b.buildTunnelTargetMatches(plan, pipelineData, processedTunnelPolicies); err != nil {
+		if err := b.buildTunnelTargetMatches(plan, pipelineData); err != nil {
 			return nil, err
 		}
 	}
@@ -96,143 +101,90 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 	return plan, nil
 }
 
-func (b *PlanBuilder) collectSubscriptionOutputs() map[string]map[string]struct{} {
-	subscriptionOutputs := make(map[string]map[string]struct{})
-
+func (b *PlanBuilder) collectRelationships() {
 	for _, pipelineData := range b.pipelines {
+		// subscription -> outputs
 		outputNames := make([]string, 0, len(pipelineData.Outputs))
 		for outputNN := range pipelineData.Outputs {
 			outputNames = append(outputNames, outputNN)
 		}
 
 		for subNN := range pipelineData.Subscriptions {
-			if _, ok := subscriptionOutputs[subNN]; !ok {
-				subscriptionOutputs[subNN] = make(map[string]struct{})
+			if _, ok := b.relationships.subscriptionOutputs[subNN]; !ok {
+				b.relationships.subscriptionOutputs[subNN] = make(map[string]struct{})
 			}
 			for _, outputName := range outputNames {
-				subscriptionOutputs[subNN][outputName] = struct{}{}
+				b.relationships.subscriptionOutputs[subNN][outputName] = struct{}{}
 			}
 		}
-	}
-
-	return subscriptionOutputs
-}
-
-func (b *PlanBuilder) collectTargetSubscriptions() map[string]map[string]struct{} {
-	targetSubscriptions := make(map[string]map[string]struct{})
-
-	for _, pipelineData := range b.pipelines {
+		// target -> subscriptions
 		subNames := make([]string, 0, len(pipelineData.Subscriptions))
 		for subNN := range pipelineData.Subscriptions {
 			subNames = append(subNames, subNN)
 		}
 
 		for targetNN := range pipelineData.Targets {
-			if _, ok := targetSubscriptions[targetNN]; !ok {
-				targetSubscriptions[targetNN] = make(map[string]struct{})
+			if _, ok := b.relationships.targetSubscriptions[targetNN]; !ok {
+				b.relationships.targetSubscriptions[targetNN] = make(map[string]struct{})
 			}
 			for _, subName := range subNames {
-				targetSubscriptions[targetNN][subName] = struct{}{}
+				b.relationships.targetSubscriptions[targetNN][subName] = struct{}{}
 			}
 		}
-	}
-
-	return targetSubscriptions
-}
-
-func (b *PlanBuilder) collectInputOutputs() map[string]map[string]struct{} {
-	inputOutputs := make(map[string]map[string]struct{})
-
-	for _, pipelineData := range b.pipelines {
-		outputNames := make([]string, 0, len(pipelineData.Outputs))
+		// input -> outputs
+		inputOutputNames := make([]string, 0, len(pipelineData.Outputs))
 		for outputNN := range pipelineData.Outputs {
-			outputNames = append(outputNames, outputNN)
+			inputOutputNames = append(inputOutputNames, outputNN)
 		}
 
 		for inputNN := range pipelineData.Inputs {
-			if _, ok := inputOutputs[inputNN]; !ok {
-				inputOutputs[inputNN] = make(map[string]struct{})
+			if _, ok := b.relationships.inputOutputs[inputNN]; !ok {
+				b.relationships.inputOutputs[inputNN] = make(map[string]struct{})
 			}
-			for _, outputName := range outputNames {
-				inputOutputs[inputNN][outputName] = struct{}{}
+			for _, outputName := range inputOutputNames {
+				b.relationships.inputOutputs[inputNN][outputName] = struct{}{}
 			}
 		}
-	}
-
-	return inputOutputs
-}
-
-// collectOutputProcessors collects the ordered relationship between outputs and their processors.
-// Returns map[outputNN][]processorNN where the slice maintains the order from the pipeline.
-func (b *PlanBuilder) collectOutputProcessors() map[string][]string {
-	outputProcessors := make(map[string][]string)
-
-	for _, pipelineData := range b.pipelines {
-		// use the ordered list from PipelineData
-		processorOrder := pipelineData.OutputProcessorOrder
+		// output -> processors
+		// ordered relationship between outputs and their processors.
+		// builds map[outputNN][]processorNN where the slice maintains the order from the pipeline.
+		processorNames := make([]string, 0, len(pipelineData.OutputProcessors))
+		for processorNN := range pipelineData.OutputProcessors {
+			processorNames = append(processorNames, processorNN)
+		}
 
 		for outputNN := range pipelineData.Outputs {
-			if _, ok := outputProcessors[outputNN]; !ok {
-				outputProcessors[outputNN] = make([]string, 0)
+			if _, ok := b.relationships.outputProcessors[outputNN]; !ok {
+				b.relationships.outputProcessors[outputNN] = make([]string, 0)
 			}
-			// append processors in order, avoiding duplicates
-			seen := make(map[string]struct{})
-			for _, existing := range outputProcessors[outputNN] {
-				seen[existing] = struct{}{}
-			}
-			for _, processorNN := range processorOrder {
-				if _, ok := seen[processorNN]; !ok {
-					outputProcessors[outputNN] = append(outputProcessors[outputNN], processorNN)
-					seen[processorNN] = struct{}{}
-				}
+			for _, processorName := range processorNames {
+				b.relationships.outputProcessors[outputNN] = append(b.relationships.outputProcessors[outputNN], processorName)
 			}
 		}
-	}
-
-	return outputProcessors
-}
-
-// collectInputProcessors collects the ordered relationship between inputs and their processors.
-// returns map[inputNN][]processorNN where the slice maintains the order from the pipeline.
-func (b *PlanBuilder) collectInputProcessors() map[string][]string {
-	inputProcessors := make(map[string][]string)
-
-	for _, pipelineData := range b.pipelines {
-		// use the ordered list from PipelineData
-		processorOrder := pipelineData.InputProcessorOrder
+		// input -> processors
+		// ordered relationship between inputs and their processors.
+		// builds map[inputNN][]processorNN where the slice maintains the order from the pipeline.
+		inputProcessorNames := make([]string, 0, len(pipelineData.InputProcessors))
+		for processorNN := range pipelineData.InputProcessors {
+			inputProcessorNames = append(inputProcessorNames, processorNN)
+		}
 
 		for inputNN := range pipelineData.Inputs {
-			if _, ok := inputProcessors[inputNN]; !ok {
-				inputProcessors[inputNN] = make([]string, 0)
+			if _, ok := b.relationships.inputProcessors[inputNN]; !ok {
+				b.relationships.inputProcessors[inputNN] = make([]string, 0)
 			}
-			// append processors in order, avoiding duplicates
-			seen := make(map[string]struct{})
-			for _, existing := range inputProcessors[inputNN] {
-				seen[existing] = struct{}{}
-			}
-			for _, processorNN := range processorOrder {
-				if _, ok := seen[processorNN]; !ok {
-					inputProcessors[inputNN] = append(inputProcessors[inputNN], processorNN)
-					seen[processorNN] = struct{}{}
-				}
+			for _, processorName := range inputProcessorNames {
+				b.relationships.inputProcessors[inputNN] = append(b.relationships.inputProcessors[inputNN], processorName)
 			}
 		}
 	}
-
-	return inputProcessors
 }
 
-func (b *PlanBuilder) buildTargets(
-	plan *ApplyPlan,
-	pipelineData PipelineData,
-	targetSubscriptions map[string]map[string]struct{},
-	processed map[string]struct{},
-) error {
+func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData PipelineData) error {
 	for targetNN, targetSpec := range pipelineData.Targets {
-		if _, ok := processed[targetNN]; ok {
+		if _, ok := plan.Targets[targetNN]; ok {
 			continue
 		}
-		processed[targetNN] = struct{}{}
 
 		namespace, name := utils.SplitNN(targetNN)
 
@@ -261,16 +213,16 @@ func (b *PlanBuilder) buildTargets(
 			}
 		}
 
-		targetConfig := buildTargetConfig(target, &profileSpec, creds, b.clientTLS)
-
-		// add subscriptions
-		if subs, ok := targetSubscriptions[targetNN]; ok {
-			subNames := make([]string, 0, len(subs))
-			for subName := range subs {
-				subNames = append(subNames, subName)
+		var subscriptions []string
+		if subscriptionsMap, ok := b.relationships.targetSubscriptions[targetNN]; ok {
+			subscriptions = make([]string, 0, len(subscriptionsMap))
+			for subscriptionName := range subscriptionsMap {
+				subscriptions = append(subscriptions, subscriptionName)
 			}
-			targetConfig.Subscriptions = subNames
 		}
+
+		targetConfig := buildTargetConfig(target, &profileSpec, creds, b.clientTLS)
+		targetConfig.Subscriptions = subscriptions
 
 		plan.Targets[targetNN] = targetConfig
 	}
@@ -278,53 +230,37 @@ func (b *PlanBuilder) buildTargets(
 	return nil
 }
 
-func (b *PlanBuilder) buildSubscriptions(
-	plan *ApplyPlan,
-	pipelineData PipelineData,
-	subscriptionOutputs map[string]map[string]struct{},
-	processed map[string]struct{},
-) {
+func (b *PlanBuilder) buildSubscriptions(plan *ApplyPlan, pipelineData PipelineData) {
 	for subNN, subSpec := range pipelineData.Subscriptions {
-		if _, ok := processed[subNN]; ok {
+		if _, ok := plan.Subscriptions[subNN]; ok {
 			continue
 		}
-		processed[subNN] = struct{}{}
 
-		subConfig := buildSubscriptionConfig(subNN, &subSpec)
-
-		// add outputs
-		if outputs, ok := subscriptionOutputs[subNN]; ok {
-			outputNames := make([]string, 0, len(outputs))
-			for outputName := range outputs {
-				outputNames = append(outputNames, outputName)
+		var outputs []string
+		if outputsMap, ok := b.relationships.subscriptionOutputs[subNN]; ok {
+			outputs = make([]string, 0, len(outputsMap))
+			for outputName := range outputsMap {
+				outputs = append(outputs, outputName)
 			}
-			subConfig.Outputs = outputNames
 		}
+
+		subConfig := buildSubscriptionConfig(subNN, &subSpec, outputs)
 
 		plan.Subscriptions[subNN] = subConfig
 	}
 }
 
-func (b *PlanBuilder) buildOutputs(
-	plan *ApplyPlan,
-	pipelineData PipelineData,
-	outputProcessors map[string][]string,
-	processed map[string]struct{},
-) error {
+func (b *PlanBuilder) buildOutputs(plan *ApplyPlan, pipelineData PipelineData) error {
 	for outputNN, outputSpec := range pipelineData.Outputs {
-		if _, ok := processed[outputNN]; ok {
+		if _, ok := plan.Outputs[outputNN]; ok {
 			continue
 		}
-		processed[outputNN] = struct{}{}
 
-		outputConfig, err := buildOutputConfig(&outputSpec)
+		processors := b.relationships.outputProcessors[outputNN]
+
+		outputConfig, err := buildOutputConfig(&outputSpec, processors)
 		if err != nil {
 			return err
-		}
-
-		// add event-processors if any (already ordered)
-		if processors, ok := outputProcessors[outputNN]; ok && len(processors) > 0 {
-			outputConfig["event-processors"] = processors
 		}
 
 		plan.Outputs[outputNN] = outputConfig
@@ -333,36 +269,25 @@ func (b *PlanBuilder) buildOutputs(
 	return nil
 }
 
-func (b *PlanBuilder) buildInputs(
-	plan *ApplyPlan,
-	pipelineData PipelineData,
-	inputOutputs map[string]map[string]struct{},
-	inputProcessors map[string][]string,
-	processed map[string]struct{},
-) error {
+func (b *PlanBuilder) buildInputs(plan *ApplyPlan, pipelineData PipelineData) error {
 	for inputNN, inputSpec := range pipelineData.Inputs {
-		if _, ok := processed[inputNN]; ok {
+		if _, ok := plan.Inputs[inputNN]; ok {
 			continue
 		}
-		processed[inputNN] = struct{}{}
 
 		// collect outputs for this input
 		var outputs []string
-		if outputSet, ok := inputOutputs[inputNN]; ok {
+		if outputSet, ok := b.relationships.inputOutputs[inputNN]; ok {
 			outputs = make([]string, 0, len(outputSet))
 			for outputName := range outputSet {
 				outputs = append(outputs, outputName)
 			}
 		}
 
-		inputConfig, err := buildInputConfig(&inputSpec, outputs)
+		processors := b.relationships.inputProcessors[inputNN]
+		inputConfig, err := buildInputConfig(&inputSpec, outputs, processors)
 		if err != nil {
 			return err
-		}
-
-		// add event-processors if any (already ordered)
-		if processors, ok := inputProcessors[inputNN]; ok && len(processors) > 0 {
-			inputConfig["event-processors"] = processors
 		}
 
 		plan.Inputs[inputNN] = inputConfig
@@ -371,17 +296,12 @@ func (b *PlanBuilder) buildInputs(
 	return nil
 }
 
-func (b *PlanBuilder) buildProcessors(
-	plan *ApplyPlan,
-	pipelineData PipelineData,
-	processed map[string]struct{},
-) error {
+func (b *PlanBuilder) buildProcessors(plan *ApplyPlan, pipelineData PipelineData) error {
 	// process output processors
 	for processorNN, processorSpec := range pipelineData.OutputProcessors {
-		if _, ok := processed[processorNN]; ok {
+		if _, ok := plan.Processors[processorNN]; ok {
 			continue
 		}
-		processed[processorNN] = struct{}{}
 
 		processorConfig, err := buildProcessorConfig(&processorSpec)
 		if err != nil {
@@ -392,10 +312,9 @@ func (b *PlanBuilder) buildProcessors(
 
 	// process input processors
 	for processorNN, processorSpec := range pipelineData.InputProcessors {
-		if _, ok := processed[processorNN]; ok {
+		if _, ok := plan.Processors[processorNN]; ok {
 			continue
 		}
-		processed[processorNN] = struct{}{}
 
 		processorConfig, err := buildProcessorConfig(&processorSpec)
 		if err != nil {
@@ -407,16 +326,11 @@ func (b *PlanBuilder) buildProcessors(
 	return nil
 }
 
-func (b *PlanBuilder) buildTunnelTargetMatches(
-	plan *ApplyPlan,
-	pipelineData PipelineData,
-	processed map[string]struct{},
-) error {
+func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData PipelineData) error {
 	for policyNN, policySpec := range pipelineData.TunnelTargetPolicies {
-		if _, ok := processed[policyNN]; ok {
+		if _, ok := plan.TunnelTargetMatches[policyNN]; ok {
 			continue
 		}
-		processed[policyNN] = struct{}{}
 
 		namespace, _ := utils.SplitNN(policyNN)
 

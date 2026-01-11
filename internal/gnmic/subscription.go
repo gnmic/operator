@@ -9,7 +9,7 @@ import (
 
 // buildSubscriptionConfig creates a gNMIc SubscriptionConfig from a Subscription
 // TODO: complete the mapping from spec to config
-func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.SubscriptionSpec) *gapi.SubscriptionConfig {
+func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.SubscriptionSpec, outputs []string) *gapi.SubscriptionConfig {
 	mode, streamMode := specModeToConfig(subscription.Mode)
 
 	config := &gapi.SubscriptionConfig{
@@ -20,6 +20,10 @@ func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.Subscript
 		StreamMode:  streamMode,
 		UpdatesOnly: subscription.UpdatesOnly,
 		Depth:       subscription.Depth,
+	}
+
+	if len(outputs) > 0 {
+		config.Outputs = outputs
 	}
 
 	if subscription.Encoding != "" {

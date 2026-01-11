@@ -358,7 +358,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		for _, output := range outputs {
-			pipelineData.Outputs[output.Namespace+gnmic.Delimiter+output.Name] = output.Spec
+			pipelineData.Outputs[pipelineNN+gnmic.Delimiter+output.Name] = output.Spec
 		}
 		logger.Info("cluster pipeline outputs", "outputs", outputs)
 
@@ -368,7 +368,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		for _, input := range inputs {
-			pipelineData.Inputs[input.Namespace+gnmic.Delimiter+input.Name] = input.Spec
+			pipelineData.Inputs[pipelineNN+gnmic.Delimiter+input.Name] = input.Spec
 		}
 		logger.Info("cluster pipeline inputs", "inputs", inputs)
 
@@ -378,7 +378,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		for _, processor := range outputProcessors {
-			processorNN := processor.Namespace + gnmic.Delimiter + processor.Name
+			processorNN := pipelineNN + gnmic.Delimiter + processor.Name
 			pipelineData.OutputProcessors[processorNN] = processor.Spec
 			pipelineData.OutputProcessorOrder = append(pipelineData.OutputProcessorOrder, processorNN)
 		}
@@ -390,7 +390,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		for _, processor := range inputProcessors {
-			processorNN := processor.Namespace + gnmic.Delimiter + processor.Name
+			processorNN := pipelineNN + gnmic.Delimiter + processor.Name
 			pipelineData.InputProcessors[processorNN] = processor.Spec
 			pipelineData.InputProcessorOrder = append(pipelineData.InputProcessorOrder, processorNN)
 		}
@@ -444,7 +444,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		// update pipeline status
 		if err := r.updatePipelineStatus(ctx, &pipeline, pipelineData); err != nil {
 			logger.Error(err, "failed to update pipeline status", "pipeline", pipeline.Name)
-			// don't return error, continue with other pipelines
+			// don't return, continue with other pipelines
 		}
 	}
 
@@ -470,11 +470,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// only apply config if there's at least one ready pod
+	// TODO: wait for all pods ?
 	if statefulSet.Status.ReadyReplicas == 0 {
 		logger.Info("waiting for gNMIc pods to be ready before applying config")
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
-
 	// send the plan to all gNMIc pods with distributed targets
 	numPods := int(statefulSet.Status.ReadyReplicas)
 	configApplied := false
@@ -1233,7 +1233,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 	// clean up certificates for replicas that no longer exist (scale down)
 	var certList certmanagerv1.CertificateList
 	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		"operator.gnmic.dev/cluster-name": cluster.Name,
+		LabelClusterName: cluster.Name,
 	}); err != nil {
 		return false, err
 	}
@@ -1269,17 +1269,17 @@ func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster, cer
 			Name:      certName,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":          "gnmic",
-				"app.kubernetes.io/managed-by":    "gnmic-operator",
-				"operator.gnmic.dev/cluster-name": cluster.Name,
+				"app.kubernetes.io/name":       "gnmic",
+				"app.kubernetes.io/managed-by": "gnmic-operator",
+				LabelClusterName:               cluster.Name,
 			},
 		},
 		Spec: certmanagerv1.CertificateSpec{
 			SecretName: certName,
 			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
 				Labels: map[string]string{
-					"operator.gnmic.dev/cluster-name": cluster.Name,
-					"operator.gnmic.dev/pod-name":     podName,
+					LabelClusterName: cluster.Name,
+					LabelPodName:     podName,
 				},
 			},
 			IssuerRef: cmmeta.ObjectReference{
@@ -1344,7 +1344,7 @@ func (r *ClusterReconciler) cleanupCertificates(ctx context.Context, cluster *gn
 
 	var certList certmanagerv1.CertificateList
 	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		"operator.gnmic.dev/cluster-name": cluster.Name,
+		LabelClusterName: cluster.Name,
 	}); err != nil {
 		return client.IgnoreNotFound(err)
 	}
@@ -1416,8 +1416,8 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 	// clean up certificates for replicas that no longer exist (scale down)
 	var certList certmanagerv1.CertificateList
 	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		"operator.gnmic.dev/cluster-name": cluster.Name,
-		"operator.gnmic.dev/cert-type":    "tunnel",
+		LabelClusterName: cluster.Name,
+		LabelCertType:    LabelValueCertTypeTunnel,
 	}); err != nil {
 		return false, err
 	}
@@ -1463,19 +1463,19 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 			Name:      certName,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":          "gnmic",
-				"app.kubernetes.io/managed-by":    "gnmic-operator",
-				"operator.gnmic.dev/cluster-name": cluster.Name,
-				"operator.gnmic.dev/cert-type":    "tunnel",
+				"app.kubernetes.io/name":       LabelValueName,
+				"app.kubernetes.io/managed-by": LabelValueManagedBy,
+				LabelClusterName:               cluster.Name,
+				LabelCertType:                  LabelValueCertTypeTunnel,
 			},
 		},
 		Spec: certmanagerv1.CertificateSpec{
 			SecretName: certName,
 			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
 				Labels: map[string]string{
-					"operator.gnmic.dev/cluster-name": cluster.Name,
-					"operator.gnmic.dev/pod-name":     podName,
-					"operator.gnmic.dev/cert-type":    "tunnel",
+					LabelClusterName: cluster.Name,
+					LabelPodName:     podName,
+					LabelCertType:    LabelValueCertTypeTunnel,
 				},
 			},
 			IssuerRef: cmmeta.ObjectReference{
@@ -1513,8 +1513,8 @@ func (r *ClusterReconciler) cleanupTunnelCertificates(ctx context.Context, clust
 
 	var certList certmanagerv1.CertificateList
 	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		"operator.gnmic.dev/cluster-name": cluster.Name,
-		"operator.gnmic.dev/cert-type":    "tunnel",
+		LabelClusterName: cluster.Name,
+		LabelCertType:    LabelValueCertTypeTunnel,
 	}); err != nil {
 		return client.IgnoreNotFound(err)
 	}
@@ -1587,8 +1587,8 @@ func (r *ClusterReconciler) reconcileClientTLSCertificates(ctx context.Context, 
 	// clean up certificates for replicas that no longer exist (scale down)
 	var certList certmanagerv1.CertificateList
 	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		"operator.gnmic.dev/cluster-name": cluster.Name,
-		"operator.gnmic.dev/cert-type":    "client",
+		LabelClusterName: cluster.Name,
+		LabelCertType:    LabelValueCertTypeClient,
 	}); err != nil {
 		return false, err
 	}
@@ -1625,19 +1625,19 @@ func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Clu
 			Name:      certName,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":          "gnmic",
-				"app.kubernetes.io/managed-by":    "gnmic-operator",
-				"operator.gnmic.dev/cluster-name": cluster.Name,
-				"operator.gnmic.dev/cert-type":    "client",
+				"app.kubernetes.io/name":       LabelValueName,
+				"app.kubernetes.io/managed-by": LabelValueManagedBy,
+				LabelClusterName:               cluster.Name,
+				LabelCertType:                  LabelValueCertTypeClient,
 			},
 		},
 		Spec: certmanagerv1.CertificateSpec{
 			SecretName: certName,
 			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
 				Labels: map[string]string{
-					"operator.gnmic.dev/cluster-name": cluster.Name,
-					"operator.gnmic.dev/pod-name":     podName,
-					"operator.gnmic.dev/cert-type":    "client",
+					LabelClusterName: cluster.Name,
+					LabelPodName:     podName,
+					LabelCertType:    LabelValueCertTypeClient,
 				},
 			},
 			IssuerRef: cmmeta.ObjectReference{
@@ -1681,8 +1681,8 @@ func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cl
 
 	var certList certmanagerv1.CertificateList
 	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		"operator.gnmic.dev/cluster-name": cluster.Name,
-		"operator.gnmic.dev/cert-type":    "client",
+		LabelClusterName: cluster.Name,
+		LabelCertType:    LabelValueCertTypeClient,
 	}); err != nil {
 		return client.IgnoreNotFound(err)
 	}
@@ -1708,10 +1708,10 @@ func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster 
 	serviceName := fmt.Sprintf("%s%s-grpc-tunnel", resourcePrefix, cluster.Name)
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":          "gnmic",
-		"app.kubernetes.io/managed-by":    "gnmic-operator",
-		"operator.gnmic.dev/cluster-name": cluster.Name,
-		"operator.gnmic.dev/service-type": "tunnel",
+		"app.kubernetes.io/name":       LabelValueName,
+		"app.kubernetes.io/managed-by": LabelValueManagedBy,
+		LabelClusterName:               cluster.Name,
+		LabelServiceType:               LabelValueServiceTypeTunnel,
 	}
 	annotations := map[string]string{}
 
@@ -1739,7 +1739,7 @@ func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster 
 		Spec: corev1.ServiceSpec{
 			Type: serviceType,
 			Selector: map[string]string{
-				"operator.gnmic.dev/cluster-name": cluster.Name,
+				LabelClusterName: cluster.Name,
 			},
 			Ports: []corev1.ServicePort{
 				{
@@ -1825,9 +1825,9 @@ func (r *ClusterReconciler) reconcileControllerCA(ctx context.Context, cluster *
 			Name:      cmName,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":          "gnmic",
-				"app.kubernetes.io/managed-by":    "gnmic-operator",
-				"operator.gnmic.dev/cluster-name": cluster.Name,
+				"app.kubernetes.io/name":       LabelValueName,
+				"app.kubernetes.io/managed-by": LabelValueManagedBy,
+				LabelClusterName:               cluster.Name,
 			},
 		},
 		Data: map[string]string{
@@ -1886,7 +1886,7 @@ func (r *ClusterReconciler) buildConfigMap(cluster *gnmicv1alpha1.Cluster) (*cor
 			Namespace: cluster.Namespace,
 		},
 		Data: map[string]string{
-			"config.yaml": string(content),
+			gNMIcConfigFile: string(content),
 		},
 	}, nil
 }
@@ -2421,9 +2421,9 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 	}
 
 	labels := map[string]string{
-		"app.kubernetes.io/name":          "gnmic",
-		"app.kubernetes.io/managed-by":    "gnmic-operator",
-		"operator.gnmic.dev/cluster-name": cluster.Name,
+		"app.kubernetes.io/name":       LabelValueName,
+		"app.kubernetes.io/managed-by": LabelValueManagedBy,
+		LabelClusterName:               cluster.Name,
 	}
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
@@ -2432,8 +2432,8 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 	volumeMounts := []corev1.VolumeMount{
 		{
 			Name:      "config",
-			MountPath: "/etc/gnmic/config.yaml",
-			SubPath:   "config.yaml",
+			MountPath: gNMIcConfigPath,
+			SubPath:   gNMIcConfigFile,
 		},
 	}
 
@@ -2778,7 +2778,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 				ServiceName: stsName, // references the headless service
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{
-						"operator.gnmic.dev/cluster-name": cluster.Name,
+						LabelClusterName: cluster.Name,
 					},
 				},
 				Template: corev1.PodTemplateSpec{
@@ -2887,9 +2887,10 @@ func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, cluste
 
 func (r *ClusterReconciler) buildHeadlessService(cluster *gnmicv1alpha1.Cluster) *corev1.Service {
 	labels := map[string]string{
-		"app.kubernetes.io/name":          "gnmic",
-		"app.kubernetes.io/managed-by":    "gnmic-operator",
-		"operator.gnmic.dev/cluster-name": cluster.Name,
+		"app.kubernetes.io/name":       LabelValueName,
+		"app.kubernetes.io/managed-by": LabelValueManagedBy,
+		LabelClusterName:               cluster.Name,
+		LabelServiceType:               LabelValueServiceTypeHeadless,
 	}
 	restPort := int32(defaultRestPort)
 	if cluster.Spec.API != nil && cluster.Spec.API.RestPort != 0 {
@@ -2921,7 +2922,7 @@ func (r *ClusterReconciler) buildHeadlessService(cluster *gnmicv1alpha1.Cluster)
 		Spec: corev1.ServiceSpec{
 			ClusterIP: corev1.ClusterIPNone,
 			Selector: map[string]string{
-				"operator.gnmic.dev/cluster-name": cluster.Name,
+				LabelClusterName: cluster.Name,
 			},
 			Ports: ports,
 		},
@@ -2958,7 +2959,7 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	prometheusOutputs := make(map[string]gnmicv1alpha1.OutputSpec) // outputNN -> spec
 	for _, pipelineData := range plan {
 		for outputNN, outputSpec := range pipelineData.Outputs {
-			if outputSpec.Type == "prometheus" {
+			if outputSpec.Type == PrometheusOutputType {
 				prometheusOutputs[outputNN] = outputSpec
 			}
 		}
@@ -2990,11 +2991,16 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 			urlPath = "/metrics"
 		}
 		// generate service name from output name
-		_, outputName := utils.SplitNN(outputNN)
-		serviceName := fmt.Sprintf("%s%s-prom-%s", resourcePrefix, cluster.Name, outputName)
+		// we use metadata.generateName to ensure the service name is unique
+		// we will label the prometheus services with the pipeline and output names
+		var pipelineName string
+		var outputName string
+		_, outputName = utils.SplitNN(outputNN)              // messy
+		pipelineName, outputName = utils.SplitNN(outputName) // more messy
+		serviceName := fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster.Name, pipelineName, outputName)
 		desiredServiceNames[serviceName] = struct{}{}
 
-		if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, port, urlPath, &outputSpec); err != nil {
+		if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, pipelineName, port, urlPath, &outputSpec); err != nil {
 			logger.Error(err, "failed to reconcile Prometheus service", "service", serviceName)
 			return err
 		}
@@ -3020,8 +3026,8 @@ func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context
 	err := r.List(ctx, &serviceList,
 		client.InNamespace(cluster.Namespace),
 		client.MatchingLabels{
-			"operator.gnmic.dev/cluster-name": cluster.Name,
-			"operator.gnmic.dev/service-type": "prometheus-output",
+			LabelClusterName: cluster.Name,
+			LabelServiceType: LabelValueServiceTypePrometheusOutput,
 		},
 	)
 	if err != nil {
@@ -3045,8 +3051,8 @@ func (r *ClusterReconciler) cleanupPrometheusServices(ctx context.Context, clust
 }
 
 // reconcilePrometheusService creates or updates a service for a Prometheus output
-func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, cluster *gnmicv1alpha1.Cluster, serviceName, outputName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) error {
-	desired := r.buildPrometheusService(cluster, serviceName, outputName, port, urlPath, outputSpec)
+func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, cluster *gnmicv1alpha1.Cluster, serviceName, outputName, pipelineName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) error {
+	desired := r.buildPrometheusService(cluster, serviceName, outputName, pipelineName, port, urlPath, outputSpec)
 
 	if err := controllerutil.SetControllerReference(cluster, desired, r.Scheme); err != nil {
 		return err
@@ -3087,13 +3093,14 @@ func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, clus
 }
 
 // buildPrometheusService builds a service for a Prometheus output
-func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluster, serviceName, outputName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) *corev1.Service {
+func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluster, serviceName, outputName, pipelineName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) *corev1.Service {
 	labels := map[string]string{
-		"app.kubernetes.io/name":          "gnmic",
-		"app.kubernetes.io/managed-by":    "gnmic-operator",
-		"operator.gnmic.dev/cluster-name": cluster.Name,
-		"operator.gnmic.dev/service-type": "prometheus-output",
-		"operator.gnmic.dev/output-name":  outputName,
+		"app.kubernetes.io/name":       LabelValueName,
+		"app.kubernetes.io/managed-by": LabelValueManagedBy,
+		LabelClusterName:               cluster.Name,
+		LabelServiceType:               LabelValueOutputTypePrometheus,
+		LabelOutputName:                outputName,
+		LabelPipelineName:              pipelineName,
 	}
 
 	annotations := map[string]string{
@@ -3118,6 +3125,9 @@ func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluste
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
+			// TODO: conside using this for unique service names
+			// It would change the reconcile logic (cleanup especially)
+			// GenerateName: serviceName,
 			Name:        serviceName,
 			Namespace:   cluster.Namespace,
 			Labels:      labels,
@@ -3126,7 +3136,7 @@ func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluste
 		Spec: corev1.ServiceSpec{
 			Type: serviceType,
 			Selector: map[string]string{
-				"operator.gnmic.dev/cluster-name": cluster.Name,
+				LabelClusterName: cluster.Name,
 			},
 			Ports: []corev1.ServicePort{
 				{

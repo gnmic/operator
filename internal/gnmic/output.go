@@ -13,7 +13,7 @@ const (
 )
 
 // buildOutputConfig creates a gNMIc output config map from an OutputSpec
-func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec) (map[string]any, error) {
+func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec, processors []string) (map[string]any, error) {
 	config := make(map[string]any)
 
 	// parse the config YAML/JSON
@@ -25,6 +25,11 @@ func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec) (map[string]any, error) {
 
 	// set the type
 	config["type"] = spec.Type
+
+	// set event-processors if provided
+	if len(processors) > 0 {
+		config["event-processors"] = processors
+	}
 
 	// Apply default values
 	switch spec.Type {
