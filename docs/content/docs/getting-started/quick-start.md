@@ -234,15 +234,6 @@ metadata:
 spec:
   replicas: 3
   image: ghcr.io/openconfig/gnmic:latest
-  api:
-    restPort: 7890
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "500m"
 {{< /tab >}}
 {{< tab header="kubectl" lang="bash" >}}
 cat << 'EOF' | kubectl apply -f -
@@ -253,15 +244,6 @@ metadata:
 spec:
   replicas: 3
   image: ghcr.io/openconfig/gnmic:latest
-  api:
-    restPort: 7890
-  resources:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "500m"
 EOF
 {{< /tab >}}
 {{< /tabpane >}}
@@ -290,17 +272,17 @@ kubectl get svc -l operator.gnmic.dev/cluster-name=core-cluster
 ```
 NAME                              TYPE        CLUSTER-IP       PORT(S)
 gnmic-core-cluster               ClusterIP   None             7890/TCP
-gnmic-core-cluster-prom-prometheus-output   ClusterIP   10.96.xxx.xxx   9804/TCP
+gnmic-core-cluster-prom-prometheus-output   ClusterIP   10.96.xxx.xxx   xxxx/TCP
 ```
 
 ## Access Prometheus Metrics
 
-Configure your Prometheus server to scrape the created `gnmic-core-cluster-prom-prometheus-output.
+Configure your Prometheus server to scrape the created `gnmic-core-cluster-prom-prometheus-output`.
 The Service is labeled and annotated to facilitate discovery using [Prometheus Kubernetes SD](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#kubernetes_sd_config) and [Prometheus Operator ServiceMonitor](https://github.com/prometheus-operator/prometheus-operator)
 
 ## Next Steps
 
-- [Cluster Configuration]({{< relref "../user-guide/cluster" >}}) - Advanced cluster settings
-- [Pipeline Configuration]({{< relref "../user-guide/pipeline" >}}) - Complex pipeline scenarios
+- [Cluster Configuration]({{< relref "../user-guide/cluster" >}}) - Advanced cluster settings: Tune Pods resources, Add ENV vars, configure TLS within the cluster as well as towards the Targets.
+- [Pipeline Configuration]({{< relref "../user-guide/pipeline" >}}) - Complex pipeline scenarios: Overlaping pipelines
 - [Scaling]({{< relref "../advanced/scaling" >}}) - Scale your telemetry collection
 

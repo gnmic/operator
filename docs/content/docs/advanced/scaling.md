@@ -47,7 +47,6 @@ The operator uses **bounded load rendezvous hashing** to distribute targets:
 
 - **Stable**: Same target tends to stay on same pod
 - **Even**: Targets are distributed evenly (within 1-2 of each other)
-- **Minimal churn**: Only ~1/(N+1) targets move when adding a pod
 
 ### Example Distribution
 
@@ -72,8 +71,7 @@ Estimate based on:
 - Number of targets
 - Subscription frequency
 - Data volume per target
-
-Rule of thumb: Start with 1 pod per 50-100 targets for high-frequency subscriptions.
+- Number of outputs
 
 ### Use Resource Limits
 
@@ -118,7 +116,7 @@ kubectl patch cluster my-cluster -p '{"spec":{"replicas":7}}'
 kubectl patch cluster my-cluster -p '{"spec":{"replicas":10}}'
 ```
 
-## Horizontal Pod Autoscaler
+## Horizontal Pod Autoscaler (Comming Soon)
 
 You can use HPA for automatic scaling:
 
@@ -143,16 +141,7 @@ spec:
           averageUtilization: 70
 ```
 
-**Note**: HPA scales the StatefulSet directly. The operator will detect the change and redistribute targets accordingly.
-
 ## Considerations
-
-### Subscription Duplication
-
-All pods receive all subscriptions. Only targets are distributed. This means:
-- Each pod maintains subscription definitions
-- Each pod connects only to its assigned targets
-- Network overhead scales with number of targets, not subscriptions
 
 ### Output Connections
 
