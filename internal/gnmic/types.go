@@ -16,6 +16,7 @@ type ApplyPlan struct {
 	Inputs              map[string]map[string]any           `json:"inputs,omitempty"`
 	Processors          map[string]map[string]any           `json:"processors,omitempty"`
 	TunnelTargetMatches map[string]*TunnelTargetMatch       `json:"tunnel-target-matches,omitempty"`
+	PrometheusPorts     map[string]int32                    `json:"prometheus-output-ports,omitempty"` // For status reporting
 }
 
 // TunnelTargetMatch defines a policy for matching tunnel targets
@@ -48,8 +49,8 @@ type PipelineData struct {
 }
 
 // NewPipelineData creates a new PipelineData with initialized maps
-func NewPipelineData() PipelineData {
-	return PipelineData{
+func NewPipelineData() *PipelineData {
+	return &PipelineData{
 		Targets:              make(map[string]gnmicv1alpha1.TargetSpec),
 		TargetProfiles:       make(map[string]gnmicv1alpha1.TargetProfileSpec),
 		Subscriptions:        make(map[string]gnmicv1alpha1.SubscriptionSpec),

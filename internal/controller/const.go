@@ -28,17 +28,3 @@ const (
 	gNMIcConfigPath = "/etc/gnmic/config.yaml"
 	gNMIcConfigFile = "config.yaml"
 )
-
-const (
-	// output types
-	PrometheusOutputType      = "prometheus"
-	PrometheusWriteOutputType = "prometheus_write"
-	KafkaOutputType           = "kafka"
-	InfluxDBOutputType        = "influxdb"
-	TCPOutputType             = "tcp"
-	UDPOutputType             = "udp"
-	FileOutputType            = "file"
-	NATSOutputType            = "nats"
-	JetstreamOutputType       = "jetstream"
-	// OTLP
-)

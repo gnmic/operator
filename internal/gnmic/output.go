@@ -1,15 +1,28 @@
 package gnmic
 
 import (
-	"fmt"
-
 	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
 	"gopkg.in/yaml.v2"
 )
 
 const (
+	// output types
+	PrometheusOutputType      = "prometheus"
+	PrometheusWriteOutputType = "prometheus_write"
+	KafkaOutputType           = "kafka"
+	InfluxDBOutputType        = "influxdb"
+	TCPOutputType             = "tcp"
+	UDPOutputType             = "udp"
+	FileOutputType            = "file"
+	NATSOutputType            = "nats"
+	JetstreamOutputType       = "jetstream"
+	// OTLP
+)
+
+const (
 	PrometheusDefaultPort = 9804
 	PrometheusDefaultPath = "/metrics"
+	PrmetheusPortPoolSize = 1009 // lucky prime!
 )
 
 // buildOutputConfig creates a gNMIc output config map from an OutputSpec
@@ -31,12 +44,9 @@ func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec, processors []string) (map
 		config["event-processors"] = processors
 	}
 
-	// Apply default values
+	// apply default values
 	switch spec.Type {
 	case "prometheus":
-		if config["listen"] == nil {
-			config["listen"] = fmt.Sprintf(":%d", PrometheusDefaultPort)
-		}
 		if config["path"] == nil {
 			config["path"] = PrometheusDefaultPath
 		}

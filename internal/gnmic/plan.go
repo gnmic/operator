@@ -1,6 +1,11 @@
 package gnmic
 
 import (
+	"fmt"
+	"hash/fnv"
+	"maps"
+	"sort"
+
 	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
 	"github.com/karimra/gnmic-operator/internal/utils"
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
@@ -10,27 +15,35 @@ import (
 // PlanBuilder builds an ApplyPlan from pipeline data
 type PlanBuilder struct {
 	// all currently active pipelines
-	pipelines map[string]PipelineData
+	pipelines map[string]*PipelineData
 	// an impl to get credentials from a secret
 	credsFetcher CredentialsFetcher
 	// client TLS paths for target connections
 	clientTLS *ClientTLSPaths
-	//
+	// relationships between resources
 	relationships resourceRelationship
+	// prometheus output controller selected ports for each pipeline/output
+	// pipelineName -> outputNN -> port
+	prometheusOutputPorts map[string]map[string]int32
 }
 
 type resourceRelationship struct {
+	// subscription -> outputs
 	subscriptionOutputs map[string]map[string]struct{}
+	// target -> subscriptions
 	targetSubscriptions map[string]map[string]struct{}
-	inputOutputs        map[string]map[string]struct{}
-	outputProcessors    map[string][]string
-	inputProcessors     map[string][]string
+	// input -> outputs
+	inputOutputs map[string]map[string]struct{}
+	// output -> processors
+	outputProcessors map[string][]string
+	// input -> processors
+	inputProcessors map[string][]string
 }
 
 // NewPlanBuilder creates a new PlanBuilder
 func NewPlanBuilder(credsFetcher CredentialsFetcher) *PlanBuilder {
 	return &PlanBuilder{
-		pipelines:    make(map[string]PipelineData),
+		pipelines:    make(map[string]*PipelineData),
 		credsFetcher: credsFetcher,
 		relationships: resourceRelationship{
 			subscriptionOutputs: make(map[string]map[string]struct{}),
@@ -39,6 +52,7 @@ func NewPlanBuilder(credsFetcher CredentialsFetcher) *PlanBuilder {
 			outputProcessors:    make(map[string][]string),
 			inputProcessors:     make(map[string][]string),
 		},
+		prometheusOutputPorts: make(map[string]map[string]int32),
 	}
 }
 
@@ -49,7 +63,7 @@ func (b *PlanBuilder) WithClientTLS(clientTLS *ClientTLSPaths) *PlanBuilder {
 }
 
 // AddPipeline adds pipeline data to the builder
-func (b *PlanBuilder) AddPipeline(name string, data PipelineData) *PlanBuilder {
+func (b *PlanBuilder) AddPipeline(name string, data *PipelineData) *PlanBuilder {
 	b.pipelines[name] = data
 	return b
 }
@@ -63,6 +77,7 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 		Inputs:              make(map[string]map[string]any),
 		Processors:          make(map[string]map[string]any),
 		TunnelTargetMatches: make(map[string]*TunnelTargetMatch),
+		PrometheusPorts:     make(map[string]int32),
 	}
 	// 1) collect relationships across all pipelines
 	b.collectRelationships()
@@ -94,6 +109,10 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 
 		// 2.6) build tunnel target match configs
 		if err := b.buildTunnelTargetMatches(plan, pipelineData); err != nil {
+			return nil, err
+		}
+		// 2.7) assign prometheus output ports
+		if err := b.assignPrometheusOutputPorts(plan, pipelineData); err != nil {
 			return nil, err
 		}
 	}
@@ -180,7 +199,7 @@ func (b *PlanBuilder) collectRelationships() {
 	}
 }
 
-func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData PipelineData) error {
+func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData *PipelineData) error {
 	for targetNN, targetSpec := range pipelineData.Targets {
 		if _, ok := plan.Targets[targetNN]; ok {
 			continue
@@ -230,7 +249,7 @@ func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData PipelineData) e
 	return nil
 }
 
-func (b *PlanBuilder) buildSubscriptions(plan *ApplyPlan, pipelineData PipelineData) {
+func (b *PlanBuilder) buildSubscriptions(plan *ApplyPlan, pipelineData *PipelineData) {
 	for subNN, subSpec := range pipelineData.Subscriptions {
 		if _, ok := plan.Subscriptions[subNN]; ok {
 			continue
@@ -250,7 +269,7 @@ func (b *PlanBuilder) buildSubscriptions(plan *ApplyPlan, pipelineData PipelineD
 	}
 }
 
-func (b *PlanBuilder) buildOutputs(plan *ApplyPlan, pipelineData PipelineData) error {
+func (b *PlanBuilder) buildOutputs(plan *ApplyPlan, pipelineData *PipelineData) error {
 	for outputNN, outputSpec := range pipelineData.Outputs {
 		if _, ok := plan.Outputs[outputNN]; ok {
 			continue
@@ -269,7 +288,7 @@ func (b *PlanBuilder) buildOutputs(plan *ApplyPlan, pipelineData PipelineData) e
 	return nil
 }
 
-func (b *PlanBuilder) buildInputs(plan *ApplyPlan, pipelineData PipelineData) error {
+func (b *PlanBuilder) buildInputs(plan *ApplyPlan, pipelineData *PipelineData) error {
 	for inputNN, inputSpec := range pipelineData.Inputs {
 		if _, ok := plan.Inputs[inputNN]; ok {
 			continue
@@ -296,7 +315,7 @@ func (b *PlanBuilder) buildInputs(plan *ApplyPlan, pipelineData PipelineData) er
 	return nil
 }
 
-func (b *PlanBuilder) buildProcessors(plan *ApplyPlan, pipelineData PipelineData) error {
+func (b *PlanBuilder) buildProcessors(plan *ApplyPlan, pipelineData *PipelineData) error {
 	// process output processors
 	for processorNN, processorSpec := range pipelineData.OutputProcessors {
 		if _, ok := plan.Processors[processorNN]; ok {
@@ -326,7 +345,7 @@ func (b *PlanBuilder) buildProcessors(plan *ApplyPlan, pipelineData PipelineData
 	return nil
 }
 
-func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData PipelineData) error {
+func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData *PipelineData) error {
 	for policyNN, policySpec := range pipelineData.TunnelTargetPolicies {
 		if _, ok := plan.TunnelTargetMatches[policyNN]; ok {
 			continue
@@ -357,4 +376,68 @@ func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData Pip
 	}
 
 	return nil
+}
+
+func (b *PlanBuilder) assignPrometheusOutputPorts(plan *ApplyPlan, pipelineData *PipelineData) error {
+	promoutputs := make([]string, 0)
+	for outputNN, outputSpec := range pipelineData.Outputs {
+		if outputSpec.Type != PrometheusOutputType {
+			continue
+		}
+		promoutputs = append(promoutputs, outputNN)
+	}
+	pipelinePortMap, err := assignPorts(promoutputs, PrometheusDefaultPort, PrmetheusPortPoolSize)
+	if err != nil {
+		return err
+	}
+	maps.Copy(plan.PrometheusPorts, pipelinePortMap)
+	for outputPNN, port := range pipelinePortMap {
+		plan.Outputs[outputPNN]["listen"] = fmt.Sprintf(":%d", port)
+	}
+
+	return nil
+}
+
+func assignPorts(names []string, base int32, rangeSize int32) (map[string]int32, error) {
+	if rangeSize <= 0 {
+		return nil, fmt.Errorf("rangeSize must be > 0")
+	}
+
+	sort.Strings(names)
+
+	used := make(map[int32]struct{}, len(names))
+	result := make(map[string]int32, len(names))
+
+	for _, name := range names {
+		h1 := hash32(name)
+		h2 := hash32("step:" + name)
+		start := int32(h1 % uint32(rangeSize))
+		step := int32(h2%(uint32(rangeSize-1))) + 1 // should not be zero
+
+		var slot int32
+		found := false
+
+		for i := range rangeSize {
+			slot = (start + i*step) % rangeSize
+			if _, ok := used[slot]; !ok {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return nil, fmt.Errorf("no free ports available in range")
+		}
+
+		used[slot] = struct{}{}
+		result[name] = base + slot
+	}
+
+	return result, nil
+}
+
+func hash32(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
 }

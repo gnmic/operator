@@ -309,8 +309,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// build pipeline data for the gNMIc plan builder
 	planBuilder := gnmic.NewPlanBuilder(r).
-		WithClientTLS(gnmic.ClientTLSConfigForCluster(&cluster))
-	pipelineDataMap := make(map[string]gnmic.PipelineData)
+		WithClientTLS(
+			gnmic.ClientTLSConfigForCluster(&cluster),
+		)
+	pipelineDataMap := make(map[string]*gnmic.PipelineData)
 
 	for _, pipeline := range pipelines {
 		if !pipeline.Spec.Enabled {
@@ -464,7 +466,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// reconcile Prometheus output services
-	if err := r.reconcilePrometheusServices(ctx, &cluster, pipelineDataMap); err != nil {
+	if err := r.reconcilePrometheusServices(ctx, &cluster, pipelineDataMap, applyPlan.PrometheusPorts); err != nil {
 		logger.Error(err, "failed to reconcile Prometheus output services")
 		return ctrl.Result{}, err
 	}
@@ -532,7 +534,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObservedGeneration: cluster.Generation,
 		LastTransitionTime: now,
 	}
-	if statefulSet.Status.ReadyReplicas >= cluster.Spec.Replicas && configApplied {
+	if statefulSet.Status.ReadyReplicas >= *cluster.Spec.Replicas && configApplied {
 		readyCondition.Status = metav1.ConditionTrue
 		readyCondition.Reason = "ClusterReady"
 		readyCondition.Message = fmt.Sprintf("All %d replicas are ready and configured", statefulSet.Status.ReadyReplicas)
@@ -1106,8 +1108,8 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 	// update in-place only the fields we manage
 	needsUpdate := false
 
-	if current.Spec.Replicas == nil || *current.Spec.Replicas != cluster.Spec.Replicas {
-		current.Spec.Replicas = pointer.Int32(cluster.Spec.Replicas)
+	if current.Spec.Replicas == nil || *current.Spec.Replicas != *cluster.Spec.Replicas {
+		current.Spec.Replicas = cluster.Spec.Replicas
 		needsUpdate = true
 	}
 
@@ -1142,6 +1144,13 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 		needsUpdate = true
 	}
 
+	// update volumes if they changed (needed when scaling with TLS enabled)
+	// projected volumes include per-pod certificate secrets, so they change when replicas change
+	if !volumesEqual(current.Spec.Template.Spec.Volumes, desired.Spec.Template.Spec.Volumes) {
+		current.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
+		needsUpdate = true
+	}
+
 	if needsUpdate {
 		if err := controllerutil.SetControllerReference(cluster, &current, r.Scheme); err != nil {
 			return nil, err
@@ -1151,6 +1160,33 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 		}
 	}
 	return &current, nil
+}
+
+// volumesEqual compares two volume slices for equality
+// This is a simplified comparison that checks volume names and projected sources count
+func volumesEqual(a, b []corev1.Volume) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aMap := make(map[string]corev1.Volume)
+	for _, v := range a {
+		aMap[v.Name] = v
+	}
+	for _, vb := range b {
+		va, ok := aMap[vb.Name]
+		if !ok {
+			return false
+		}
+		// compare projected volume sources count (this is what changes on scale)
+		if va.Projected != nil && vb.Projected != nil {
+			if len(va.Projected.Sources) != len(vb.Projected.Sources) {
+				return false
+			}
+		} else if (va.Projected == nil) != (vb.Projected == nil) {
+			return false
+		}
+	}
+	return true
 }
 
 // reconcileConfigMap creates or updates the ConfigMap only if content changed
@@ -1186,7 +1222,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 	}
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := cluster.Spec.Replicas
+	replicas := *cluster.Spec.Replicas
 
 	allReady := true
 
@@ -1369,7 +1405,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 	}
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := cluster.Spec.Replicas
+	replicas := *cluster.Spec.Replicas
 
 	allReady := true
 
@@ -1529,96 +1565,62 @@ func (r *ClusterReconciler) cleanupTunnelCertificates(ctx context.Context, clust
 	return nil
 }
 
-// reconcileClientTLSCertificates creates/updates cert-manager Certificate resources for client TLS
+// reconcileClientTLSCertificates creates/updates a single cert-manager Certificate for client TLS
 // (used by gNMIc to connect to targets with mTLS)
-// returns true if all certificates are ready, false otherwise
+// A single certificate is shared by all pods in the cluster for simplicity and to avoid
+// volume changes when scaling.
+// returns true if the certificate is ready, false otherwise
 func (r *ClusterReconciler) reconcileClientTLSCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if cluster.Spec.ClientTLS == nil || cluster.Spec.ClientTLS.IssuerRef == "" {
-		return true, nil // client TLS not configured, skip
+		return true, nil // client TLS not needed, skip
 	}
 
-	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := cluster.Spec.Replicas
+	certName := fmt.Sprintf("%s%s-client-tls", resourcePrefix, cluster.Name)
+	cert := r.buildClientTLSCertificate(cluster, certName)
 
-	allReady := true
-
-	// create/update certificates for each replica
-	for i := int32(0); i < replicas; i++ {
-		podName := fmt.Sprintf("%s-%d", stsName, i)
-		certName := fmt.Sprintf("%s-client-tls", podName)
-
-		cert := r.buildClientTLSCertificate(cluster, certName, podName, stsName)
-
-		if err := controllerutil.SetControllerReference(cluster, cert, r.Scheme); err != nil {
-			return false, err
-		}
-
-		var current certmanagerv1.Certificate
-		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if errors.IsNotFound(err) {
-			logger.Info("creating client TLS certificate", "certificate", certName)
-			if err := r.Create(ctx, cert); err != nil {
-				return false, err
-			}
-			allReady = false
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-
-		// check if certificate needs update
-		if r.certificateNeedsUpdate(&current, cert) {
-			current.Spec = cert.Spec
-			if err := r.Update(ctx, &current); err != nil {
-				return false, err
-			}
-		}
-
-		// check if certificate is ready
-		if !r.isCertificateReady(&current) {
-			logger.Info("client TLS certificate not ready", "certificate", certName)
-			allReady = false
-		}
-	}
-
-	// clean up certificates for replicas that no longer exist (scale down)
-	var certList certmanagerv1.CertificateList
-	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		LabelClusterName: cluster.Name,
-		LabelCertType:    LabelValueCertTypeClient,
-	}); err != nil {
+	if err := controllerutil.SetControllerReference(cluster, cert, r.Scheme); err != nil {
 		return false, err
 	}
 
-	for _, cert := range certList.Items {
-		// extract the ordinal from the certificate name (e.g., "gnmic-cluster1-2-client-tls" -> 2)
-		ordinal := r.extractOrdinalFromClientTLSCertName(cert.Name, stsName)
-		if ordinal >= int(replicas) {
-			logger.Info("deleting client TLS certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
-				return false, err
-			}
+	var current certmanagerv1.Certificate
+	err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
+	if errors.IsNotFound(err) {
+		logger.Info("creating client TLS certificate", "certificate", certName)
+		if err := r.Create(ctx, cert); err != nil {
+			return false, err
+		}
+		return false, nil // certificate just created, not ready yet
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// check if certificate needs update
+	if r.certificateNeedsUpdate(&current, cert) {
+		current.Spec = cert.Spec
+		if err := r.Update(ctx, &current); err != nil {
+			return false, err
 		}
 	}
 
-	return allReady, nil
+	// check if certificate is ready
+	if !r.isCertificateReady(&current) {
+		logger.Info("client TLS certificate not ready", "certificate", certName)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // buildClientTLSCertificate creates a cert-manager Certificate spec for client TLS
 // (used by gNMIc to authenticate to targets)
-func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Cluster, certName, podName, stsName string) *certmanagerv1.Certificate {
-	// For client certificates, we typically use the pod name as the common name
-	// DNS names are less important for client certs, but we include them for consistency
-	dnsNames := []string{
-		podName,
-		fmt.Sprintf("%s.%s", podName, stsName),
-		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, stsName, cluster.Namespace),
-	}
+// Uses cluster-name.namespace as CommonName - shared by all pods in the cluster
+func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Cluster, certName string) *certmanagerv1.Certificate {
+	// Use cluster-name.namespace as the common name for the client certificate
+	// This certificate is shared by all pods in the cluster
+	commonName := fmt.Sprintf("%s.%s", cluster.Name, cluster.Namespace)
 
 	return &certmanagerv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1636,7 +1638,6 @@ func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Clu
 			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
 				Labels: map[string]string{
 					LabelClusterName: cluster.Name,
-					LabelPodName:     podName,
 					LabelCertType:    LabelValueCertTypeClient,
 				},
 			},
@@ -1644,8 +1645,8 @@ func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Clu
 				Name: cluster.Spec.ClientTLS.IssuerRef,
 				Kind: "Issuer",
 			},
-			CommonName: podName,
-			DNSNames:   dnsNames,
+			CommonName: commonName,
+			DNSNames:   []string{commonName},
 			Usages: []certmanagerv1.KeyUsage{
 				certmanagerv1.UsageClientAuth,
 				certmanagerv1.UsageDigitalSignature,
@@ -1655,28 +1656,29 @@ func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Clu
 	}
 }
 
-// extractOrdinalFromClientTLSCertName extracts the pod ordinal from a client TLS certificate name
-// e.g., "gnmic-cluster1-2-client-tls" -> 2
-func (r *ClusterReconciler) extractOrdinalFromClientTLSCertName(certName, stsName string) int {
-	// certificate name format: <stsName>-<ordinal>-client-tls
-	suffix := "-client-tls"
-	if !strings.HasSuffix(certName, suffix) {
-		return -1
+// cleanupClientTLSCertificates deletes the client TLS certificate for a cluster
+func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
+	logger := log.FromContext(ctx)
+
+	certName := fmt.Sprintf("%s%s-client-tls", resourcePrefix, cluster.Name)
+	cert := &certmanagerv1.Certificate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      certName,
+			Namespace: cluster.Namespace,
+		},
 	}
-	withoutSuffix := strings.TrimSuffix(certName, suffix)
-	if !strings.HasPrefix(withoutSuffix, stsName+"-") {
-		return -1
+
+	logger.Info("deleting client TLS certificate", "certificate", certName)
+	if err := r.Delete(ctx, cert); err != nil && !errors.IsNotFound(err) {
+		return err
 	}
-	ordinalStr := strings.TrimPrefix(withoutSuffix, stsName+"-")
-	ordinal, err := strconv.Atoi(ordinalStr)
-	if err != nil {
-		return -1
-	}
-	return ordinal
+
+	return nil
 }
 
-// cleanupClientTLSCertificates deletes all client TLS certificates for a cluster
-func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
+// cleanupClientTLSCertificatesLegacy deletes any legacy per-pod client TLS certificates
+// This is for backwards compatibility when upgrading from per-pod to single certificate
+func (r *ClusterReconciler) cleanupClientTLSCertificatesLegacy(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
 	logger := log.FromContext(ctx)
 
 	var certList certmanagerv1.CertificateList
@@ -1892,7 +1894,7 @@ func (r *ClusterReconciler) buildConfigMap(cluster *gnmicv1alpha1.Cluster) (*cor
 }
 
 // updatePipelineStatus updates the status of a pipeline based on its resolved resources
-func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline, pipelineData gnmic.PipelineData) error {
+func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline, pipelineData *gnmic.PipelineData) error {
 	logger := log.FromContext(ctx)
 
 	now := metav1.Now()
@@ -2482,7 +2484,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 			// organize by pod name so subPathExpr can select the right one
 
 			certSources := []corev1.VolumeProjection{}
-			for i := int32(0); i < cluster.Spec.Replicas; i++ {
+			for i := int32(0); i < *cluster.Spec.Replicas; i++ {
 				podName := fmt.Sprintf("%s-%d", stsName, i)
 				secretName := fmt.Sprintf("%s-tls", podName)
 				certSources = append(certSources, corev1.VolumeProjection{
@@ -2592,7 +2594,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 			} else {
 				// use projected volume with subPathExpr to mount the correct certificate per pod
 				tunnelCertSources := []corev1.VolumeProjection{}
-				for i := int32(0); i < cluster.Spec.Replicas; i++ {
+				for i := int32(0); i < *cluster.Spec.Replicas; i++ {
 					podName := fmt.Sprintf("%s-%d", stsName, i)
 					secretName := fmt.Sprintf("%s-tunnel-tls", podName)
 					tunnelCertSources = append(tunnelCertSources, corev1.VolumeProjection{
@@ -2669,11 +2671,17 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 	}
 
 	// add client TLS volumes if ClientTLS is configured (for mTLS to targets)
+	// A single certificate is shared by all pods in the cluster
 	if cluster.Spec.ClientTLS != nil {
 		// add client TLS certificates if issuerRef is configured
 		if cluster.Spec.ClientTLS.IssuerRef != "" {
+			// Single certificate shared by all pods - mounted from a secret
+			clientCertSecretName := fmt.Sprintf("%s%s-client-tls", resourcePrefix, cluster.Name)
+
 			if cluster.Spec.ClientTLS.UseCSIDriver {
-				// use cert-manager CSI driver for per-pod client certificates
+				// use cert-manager CSI driver for client certificates
+				// CN and DNS names use cluster-name.namespace
+				commonName := fmt.Sprintf("%s.%s", cluster.Name, cluster.Namespace)
 				volumes = append(volumes, corev1.Volume{
 					Name: "client-tls-certs",
 					VolumeSource: corev1.VolumeSource{
@@ -2683,68 +2691,31 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 							VolumeAttributes: map[string]string{
 								"csi.cert-manager.io/issuer-name": cluster.Spec.ClientTLS.IssuerRef,
 								"csi.cert-manager.io/issuer-kind": "Issuer",
-								"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc.cluster.local",
+								"csi.cert-manager.io/common-name": commonName,
+								"csi.cert-manager.io/dns-names":   commonName,
 							},
 						},
 					},
 				})
 			} else {
-				// use projected volume with subPathExpr to mount the correct certificate per pod
-				clientCertSources := []corev1.VolumeProjection{}
-				for i := int32(0); i < cluster.Spec.Replicas; i++ {
-					podName := fmt.Sprintf("%s-%d", stsName, i)
-					secretName := fmt.Sprintf("%s-client-tls", podName)
-					clientCertSources = append(clientCertSources, corev1.VolumeProjection{
-						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: secretName,
-							},
-							Items: []corev1.KeyToPath{
-								{Key: "tls.crt", Path: fmt.Sprintf("%s/tls.crt", podName)},
-								{Key: "tls.key", Path: fmt.Sprintf("%s/tls.key", podName)},
-								{Key: "ca.crt", Path: fmt.Sprintf("%s/ca.crt", podName)},
-							},
-							Optional: pointer.Bool(true),
-						},
-					})
-				}
-
+				// mount the single certificate secret directly
 				volumes = append(volumes, corev1.Volume{
 					Name: "client-tls-certs",
 					VolumeSource: corev1.VolumeSource{
-						Projected: &corev1.ProjectedVolumeSource{
-							Sources: clientCertSources,
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: clientCertSecretName,
+							Optional:   pointer.Bool(true),
 						},
 					},
 				})
 			}
 
-			// add client TLS volume mount
+			// add client TLS volume mount (no subPathExpr needed - same cert for all pods)
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{
-				Name:        "client-tls-certs",
-				MountPath:   gnmic.ClientTLSCertFilesBasePath,
-				SubPathExpr: "$(POD_NAME)",
-				ReadOnly:    true,
+				Name:      "client-tls-certs",
+				MountPath: gnmic.ClientTLSCertFilesBasePath,
+				ReadOnly:  true,
 			})
-
-			// ensure POD_NAME env var is set (might already be set for API or tunnel TLS)
-			hasPodNameEnv := false
-			for _, env := range envVars {
-				if env.Name == "POD_NAME" {
-					hasPodNameEnv = true
-					break
-				}
-			}
-			if !hasPodNameEnv {
-				envVars = append(envVars, corev1.EnvVar{
-					Name: "POD_NAME",
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.name",
-						},
-					},
-				})
-			}
 		}
 
 		// add client CA bundle volume if bundleRef is configured for target server certificate verification
@@ -2774,7 +2745,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 				Labels:    labels,
 			},
 			Spec: appsv1.StatefulSetSpec{
-				Replicas:    pointer.Int32(cluster.Spec.Replicas),
+				Replicas:    cluster.Spec.Replicas,
 				ServiceName: stsName, // references the headless service
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{
@@ -2952,16 +2923,20 @@ func (r *ClusterReconciler) ensureServiceAbsent(ctx context.Context, nn types.Na
 }
 
 // reconcilePrometheusServices creates/updates/deletes services for Prometheus outputs
-func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan map[string]gnmic.PipelineData) error {
+func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan map[string]*gnmic.PipelineData, prometheusPorts map[string]int32) error {
 	logger := log.FromContext(ctx)
 
 	// collect all Prometheus outputs across all pipelines
-	prometheusOutputs := make(map[string]gnmicv1alpha1.OutputSpec) // outputNN -> spec
-	for _, pipelineData := range plan {
+	prometheusOutputs := make(map[string]map[string]gnmicv1alpha1.OutputSpec) // outputNN -> pipelineName -> spec
+	for pipelineName, pipelineData := range plan {
 		for outputNN, outputSpec := range pipelineData.Outputs {
-			if outputSpec.Type == PrometheusOutputType {
-				prometheusOutputs[outputNN] = outputSpec
+			if outputSpec.Type != gnmic.PrometheusOutputType {
+				continue
 			}
+			if _, ok := prometheusOutputs[outputNN]; !ok {
+				prometheusOutputs[outputNN] = make(map[string]gnmicv1alpha1.OutputSpec)
+			}
+			prometheusOutputs[outputNN][pipelineName] = outputSpec
 		}
 	}
 
@@ -2977,34 +2952,52 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 
 	// create/update services for each Prometheus output
 	desiredServiceNames := make(map[string]struct{})
-	for outputNN, outputSpec := range prometheusOutputs {
-		port, urlPath, err := parseListenPortAndPath(outputSpec.Config.Raw)
-		if err != nil {
-			logger.Error(err, "failed to parse listen port and path for Prometheus output", "output", outputNN)
-			continue
-		}
-		if port == 0 {
-			port = 9804 // TODO: find next free port for prometheus output?
-		}
 
-		if urlPath == "" {
-			urlPath = "/metrics"
+	for outputNN, pipelineOutputSpecs := range prometheusOutputs {
+		// number of pipelines sharing the same Prometheus output
+		pipelinePrometheusOutputCount := len(pipelineOutputSpecs)
+		pipelines := make([]string, 0, len(pipelineOutputSpecs))
+		for pipelineName := range pipelineOutputSpecs {
+			pipelines = append(pipelines, pipelineName)
 		}
-		// generate service name from output name
-		// we use metadata.generateName to ensure the service name is unique
-		// we will label the prometheus services with the pipeline and output names
-		var pipelineName string
-		var outputName string
-		_, outputName = utils.SplitNN(outputNN)              // messy
-		pipelineName, outputName = utils.SplitNN(outputName) // more messy
-		serviceName := fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster.Name, pipelineName, outputName)
-		desiredServiceNames[serviceName] = struct{}{}
+		sort.Strings(pipelines)
 
-		if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, pipelineName, port, urlPath, &outputSpec); err != nil {
-			logger.Error(err, "failed to reconcile Prometheus service", "service", serviceName)
-			return err
+		for _, pipelineName := range pipelines {
+			outputSpec := pipelineOutputSpecs[pipelineName]
+			port, urlPath, err := parseListenPortAndPath(outputSpec.Config.Raw)
+			if err != nil {
+				logger.Error(err, "failed to parse listen port and path for Prometheus output", "output", outputNN)
+				continue
+			}
+			if port > 0 && pipelinePrometheusOutputCount > 1 {
+				logger.Error(err, "prometheus output with port (listen field) specified is not supported when multiple pipelines share the same output", "output", outputNN)
+				continue
+			}
+			if port == 0 { // port is not explicitly set, use the port from the plan
+				port = prometheusPorts[outputNN]
+			} else { // port is explicitly set, update the plan
+				prometheusPorts[outputNN] = port
+			}
+
+			if urlPath == "" {
+				urlPath = gnmic.PrometheusDefaultPath
+			}
+			// generate service name from output name
+			// we use metadata.generateName to ensure the service name is unique
+			// we will label the prometheus services with the pipeline and output names
+			var pipelineName string
+			var outputName string
+			_, outputName = utils.SplitNN(outputNN)              // messy
+			pipelineName, outputName = utils.SplitNN(outputName) // more messy
+			serviceName := fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster.Name, pipelineName, outputName)
+			desiredServiceNames[serviceName] = struct{}{}
+
+			if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, pipelineName, port, urlPath, &outputSpec); err != nil {
+				logger.Error(err, "failed to reconcile Prometheus service", "service", serviceName)
+				return err
+			}
+			logger.Info("reconciled Prometheus service", "service", serviceName, "port", port)
 		}
-		logger.Info("reconciled Prometheus service", "service", serviceName, "port", port)
 	}
 
 	// delete services that are no longer needed

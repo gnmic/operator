@@ -2,6 +2,7 @@ package gnmic
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
@@ -367,4 +368,71 @@ func keys[K comparable, V any](m map[K]V) []K {
 		result = append(result, k)
 	}
 	return result
+}
+
+func PrintChurnOverPodCounts(t *testing.T, targetNNs []string, K int) {
+	if K <= 0 {
+		K = 1
+	}
+	if len(targetNNs) == 0 {
+		t.Log("no targets")
+		return
+	}
+
+	// build target -> pod map from assignments map[pod][]target
+	buildOwnerMap := func(assignments map[int][]string) map[string]int {
+		owner := make(map[string]int, len(targetNNs))
+		for pod, targets := range assignments {
+			for _, t := range targets {
+				owner[t] = pod
+			}
+		}
+		return owner
+	}
+
+	t.Logf("Targets: %d\n", len(targetNNs))
+	t.Logf("%-10s %-14s %-12s\n", "Pods", "Moved", "Moved%")
+
+	// baseline: 1 pod
+	prevAssignments := getTargetAssignments(targetNNs, 1)
+	prevOwner := buildOwnerMap(prevAssignments)
+
+	t.Logf("%-10d %-14s %-12s\n", 1, "0", "0.00%")
+
+	// for each P=2..K, compute churn relative to P-1
+	for podCount := 2; podCount <= K; podCount++ {
+		assignments := getTargetAssignments(targetNNs, podCount)
+		owner := buildOwnerMap(assignments)
+
+		moved := 0
+		for _, t := range targetNNs {
+			if prevOwner[t] != owner[t] {
+				moved++
+			}
+		}
+
+		pct := (float64(moved) / float64(len(targetNNs))) * 100.0
+		t.Logf("%-10d %-14d %-11.2f%%\n", podCount, moved, pct)
+
+		prevOwner = owner
+		pods := make([]int, 0, len(assignments))
+		t.Logf("Distribution at %d pods:", podCount)
+		for p := range assignments {
+			pods = append(pods, p)
+		}
+		sort.Ints(pods)
+		for _, p := range pods {
+			t.Logf("  pod %d: %d targets", p, len(assignments[p]))
+		}
+	}
+
+}
+
+func TestChurnPrinter(t *testing.T) {
+	targetCount := 300
+	targets := make([]string, targetCount)
+	for i := 0; i < targetCount; i++ {
+		targets[i] = fmt.Sprintf("default/router%d", i)
+	}
+	PrintChurnOverPodCounts(t, targets, 10)
 }
