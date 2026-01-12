@@ -300,10 +300,12 @@ spec:
 
 When `clientTLS` is configured:
 
-1. **Per-Pod Client Certificates**: The operator creates a cert-manager `Certificate` with `ClientAuth` usage for each pod
-2. **Automatic Mounting**: Client certificates are mounted at `/etc/gnmic/client-tls/`
-3. **Target Configuration**: All target configs automatically include the client certificate paths
-4. **CA Bundle (optional)**: If `bundleRef` is set, it's mounted at `/etc/gnmic/client-ca/` for verifying target server certificates
+1. **Single Shared Certificate**: The operator creates one cert-manager `Certificate` with `ClientAuth` usage, shared by all pods in the cluster
+2. **Certificate Identity**: CommonName and DNSNames are set to `{cluster-name}.{namespace}` (e.g., `my-cluster.telemetry`)
+3. **Automatic Mounting**: The certificate is mounted at `/etc/gnmic/client-tls/` on all pods
+4. **Target Configuration**: All target configs automatically include the client certificate paths
+5. **CA Bundle (optional)**: If `bundleRef` is set, it's mounted at `/etc/gnmic/client-ca/` for verifying target server certificates
+6. **Scaling**: Since all pods share the same certificate, scaling doesn't require volume updates or pod restarts
 
 ### Client TLS with CA Verification
 
@@ -337,8 +339,8 @@ spec:
 
 | Resource | Name Pattern | Purpose |
 |----------|--------------|---------|
-| Certificate | `gnmic-{cluster}-{index}-client-tls` | Per-pod gNMI client certificate |
-| Secret | `gnmic-{cluster}-{index}-client-tls` | Client certificate and key (created by cert-manager) |
+| Certificate | `gnmic-{cluster}-client-tls` | Shared gNMI client certificate (CN: `{cluster}.{namespace}`) |
+| Secret | `gnmic-{cluster}-client-tls` | Client certificate and key (created by cert-manager) |
 
 ### Example: Full mTLS Setup
 

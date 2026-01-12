@@ -371,9 +371,19 @@ spec:
 └──────────────────┘                    └──────────────────┘
 ```
 
+### Certificate Details
+
+A **single certificate** is shared by all pods in the cluster:
+
+- **CommonName**: `{cluster-name}.{namespace}` (e.g., `my-cluster.telemetry`)
+- **DNSNames**: Same as CommonName
+- **Usages**: ClientAuth, DigitalSignature, KeyEncipherment
+
+This design enables seamless scaling without certificate regeneration or pod restarts.
+
 ### Certificate Paths
 
-Client certificates are mounted in gNMIc pods at:
+The shared client certificate is mounted in all gNMIc pods at:
 
 | File | Path |
 |------|------|
@@ -398,8 +408,8 @@ skip-verify: false  # If bundleRef is set
 
 | Resource | Name Pattern | Purpose |
 |----------|--------------|---------|
-| Certificate | `gnmic-{cluster}-{index}-client-tls` | Per-pod client certificate |
-| Secret | `gnmic-{cluster}-{index}-client-tls` | Certificate and key |
+| Certificate | `gnmic-{cluster}-client-tls` | Shared client certificate (all pods) |
+| Secret | `gnmic-{cluster}-client-tls` | Certificate and key |
 
 ### Example: Full mTLS Setup
 
