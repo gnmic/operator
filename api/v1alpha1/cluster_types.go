@@ -28,9 +28,8 @@ type ClusterSpec struct {
 	Image string `json:"image"`
 
 	// The number of replicas to run
-	// +kubebuilder:validation:Required
 	// +kubebuilder:default=1
-	Replicas int32 `json:"replicas"`
+	Replicas *int32 `json:"replicas,omitempty"`
 
 	// The REST/gNMI server configuration
 	API *APIConfig `json:"api,omitempty"`

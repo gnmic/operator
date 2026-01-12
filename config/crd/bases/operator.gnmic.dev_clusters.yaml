@@ -398,7 +398,6 @@ spec:
                 type: object
             required:
             - image
-            - replicas
             type: object
           status:
             description: ClusterStatus defines the observed state of Cluster
