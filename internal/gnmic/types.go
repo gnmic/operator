@@ -46,19 +46,22 @@ type PipelineData struct {
 	OutputProcessorOrder []string
 	// Ordered list of input processor names (refs first, then sorted selectors)
 	InputProcessorOrder []string
+	// ResolvedOutputAddresses holds resolved service addresses for outputs (outputNN -> addresses)
+	ResolvedOutputAddresses map[string][]string
 }
 
 // NewPipelineData creates a new PipelineData with initialized maps
 func NewPipelineData() *PipelineData {
 	return &PipelineData{
-		Targets:              make(map[string]gnmicv1alpha1.TargetSpec),
-		TargetProfiles:       make(map[string]gnmicv1alpha1.TargetProfileSpec),
-		Subscriptions:        make(map[string]gnmicv1alpha1.SubscriptionSpec),
-		Outputs:              make(map[string]gnmicv1alpha1.OutputSpec),
-		Inputs:               make(map[string]gnmicv1alpha1.InputSpec),
-		OutputProcessors:     make(map[string]gnmicv1alpha1.ProcessorSpec),
-		InputProcessors:      make(map[string]gnmicv1alpha1.ProcessorSpec),
-		TunnelTargetPolicies: make(map[string]gnmicv1alpha1.TunnelTargetPolicySpec),
+		Targets:                 make(map[string]gnmicv1alpha1.TargetSpec),
+		TargetProfiles:          make(map[string]gnmicv1alpha1.TargetProfileSpec),
+		Subscriptions:           make(map[string]gnmicv1alpha1.SubscriptionSpec),
+		Outputs:                 make(map[string]gnmicv1alpha1.OutputSpec),
+		Inputs:                  make(map[string]gnmicv1alpha1.InputSpec),
+		OutputProcessors:        make(map[string]gnmicv1alpha1.ProcessorSpec),
+		InputProcessors:         make(map[string]gnmicv1alpha1.ProcessorSpec),
+		TunnelTargetPolicies:    make(map[string]gnmicv1alpha1.TunnelTargetPolicySpec),
+		ResolvedOutputAddresses: make(map[string][]string),
 	}
 }
 

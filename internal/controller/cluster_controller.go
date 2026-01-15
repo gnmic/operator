@@ -360,7 +360,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		for _, output := range outputs {
-			pipelineData.Outputs[pipelineNN+gnmic.Delimiter+output.Name] = output.Spec
+			outputNN := pipelineNN + gnmic.Delimiter + output.Name
+			pipelineData.Outputs[outputNN] = output.Spec
+
+			// resolve service addresses for outputs that support it (nats, kafka, jetstream)
+			if gnmic.OutputTypesWithServiceRef[output.Spec.Type] {
+				resolvedAddrs, err := r.resolveOutputServiceAddresses(ctx, &output)
+				if err != nil {
+					logger.Error(err, "failed to resolve service addresses for output", "output", output.Name)
+					// continue without resolved addresses - the output config may have static address
+				} else if len(resolvedAddrs) > 0 {
+					pipelineData.ResolvedOutputAddresses[outputNN] = resolvedAddrs
+				}
+			}
 		}
 		logger.Info("cluster pipeline outputs", "outputs", outputs)
 
@@ -2208,6 +2220,90 @@ func (r *ClusterReconciler) resolveOutputs(ctx context.Context, pipeline *gnmicv
 	}
 
 	return result, nil
+}
+
+// resolveOutputServiceAddresses resolves service addresses for outputs that support serviceRef or serviceSelector
+func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, output *gnmicv1alpha1.Output) ([]string, error) {
+	spec := &output.Spec
+
+	// skip if output type doesn't support service references
+	if !gnmic.OutputTypesWithServiceRef[spec.Type] {
+		return nil, nil
+	}
+
+	// skip if neither serviceRef nor serviceSelector is configured
+	if spec.ServiceRef == nil && spec.ServiceSelector == nil {
+		return nil, nil
+	}
+
+	resolved := []string{}
+
+	// resolve by direct service reference
+	if spec.ServiceRef != nil {
+		namespace := spec.ServiceRef.Namespace
+		if namespace == "" {
+			namespace = output.Namespace
+		}
+
+		var svc corev1.Service
+		if err := r.Get(ctx, types.NamespacedName{Name: spec.ServiceRef.Name, Namespace: namespace}, &svc); err != nil {
+			return nil, fmt.Errorf("failed to get service %s/%s: %w", namespace, spec.ServiceRef.Name, err)
+		}
+
+		// convert service ports to gnmic.ServicePort
+		ports := make([]gnmic.ServicePort, len(svc.Spec.Ports))
+		for i, p := range svc.Spec.Ports {
+			ports[i] = gnmic.ServicePort{Name: p.Name, Port: p.Port}
+		}
+
+		port, err := gnmic.ParseServicePort(spec.ServiceRef.Port, ports)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve port for service %s/%s: %w", namespace, spec.ServiceRef.Name, err)
+		}
+
+		// use cluster DNS name for the service
+		host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
+		addr := gnmic.FormatServiceAddress(spec, host, port)
+		resolved = append(resolved, addr)
+	}
+
+	// resolve by service selector
+	if spec.ServiceSelector != nil {
+		namespace := spec.ServiceSelector.Namespace
+		if namespace == "" {
+			// use output namespace if not specified
+			namespace = output.Namespace
+		}
+
+		var svcList corev1.ServiceList
+		if err := r.List(ctx, &svcList,
+			client.InNamespace(namespace),
+			client.MatchingLabels(spec.ServiceSelector.MatchLabels),
+		); err != nil {
+			return nil, fmt.Errorf("failed to list services with selector: %w", err)
+		}
+
+		for _, svc := range svcList.Items {
+			// convert service ports to gnmic.ServicePort
+			ports := make([]gnmic.ServicePort, len(svc.Spec.Ports))
+			for i, p := range svc.Spec.Ports {
+				ports[i] = gnmic.ServicePort{Name: p.Name, Port: p.Port}
+			}
+
+			port, err := gnmic.ParseServicePort(spec.ServiceSelector.Port, ports)
+			if err != nil {
+				// skip services that don't have the requested port
+				continue
+			}
+
+			// use cluster DNS name for the service
+			host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
+			addr := gnmic.FormatServiceAddress(spec, host, port)
+			resolved = append(resolved, addr)
+		}
+	}
+
+	return resolved, nil
 }
 
 // resolveInputs resolves inputs for a pipeline using refs and selectors (union of all selectors)

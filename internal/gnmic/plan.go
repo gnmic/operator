@@ -275,9 +275,14 @@ func (b *PlanBuilder) buildOutputs(plan *ApplyPlan, pipelineData *PipelineData) 
 			continue
 		}
 
-		processors := b.relationships.outputProcessors[outputNN]
+		options := &outputConfigOptions{
+			Processors: b.relationships.outputProcessors[outputNN],
+		}
+		if pipelineData.ResolvedOutputAddresses != nil {
+			options.ResolvedAddresses = pipelineData.ResolvedOutputAddresses[outputNN]
+		}
 
-		outputConfig, err := buildOutputConfig(&outputSpec, processors)
+		outputConfig, err := buildOutputConfig(&outputSpec, options)
 		if err != nil {
 			return err
 		}

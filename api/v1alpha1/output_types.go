@@ -35,6 +35,42 @@ type OutputSpec struct {
 	// If not specified, a ClusterIP service will be created by default.
 	// +optional
 	Service *OutputServiceSpec `json:"service,omitempty"`
+	// ServiceRef references a Kubernetes Service to use as the output address.
+	// Supported for: nats, jetstream, kafka outputs.
+	// The service address will be resolved and injected into the output config.
+	// +optional
+	ServiceRef *ServiceReference `json:"serviceRef,omitempty"`
+	// ServiceSelector selects Kubernetes Services by labels to use as output addresses.
+	// Supported for: nats, jetstream, kafka outputs.
+	// All matching service addresses will be resolved and injected into the output config.
+	// +optional
+	ServiceSelector *ServiceSelector `json:"serviceSelector,omitempty"`
+}
+
+// ServiceReference references a specific Kubernetes Service
+type ServiceReference struct {
+	// Name of the Service
+	Name string `json:"name"`
+	// Namespace of the Service. Defaults to the Output's namespace if not specified.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// Port is the name or number of the port to use.
+	// If not specified, the first port of the service is used.
+	// +optional
+	Port string `json:"port,omitempty"`
+}
+
+// ServiceSelector selects Services by labels
+type ServiceSelector struct {
+	// MatchLabels is a map of {key,value} pairs to match services
+	MatchLabels map[string]string `json:"matchLabels"`
+	// Namespace to search for services. Defaults to the Output's namespace if not specified.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// Port is the name or number of the port to use.
+	// If not specified, the first port of the service is used.
+	// +optional
+	Port string `json:"port,omitempty"`
 }
 
 // OutputServiceSpec defines the service configuration for outputs that expose an endpoint

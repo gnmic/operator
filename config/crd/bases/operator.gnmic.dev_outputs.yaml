@@ -71,6 +71,51 @@ spec:
                     - LoadBalancer
                     type: string
                 type: object
+              serviceRef:
+                description: |-
+                  ServiceRef references a Kubernetes Service to use as the output address.
+                  Supported for: nats, jetstream, kafka outputs.
+                  The service address will be resolved and injected into the output config.
+                properties:
+                  name:
+                    description: Name of the Service
+                    type: string
+                  namespace:
+                    description: Namespace of the Service. Defaults to the Output's
+                      namespace if not specified.
+                    type: string
+                  port:
+                    description: |-
+                      Port is the name or number of the port to use.
+                      If not specified, the first port of the service is used.
+                    type: string
+                required:
+                - name
+                type: object
+              serviceSelector:
+                description: |-
+                  ServiceSelector selects Kubernetes Services by labels to use as output addresses.
+                  Supported for: nats, jetstream, kafka outputs.
+                  All matching service addresses will be resolved and injected into the output config.
+                properties:
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: MatchLabels is a map of {key,value} pairs to match
+                      services
+                    type: object
+                  namespace:
+                    description: Namespace to search for services. Defaults to the
+                      Output's namespace if not specified.
+                    type: string
+                  port:
+                    description: |-
+                      Port is the name or number of the port to use.
+                      If not specified, the first port of the service is used.
+                    type: string
+                required:
+                - matchLabels
+                type: object
               type:
                 description: The output type
                 enum:
