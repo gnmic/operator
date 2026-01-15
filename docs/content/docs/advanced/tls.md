@@ -375,7 +375,7 @@ spec:
 
 A **single certificate** is shared by all pods in the cluster:
 
-- **CommonName**: `{cluster-name}.{namespace}` (e.g., `my-cluster.telemetry`)
+- **CommonName**: `{cluster-name}.{namespace}` ( `my-cluster.telemetry`)
 - **DNSNames**: Same as CommonName
 - **Usages**: ClientAuth, DigitalSignature, KeyEncipherment
 

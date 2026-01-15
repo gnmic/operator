@@ -273,7 +273,7 @@ spec:
 
 ## How It Works
 
-1. Network devices connect to the gNMIc tunnel service (e.g., `tunnel-cluster-tunnel:57400`)
+1. Network devices connect to the gNMIc tunnel service ( `tunnel-cluster-tunnel:57400`)
 2. Devices identify themselves with type and ID via the gRPC tunnel Register RPC
 3. gNMIc matches incoming devices against `TunnelTargetPolicy` rules
 4. Matching devices receive configuration from the referenced `TargetProfile`

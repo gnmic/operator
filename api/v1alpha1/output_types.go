@@ -31,7 +31,7 @@ type OutputSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +kubebuilder:validation:Schemaless
 	Config apiextensionsv1.JSON `json:"config,omitempty"`
-	// The service configuration for outputs that expose an endpoint (e.g., prometheus).
+	// The service configuration for outputs that expose an endpoint (Prometheus).
 	// If not specified, a ClusterIP service will be created by default.
 	// +optional
 	Service *OutputServiceSpec `json:"service,omitempty"`

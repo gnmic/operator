@@ -31,7 +31,7 @@ When you create a Prometheus-type `Output` in gNMIc Operator, it automatically c
 ## Prerequisites
 
 - Kubernetes cluster with gNMIc Operator installed
-- [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) installed (e.g., via [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack))
+- [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) installed ( via [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack))
 
 ## Step 1: Create a Prometheus Output
 

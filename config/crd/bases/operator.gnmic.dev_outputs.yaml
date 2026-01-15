@@ -48,7 +48,7 @@ spec:
                 x-kubernetes-preserve-unknown-fields: true
               service:
                 description: |-
-                  The service configuration for outputs that expose an endpoint (e.g., prometheus).
+                  The service configuration for outputs that expose an endpoint (Prometheus).
                   If not specified, a ClusterIP service will be created by default.
                 properties:
                   annotations:

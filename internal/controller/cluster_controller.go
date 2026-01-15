@@ -1287,7 +1287,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 	}
 
 	for _, cert := range certList.Items {
-		// extract the ordinal from the certificate name (e.g., "gnmic-cluster1-2-tls" -> 2)
+		// extract the ordinal from the certificate name (for example: "gnmic-cluster1-2-tls" -> 2)
 		ordinal := r.extractOrdinalFromCertName(cert.Name, stsName)
 		if ordinal >= int(replicas) {
 			logger.Info("deleting certificate for scaled-down replica", "certificate", cert.Name)
@@ -1374,7 +1374,7 @@ func (r *ClusterReconciler) isCertificateReady(cert *certmanagerv1.Certificate) 
 }
 
 // extractOrdinalFromCertName extracts the StatefulSet ordinal from a certificate name
-// e.g., "gnmic-cluster1-2-tls" with stsName "gnmic-cluster1" returns 2
+// for example: "gnmic-cluster1-2-tls" with stsName "gnmic-cluster1" returns 2
 func (r *ClusterReconciler) extractOrdinalFromCertName(certName, stsName string) int {
 	// remove the "-tls" suffix and the stsName prefix
 	suffix := strings.TrimPrefix(certName, stsName+"-")
@@ -1471,7 +1471,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 	}
 
 	for _, cert := range certList.Items {
-		// extract the ordinal from the certificate name (e.g., "gnmic-cluster1-2-tunnel-tls" -> 2)
+		// extract the ordinal from the certificate name (for example: "gnmic-cluster1-2-tunnel-tls" -> 2)
 		ordinal := r.extractOrdinalFromTunnelCertName(cert.Name, stsName)
 		if ordinal >= int(replicas) {
 			logger.Info("deleting tunnel certificate for scaled-down replica", "certificate", cert.Name)

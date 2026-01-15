@@ -26,7 +26,7 @@ spec:
 
 ## What Happens When You Scale
 
-### Scale Up (e.g., 3 → 5 pods)
+### Scale Up ( 3 → 5 pods)
 
 1. Kubernetes creates new pods (`gnmic-3`, `gnmic-4`)
 2. Operator waits for pods to be ready
@@ -34,7 +34,7 @@ spec:
 4. Some targets move from existing pods to new pods
 5. Configuration is applied to all pods
 
-### Scale Down (e.g., 5 → 3 pods)
+### Scale Down ( 5 → 3 pods)
 
 1. Operator redistributes targets away from pods being removed
 2. Configuration is applied to remaining pods

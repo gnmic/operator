@@ -241,8 +241,10 @@ description: >
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `type` | string | Yes | - | Output type |
-| `config` | JSON | Yes | - | Type-specific config |
-| `service` | OutputServiceSpec | No | - | K8s Service config |
+| `config` | JSON | No | - | Type-specific config |
+| `service` | OutputServiceSpec | No | - | K8s Service config (Prometheus only) |
+| `serviceRef` | ServiceReference | No | - | Reference to a K8s Service for address resolution |
+| `serviceSelector` | ServiceSelector | No | - | Label selector to discover K8s Services |
 
 ### OutputServiceSpec
 
@@ -250,19 +252,41 @@ description: >
 |-------|------|----------|---------|-------------|
 | `type` | ServiceType | No | ClusterIP | Service type |
 | `annotations` | map[string]string | No | - | Service annotations |
+| `labels` | map[string]string | No | - | Service labels |
+
+### ServiceReference
+
+Used to reference a specific Kubernetes Service for address resolution.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | Name of the Service |
+| `namespace` | string | No | Output's namespace | Namespace of the Service |
+| `port` | string | No | First port | Port name or number |
+
+### ServiceSelector
+
+Used to discover Kubernetes Services by labels.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `matchLabels` | map[string]string | Yes | - | Labels to match services |
+| `namespace` | string | No | Output's namespace | Namespace to search |
+| `port` | string | No | First port | Port name or number |
 
 ### Output Types
 
-| Type | Description |
-|------|-------------|
-| `prometheus` | Prometheus metrics endpoint |
-| `kafka` | Apache Kafka |
-| `influxdb` | InfluxDB |
-| `nats` | NATS messaging |
-| `file` | File output |
-| `stan` | NATS Streaming |
-| `tcp` | TCP socket |
-| `udp` | UDP socket |
+| Type | Description | Supports serviceRef |
+|------|-------------|---------------------|
+| `prometheus` | Prometheus metrics endpoint | No |
+| `prometheus_write` | Prometheus Remote Write | Yes |
+| `kafka` | Apache Kafka | Yes |
+| `influxdb` | InfluxDB | Yes |
+| `nats` | NATS messaging | Yes |
+| `jetstream` | NATS JetStream | Yes |
+| `file` | File output | No |
+| `tcp` | TCP socket | No |
+| `udp` | UDP socket | No |
 
 ---
 
