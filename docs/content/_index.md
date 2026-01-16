@@ -13,7 +13,7 @@ linkTitle: "Home"
   <a class="btn btn-lg btn-primary" href="{{< relref "/docs" >}}">
     Get Started <i class="fas fa-arrow-alt-circle-right ms-2"></i>
   </a>
-  <a class="btn btn-lg btn-secondary" href="https://github.com/karimra/gnmic-operator">
+  <a class="btn btn-lg btn-secondary" href="https://github.com/gnmic/gnmic-operator">
     GitHub <i class="fab fa-github ms-2"></i>
   </a>
 </div>

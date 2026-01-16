@@ -32,8 +32,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
-	operatorv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
+	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
+	operatorv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 

@@ -33,10 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
-	operatorv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
-	"github.com/karimra/gnmic-operator/internal/controller"
-	webhookv1alpha1 "github.com/karimra/gnmic-operator/internal/webhook/v1alpha1"
+	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
+	operatorv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
+	"github.com/gnmic/gnmic-operator/internal/controller"
+	webhookv1alpha1 "github.com/gnmic/gnmic-operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 

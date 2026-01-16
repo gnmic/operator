@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
+	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
 )
 
 // PipelineReconciler reconciles a Pipeline object

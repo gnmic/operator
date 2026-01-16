@@ -19,7 +19,7 @@ description: >
 First, install the Custom Resource Definitions:
 
 ```bash
-kubectl apply -k https://github.com/karimra/gnmic-operator/config/crd
+kubectl apply -k https://github.com/gnmic/gnmic-operator/config/crd
 ```
 
 ### Install the Operator
@@ -27,7 +27,7 @@ kubectl apply -k https://github.com/karimra/gnmic-operator/config/crd
 Deploy the operator:
 
 ```bash
-kubectl apply -k https://github.com/karimra/gnmic-operator/config/default
+kubectl apply -k https://github.com/gnmic/gnmic-operator/config/default
 ```
 
 ### Verify Installation
@@ -50,14 +50,14 @@ gnmic-operator-controller-manager-xxxxx-xxxxx  2/2     Running   0          30s
 Clone the repository and install using make:
 
 ```bash
-git clone https://github.com/karimra/gnmic-operator.git
+git clone https://github.com/gnmic/gnmic-operator.git
 cd gnmic-operator
 
 # Install CRDs
 make install
 
 # Deploy the operator
-make deploy IMG=ghcr.io/karimra/gnmic-operator:dev
+make deploy IMG=ghcr.io/gnmic/gnmic-operator:dev
 ```
 
 ## Uninstall
@@ -66,10 +66,10 @@ To remove the operator:
 
 ```bash
 # Remove the operator
-kubectl delete -k https://github.com/karimra/gnmic-operator/config/default
+kubectl delete -k https://github.com/gnmic/gnmic-operator/config/default
 
 # Remove CRDs (this will delete all gNMIc resources!)
-kubectl delete -k https://github.com/karimra/gnmic-operator/config/crd
+kubectl delete -k https://github.com/gnmic/gnmic-operator/config/crd
 ```
 
 ## Installing cert-manager

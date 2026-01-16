@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	operatorv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
+	operatorv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
 )
 
 var _ = Describe("TunnelTargetPolicy Controller", func() {

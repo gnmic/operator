@@ -1,7 +1,7 @@
 package gnmic
 
 import (
-	gnmicv1alpha1 "github.com/karimra/gnmic-operator/api/v1alpha1"
+	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
 )
 

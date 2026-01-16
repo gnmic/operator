@@ -1,6 +1,6 @@
 # gNMIc Operator
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/karimra/gnmic-operator)](https://goreportcard.com/report/github.com/karimra/gnmic-operator)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gnmic/gnmic-operator)](https://goreportcard.com/report/github.com/gnmic/gnmic-operator)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A Kubernetes operator for deploying and managing [gNMIc](https://gnmic.openconfig.net) telemetry collectors at scale.
@@ -37,10 +37,10 @@ gNMIc Operator automates the deployment, configuration, and lifecycle management
 
 ```bash
 # Install CRDs
-kubectl apply -k https://github.com/karimra/gnmic-operator/config/crd
+kubectl apply -k https://github.com/gnmic/gnmic-operator/config/crd
 
 # Deploy the operator
-kubectl apply -k https://github.com/karimra/gnmic-operator/config/default
+kubectl apply -k https://github.com/gnmic/gnmic-operator/config/default
 ```
 
 ### Deploy a Collector
@@ -169,7 +169,7 @@ Full documentation available at: **[operator.gnmic.dev](https://operator.gnmic.d
 
 ```bash
 # Clone the repository
-git clone https://github.com/karimra/gnmic-operator.git
+git clone https://github.com/gnmic/gnmic-operator.git
 cd gnmic-operator
 
 # Install CRDs

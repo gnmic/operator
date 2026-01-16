@@ -16,7 +16,7 @@ This diagram illustrates how the gNMIc Operator orchestrates gNMIc deployments i
 
 At the core, the Cluster Controller watches a set of CRDs. 
 It uses their desired state to create and manage resources like ConfigMaps, Secrets, Services, and a StatefulSet. 
-The StatefulSet, together with the associated Services, materializes as multiple gNMIc pods (e.g. gnmic-0, gnmic-1, gnmic-2), each responsible for a subset of targets.
+The StatefulSet, together with the associated Services, materializes as multiple gNMIc pods (e.. gnmic-0, gnmic-1, gnmic-2), each responsible for a subset of targets.
 
 In parallel, the TargetSource Controller handles discovery use cases by watching TargetSource resources and creating concrete Target objects, which are then consumed by the Cluster Controller as part of the reconciliation flow.
 
