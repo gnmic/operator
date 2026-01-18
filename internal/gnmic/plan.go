@@ -6,8 +6,8 @@ import (
 	"maps"
 	"sort"
 
-	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
-	"github.com/gnmic/gnmic-operator/internal/utils"
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/utils"
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

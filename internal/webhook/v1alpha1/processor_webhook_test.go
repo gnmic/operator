@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	operatorv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
+	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	// TODO (user): Add any additional imports if needed
 )
 

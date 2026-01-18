@@ -6,7 +6,7 @@ domain: gnmic.dev
 layout:
 - go.kubebuilder.io/v4
 projectName: gnmic-operator
-repo: github.com/gnmic/gnmic-operator
+repo: github.com/gnmic/operator
 resources:
 - api:
     crdVersion: v1
@@ -15,7 +15,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Cluster
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -28,7 +28,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Target
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -41,7 +41,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Subscription
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -54,7 +54,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Output
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -67,7 +67,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: TargetProfile
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -81,7 +81,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: TargetSource
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -95,7 +95,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Pipeline
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -108,7 +108,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Input
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -121,7 +121,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: Processor
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true
@@ -135,7 +135,7 @@ resources:
   domain: gnmic.dev
   group: operator
   kind: TunnelTargetPolicy
-  path: github.com/gnmic/gnmic-operator/api/v1alpha1
+  path: github.com/gnmic/operator/api/v1alpha1
   version: v1alpha1
   webhooks:
     conversion: true

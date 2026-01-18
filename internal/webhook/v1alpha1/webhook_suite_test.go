@@ -39,7 +39,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	operatorv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
+	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 

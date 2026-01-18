@@ -14,8 +14,8 @@ params:
   site_description: "gNMIc Operator is a Kubernetes operator for gNMIc."
   site_author: "Karim Radhouani"
   site_url: "https://operator.gnmic.dev"
-  site_github: "https://github.com/gnmic/gnmic-operator"
-  github_repo: "https://github.com/gnmic/gnmic-operator"
+  site_github: "https://github.com/gnmic/operator"
+  github_repo: "https://github.com/gnmic/operator"
   github_branch: "main"
   
   # UI configuration
@@ -35,7 +35,10 @@ markup:
 
 menu:
   main:
+    - name: Blog
+      url: /blog/
+      weight: 20
     - name: Github
-      url: https://github.com/gnmic/gnmic-operator
+      url: https://github.com/gnmic/operator
       weight: 50
       pre: <i class='fab fa-github'></i>

@@ -3,7 +3,7 @@ package gnmic
 import (
 	"fmt"
 
-	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"gopkg.in/yaml.v2"
 )
 

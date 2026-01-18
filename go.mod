@@ -1,4 +1,4 @@
-module github.com/gnmic/gnmic-operator
+module github.com/gnmic/operator
 
 go 1.25.5
 

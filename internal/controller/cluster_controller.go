@@ -55,9 +55,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	gnmicv1alpha1 "github.com/gnmic/gnmic-operator/api/v1alpha1"
-	"github.com/gnmic/gnmic-operator/internal/gnmic"
-	"github.com/gnmic/gnmic-operator/internal/utils"
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/gnmic"
+	"github.com/gnmic/operator/internal/utils"
 )
 
 // ClusterReconciler reconciles a Cluster object
