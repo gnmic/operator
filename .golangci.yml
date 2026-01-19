@@ -11,9 +11,9 @@ linters:
     - errcheck
     - goconst
     - gocyclo
-    - gofmt
-    - goimports
-    - gosimple
+    # - gofmt
+    # - goimports
+    # - gosimple
     - govet
     - ineffassign
     - lll
@@ -21,7 +21,6 @@ linters:
     - nakedret
     - prealloc
     - staticcheck
-    - typecheck
     - unconvert
     - unparam
     - unused
@@ -33,6 +32,14 @@ linters-settings:
     min-complexity: 15
   dupl:
     threshold: 100
+
+formatters:
+  gofmt:
+    command: gofmt
+    args: ["-w", "."]
+  goimports:
+    command: goimports
+    args: ["-w", "."]
 
 issues:
   exclude-rules:

@@ -7,14 +7,12 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**.md'
-      - 'design/**'
   pull_request:
     branches:
       - main
     paths-ignore:
       - 'docs/**'
       - '**.md'
-      - 'design/**'
 
 env:
   GO_VERSION: '1.25'
