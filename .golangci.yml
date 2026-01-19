@@ -25,21 +25,21 @@ linters:
     - unparam
     - unused
 
-linters-settings:
-  lll:
-    line-length: 140
-  gocyclo:
-    min-complexity: 15
-  dupl:
-    threshold: 100
+# linters-settings:
+#   lll:
+#     line-length: 140
+#   gocyclo:
+#     min-complexity: 15
+#   dupl:
+#     threshold: 100
 
-formatters:
-  gofmt:
-    command: gofmt
-    args: ["-w", "."]
-  goimports:
-    command: goimports
-    args: ["-w", "."]
+# formatters:
+#   gofmt:
+#     command: gofmt
+#     args: ["-w", "."]
+#   goimports:
+#     command: goimports
+#     args: ["-w", "."]
 
 issues:
   exclude-rules:
