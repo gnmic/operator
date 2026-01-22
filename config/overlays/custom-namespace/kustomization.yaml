@@ -1,0 +1,24 @@
+# Example: Deploy to a custom namespace
+# Usage:
+#   kubectl apply -k https://github.com/gnmic/operator/config/overlays/custom-namespace
+#
+# Or copy this directory and modify as needed:
+#   kustomize build . | kubectl apply -f -
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../default
+
+# Change the namespace (default is gnmic-system)
+namespace: telemetry-system
+
+# Optionally change the name prefix
+namePrefix: telemetry-
+
+# Set a specific image version
+images:
+  - name: controller
+    newName: ghcr.io/gnmic/operator
+    newTag: "0.1.0"  # Change to your desired version

@@ -70,6 +70,25 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
 
+      - name: Setup Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Generate install manifests
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NO_V="${VERSION#v}"
+          
+          # Update image tag in kustomization
+          cd config/manager
+          kustomize edit set image controller=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION_NO_V}
+          cd ../..
+          
+          # Generate full install manifest
+          kustomize build config/default > install.yaml
+          
+          # Generate CRDs-only manifest
+          kustomize build config/crd > crds.yaml
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -77,3 +96,6 @@ jobs:
           generate_release_notes: false
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            install.yaml
+            crds.yaml

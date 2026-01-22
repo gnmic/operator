@@ -38,12 +38,32 @@ gNMIc Operator automates the deployment, configuration, and lifecycle management
 
 ### Install
 
-```bash
-# Install CRDs
-kubectl apply -k https://github.com/gnmic/operator/config/crd
+Quick install (recommended)
 
-# Deploy the operator
-kubectl apply -k https://github.com/gnmic/operator/config/default
+```bash
+kubectl apply -f https://github.com/gnmic/operator/releases/download/v0.1.0/install.yaml
+```
+
+Or using Helm
+
+```bash
+helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.1.0
+```
+
+Or using Kustomize with custom overlay
+
+```bash
+cat <<EOF > kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/gnmic/operator/config/default?ref=v0.1.0
+images:
+  - name: controller
+    newName: ghcr.io/gnmic/operator
+    newTag: "0.1.0"
+EOF
+kubectl apply -k .
 ```
 
 ### Deploy a Collector

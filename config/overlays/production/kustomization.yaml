@@ -1,0 +1,56 @@
+# Example: Production-ready deployment with custom resources
+# 
+# Usage:
+#   1. Copy this directory to your GitOps repo
+#   2. Modify values as needed
+#   3. kubectl apply -k .
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../default
+
+namespace: gnmic-system
+namePrefix: gnmic-
+
+# Pin to a specific version for production stability
+images:
+  - name: controller
+    newName: ghcr.io/gnmic/operator
+    newTag: "0.1.0"  # Pin to a specific version
+
+# Add common labels
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: telemetry-stack
+      environment: production
+    includeSelectors: false
+
+patches:
+  # Increase resources for production workloads
+  - target:
+      kind: Deployment
+      name: controller-manager
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          limits:
+            cpu: "1"
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+  
+  # Add pod disruption budget for high availability
+  - patch: |
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: controller-manager-pdb
+      spec:
+        minAvailable: 1
+        selector:
+          matchLabels:
+            control-plane: controller-manager
