@@ -1,0 +1,16 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gnmic-operator.fullname" . }}-metrics
+  labels:
+    {{- include "gnmic-operator.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+      name: https
+  selector:
+    {{- include "gnmic-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

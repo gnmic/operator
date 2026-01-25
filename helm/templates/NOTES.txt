@@ -1,0 +1,27 @@
+gNMIc Operator has been installed!
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+1. Check the operator status:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "gnmic-operator.name" . }}
+
+2. View operator logs:
+   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "gnmic-operator.name" . }} -f
+
+3. Create your first gNMIc cluster:
+   kubectl apply -f - <<EOF
+   apiVersion: operator.gnmic.dev/v1alpha1
+   kind: Cluster
+   metadata:
+     name: my-cluster
+   spec:
+     replicas: 1
+     image: ghcr.io/openconfig/gnmic:latest
+   EOF
+
+4. Check the cluster status:
+   kubectl get clusters
+
+Documentation: https://operator.gnmic.dev
+Report issues: https://github.com/gnmic/operator/issues

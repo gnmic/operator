@@ -1,0 +1,425 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "gnmic-operator.fullname" . }}-mutating
+  labels:
+    {{- include "gnmic-operator.labels" . | nindent 4 }}
+  {{- if .Values.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "gnmic-operator.certificateName" . }}
+  {{- end }}
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-cluster
+    failurePolicy: Fail
+    name: mcluster.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - clusters
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-input
+    failurePolicy: Fail
+    name: minput.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - inputs
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-output
+    failurePolicy: Fail
+    name: moutput.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - outputs
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-pipeline
+    failurePolicy: Fail
+    name: mpipeline.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pipelines
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-processor
+    failurePolicy: Fail
+    name: mprocessor.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - processors
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-subscription
+    failurePolicy: Fail
+    name: msubscription.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - subscriptions
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-target
+    failurePolicy: Fail
+    name: mtarget.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - targets
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-targetprofile
+    failurePolicy: Fail
+    name: mtargetprofile.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - targetprofiles
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-targetsource
+    failurePolicy: Fail
+    name: mtargetsource.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - targetsources
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-operator-gnmic-dev-v1alpha1-tunneltargetpolicy
+    failurePolicy: Fail
+    name: mtunneltargetpolicy.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - tunneltargetpolicies
+    sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "gnmic-operator.fullname" . }}-validating
+  labels:
+    {{- include "gnmic-operator.labels" . | nindent 4 }}
+  {{- if .Values.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "gnmic-operator.certificateName" . }}
+  {{- end }}
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-cluster
+    failurePolicy: Fail
+    name: vcluster.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - clusters
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-input
+    failurePolicy: Fail
+    name: vinput.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - inputs
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-output
+    failurePolicy: Fail
+    name: voutput.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - outputs
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-pipeline
+    failurePolicy: Fail
+    name: vpipeline.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pipelines
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-processor
+    failurePolicy: Fail
+    name: vprocessor.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - processors
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-subscription
+    failurePolicy: Fail
+    name: vsubscription.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - subscriptions
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-target
+    failurePolicy: Fail
+    name: vtarget.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - targets
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-targetprofile
+    failurePolicy: Fail
+    name: vtargetprofile.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - targetprofiles
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-targetsource
+    failurePolicy: Fail
+    name: vtargetsource.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - targetsources
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "gnmic-operator.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-operator-gnmic-dev-v1alpha1-tunneltargetpolicy
+    failurePolicy: Fail
+    name: vtunneltargetpolicy.kb.io
+    rules:
+      - apiGroups:
+          - operator.gnmic.dev
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - tunneltargetpolicies
+    sideEffects: None
+{{- end }}

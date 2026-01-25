@@ -1,0 +1,27 @@
+apiVersion: v2
+name: gnmic-operator
+description: A Kubernetes operator for deploying and managing gNMIc telemetry collectors at scale
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://operator.gnmic.dev
+sources:
+  - https://github.com/gnmic/operator
+maintainers:
+  - name: gNMIc Team
+    url: https://github.com/gnmic
+keywords:
+  - gnmic
+  - telemetry
+  - gnmi
+  - openconfig
+  - network
+  - streaming
+  - operator
+  - kubernetes
+icon: https://gnmic.openconfig.net/images/gnmic-logo.png
+annotations:
+  artifacthub.io/category: networking
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Full Lifecycle

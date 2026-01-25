@@ -1,0 +1,71 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: inputs.operator.gnmic.dev
+spec:
+  group: operator.gnmic.dev
+  names:
+    kind: Input
+    listKind: InputList
+    plural: inputs
+    singular: input
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Input is the Schema for the inputs API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: InputSpec defines the desired state of Input
+            properties:
+              config:
+                description: |-
+                  Config is the input-specific config object.
+                  Use x-kubernetes-preserve-unknown-fields so each output type can carry its own schema.
+                x-kubernetes-preserve-unknown-fields: true
+              type:
+                description: |-
+                  The type of the input
+                  supported types:
+                  "kafka", "nats" or "jetstream"
+                enum:
+                - kafka
+                - nats
+                - jetstream
+                type: string
+            required:
+            - type
+            type: object
+          status:
+            description: InputStatus defines the observed state of Input
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,100 @@
+# Default values for gnmic-operator
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/gnmic/operator
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion
+  tag: "v0.0.1"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - "ALL"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Leader election configuration
+leaderElection:
+  enabled: true
+
+# Webhook configuration
+webhook:
+  enabled: true
+  port: 9443
+
+# Metrics configuration
+metrics:
+  enabled: true
+  port: 8443
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Health probes configuration
+health:
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# cert-manager integration
+certManager:
+  # Enable cert-manager for webhook certificates
+  enabled: true
+  # Issuer configuration (self-signed by default)
+  issuer:
+    create: true
+    kind: Issuer
+    name: ""  # If empty, uses the release name
+  # Certificate duration
+  duration: 8760h  # 1 year
+  renewBefore: 720h  # 30 days
+
+# Install CRDs with the chart
+crds:
+  install: true
+  # Keep CRDs on uninstall
+  keep: true
