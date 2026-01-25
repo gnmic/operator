@@ -177,3 +177,23 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+##@ Helm
+
+HELM_CHART_DIR ?= helm
+
+.PHONY: helm-crds
+helm-crds: manifests ## Copy CRDs to Helm chart
+	cp config/crd/bases/*.yaml $(HELM_CHART_DIR)/crds/
+
+.PHONY: helm-lint
+helm-lint: ## Lint Helm chart
+	helm lint $(HELM_CHART_DIR)
+
+.PHONY: helm-template
+helm-template: ## Template Helm chart for debugging
+	helm template gnmic-operator $(HELM_CHART_DIR)
+
+.PHONY: helm-package
+helm-package: helm-crds ## Package Helm chart
+	helm package $(HELM_CHART_DIR)
