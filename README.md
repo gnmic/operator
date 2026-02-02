@@ -22,12 +22,6 @@ gNMIc Operator automates the deployment, configuration, and lifecycle management
 - **TLS/mTLS** - Secure communication with cert-manager integration
 - **Multiple Pipelines** - Route different telemetry flows to different destinations
 
-## Architecture
-
-<a href="/images/architecture_3.svg" target="_blank">
-  <img src="docs/static/images/architecture_3.svg" style="display:block; margin:auto; width: 100%; max-width: none; height: auto;cursor: zoom-in;">
-</a>
-
 ## Quick Start
 
 ### Prerequisites
