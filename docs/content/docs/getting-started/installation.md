@@ -10,7 +10,7 @@ description: >
 
 - Kubernetes cluster (v1.25+)
 - kubectl configured to access your cluster
-- [cert-manager](https://cert-manager.io/) (required for webhooks and TLS features)
+- [cert-manager](https://cert-manager.io/)
 
 ## Installation Methods
 
@@ -20,9 +20,8 @@ Download and apply the pre-built manifest from the release:
 
 ```bash
 # Install a specific version
-kubectl apply -f https://github.com/gnmic/operator/releases/download/v0.1.0/install.yaml
-
 # This includes CRDs, RBAC, webhooks, and the operator deployment
+kubectl apply -f https://github.com/gnmic/operator/releases/download/v0.1.0/install.yaml
 ```
 
 ### Method 2: Using Kustomize
@@ -59,6 +58,8 @@ helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator \
   --create-namespace \
   --set resources.limits.memory=512Mi
 ```
+
+For a complete list of Helm chart configuration options, see the [Helm Chart Reference]({{< relref "../reference/helm-chart" >}}).
 
 ## Customization
 
