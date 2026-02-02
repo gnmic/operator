@@ -6,7 +6,7 @@ A Helm chart for deploying the gNMIc Operator on Kubernetes.
 
 - Kubernetes 1.25+
 - Helm 3.8+
-- [cert-manager](https://cert-manager.io/) (required for webhook TLS certificates)
+- [cert-manager](https://cert-manager.io/)
 
 ## Installation
 

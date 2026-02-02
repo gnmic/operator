@@ -36,25 +36,17 @@ spec:
             {{- if .Values.leaderElection.enabled }}
             - --leader-elect
             {{- end }}
-            {{- if .Values.metrics.enabled }}
             - --metrics-bind-address=:{{ .Values.metrics.port }}
-            - --metrics-secure=true
-            {{- end }}
             - --health-probe-bind-address=:8081
-            {{- if .Values.webhook.enabled }}
-            - --webhook-port={{ .Values.webhook.port }}
-            {{- end }}
           ports:
             {{- if .Values.webhook.enabled }}
             - name: webhook
               containerPort: {{ .Values.webhook.port }}
               protocol: TCP
             {{- end }}
-            {{- if .Values.metrics.enabled }}
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
               protocol: TCP
-            {{- end }}
             - name: health
               containerPort: 8081
               protocol: TCP

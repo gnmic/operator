@@ -6,7 +6,7 @@ image:
   repository: ghcr.io/gnmic/operator
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion
-  tag: "v0.0.1"
+  # tag: "0.0.1"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -58,7 +58,7 @@ webhook:
 # Metrics configuration
 metrics:
   enabled: true
-  port: 8443
+  port: 8080
   serviceMonitor:
     enabled: false
     namespace: ""
