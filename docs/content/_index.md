@@ -59,7 +59,7 @@ The operator computes and applies the effective gNMIc configuration automaticall
 {{% /blocks/feature %}}
 
 {{% blocks/feature icon="fa-arrows-alt" title="Horizontal Scaling" %}}
-Scale collectors by changing replica counts. Targets are deterministically distributed across pods using bounded-load [rendezvous hashing](https://en.wikipedia.org/wiki/Rendezvous_hashing).
+Scale collectors by changing replica counts. Targets are deterministically distributed across pods.
 {{% /blocks/feature %}}
 
 {{% blocks/feature icon="fa-sync" title="Hot Updates" %}}
