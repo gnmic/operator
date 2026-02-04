@@ -28,7 +28,7 @@ gNMIc Operator automates the deployment, configuration, and lifecycle management
 
 - Kubernetes cluster (v1.25+)
 - kubectl configured
-- [cert-manager](https://cert-manager.io/) (optional, for TLS)
+- [cert-manager](https://cert-manager.io/)
 
 ### Install
 
