@@ -3,7 +3,7 @@ module github.com/gnmic/operator
 go 1.25.5
 
 require (
-	github.com/cert-manager/cert-manager v1.19.2
+	github.com/cert-manager/cert-manager v1.19.3
 	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.3
 	github.com/openconfig/gnmic/pkg/api v0.1.9
