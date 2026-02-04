@@ -12,21 +12,9 @@ This guide shows how to integrate gNMIc Operator with [Prometheus Operator](http
 
 When you create a Prometheus-type `Output` in gNMIc Operator, it automatically creates a Kubernetes Service that exposes the metrics endpoint. You can then use Prometheus Operator's `ServiceMonitor` to automatically discover and scrape these metrics.
 
-### How It Works
 
-```text
-┌─────────────────┐      ┌──────────────────────┐      ┌─────────────────┐
-│  gNMIc Cluster  │──────│  Prometheus Output   │──────│    Service      │
-│   (StatefulSet) │      │   (metrics endpoint) │      │  (auto-created) │
-└─────────────────┘      └──────────────────────┘      └────────┬────────┘
-                                                                │
-                                                                │ discovers
-                                                                ▼
-┌─────────────────┐      ┌──────────────────────┐      ┌─────────────────┐
-│   Prometheus    │◀─────│   ServiceMonitor     │──────│  Label Selector │
-│    (scrapes)    │      │   (Prom Operator)    │      │                 │
-└─────────────────┘      └──────────────────────┘      └─────────────────┘
-```
+<img src="/images/prom-operator-example.svg" alt="ServiceMonitor Discovery" style="width:30%; max-width:50%; height:auto; display:block; margin:auto;">
+
 
 ## Prerequisites
 
@@ -49,8 +37,6 @@ metadata:
 spec:
   type: prometheus
   config:
-    listen: ":9804"
-    path: /metrics
     metric-prefix: gnmic
     export-timestamps: true
     strings-as-labels: true
@@ -67,8 +53,6 @@ metadata:
 spec:
   type: prometheus
   config:
-    listen: ":9804"
-    path: /metrics
     metric-prefix: gnmic
     export-timestamps: true
     strings-as-labels: true
@@ -321,8 +305,6 @@ metadata:
 spec:
   type: prometheus
   config:
-    listen: ":9804"
-    path: /metrics
     metric-prefix: gnmic
     export-timestamps: true
     strings-as-labels: true
