@@ -797,7 +797,6 @@ func (r *ClusterReconciler) sendApplyRequest(ctx context.Context, url string, pl
 
 	// check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		err := fmt.Errorf("gNMIc pod returned non-success status: %d", resp.StatusCode)
 		// TODO: stream read the body to avoid loading it all into memory
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
