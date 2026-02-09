@@ -445,7 +445,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				if !errors.IsNotFound(err) {
 					return ctrl.Result{}, err
 				}
-				logger.Error(err, "target profile not found for tunnel target policy", "profile", profileName)
+				logger.Info("target profile not found for tunnel target policy, skipping", "profile", profileName)
 				continue
 			}
 			pipelineData.TargetProfiles[targetProfile.Namespace+gnmic.Delimiter+targetProfile.Name] = targetProfile.Spec
@@ -2365,7 +2365,7 @@ func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipelin
 			if !errors.IsNotFound(err) {
 				return nil, err
 			}
-			logger.Error(err, "output processor not found", "ref", ref)
+			logger.Info("output processor not found, skipping", "ref", ref)
 		}
 		refProcessors = append(refProcessors, processor)
 		inRefs[processor.Name] = struct{}{}
@@ -2424,7 +2424,7 @@ func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline
 			if !errors.IsNotFound(err) {
 				return nil, err
 			}
-			logger.Error(err, "input processor not found", "ref", ref)
+			logger.Info("input processor not found, skipping", "ref", ref)
 		}
 		refProcessors = append(refProcessors, processor)
 		inRefs[processor.Name] = struct{}{}

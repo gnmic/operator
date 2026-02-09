@@ -61,7 +61,7 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 	if err := r.Get(ctx, clusterNN, &cluster); err != nil {
 		if errors.IsNotFound(err) {
-			logger.Error(err, "referenced cluster not found", "clusterRef", pipeline.Spec.ClusterRef)
+			logger.Info("referenced cluster not found, will retry", "clusterRef", pipeline.Spec.ClusterRef)
 			pipeline.Status.Status = "Error: Cluster not found"
 			if statusErr := r.Status().Update(ctx, &pipeline); statusErr != nil {
 				return ctrl.Result{}, statusErr
