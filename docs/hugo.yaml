@@ -35,9 +35,6 @@ markup:
 
 menu:
   main:
-    - name: Blog
-      url: /blog/
-      weight: 20
     - name: Github
       url: https://github.com/gnmic/operator
       weight: 50
