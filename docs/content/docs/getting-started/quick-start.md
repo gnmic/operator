@@ -174,7 +174,7 @@ kind: Pipeline
 metadata:
   name: core-telemetry
 spec:
-  clusterRef: gnmic-cluster
+  clusterRef: core-cluster
   enabled: true
   # Select targets by label
   targetSelectors:
@@ -198,7 +198,7 @@ kind: Pipeline
 metadata:
   name: core-telemetry
 spec:
-  clusterRef: gnmic-cluster
+  clusterRef: core-cluster
   enabled: true
   # Select targets by label
   targetSelectors:

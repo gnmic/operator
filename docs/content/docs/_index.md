@@ -34,7 +34,7 @@ gNMIc Operator integrates seamlessly with other Operators (e.g: [CertManager](ht
 | **Subscription** | Defines what data to collect (paths, mode, interval) |
 | **Output** | Where telemetry data is sent (Prometheus, Kafka, etc.) |
 | **Input** | External data sources (Kafka, NATS) and relays between clusters |
-| **TargetSource** | An autodiscovery targetmechanism |
+| **TargetSource** | A Target autodiscovery mechanism |
 
 ## Quick Links
 
