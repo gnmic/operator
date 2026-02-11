@@ -9,7 +9,7 @@ import (
 
 // buildSubscriptionConfig creates a gNMIc SubscriptionConfig from a Subscription
 // TODO: complete the mapping from spec to config
-func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.SubscriptionSpec, outputs []string) *gapi.SubscriptionConfig {
+func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.SubscriptionSpec, outputs []string, allSubs map[string]gnmicv1alpha1.SubscriptionSpec) *gapi.SubscriptionConfig {
 	mode, streamMode := specModeToConfig(subscription.Mode)
 
 	config := &gapi.SubscriptionConfig{
@@ -20,6 +20,8 @@ func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.Subscript
 		StreamMode:  streamMode,
 		UpdatesOnly: subscription.UpdatesOnly,
 		Depth:       subscription.Depth,
+		Target:      subscription.Target,
+		Outputs:     outputs,
 	}
 
 	if len(outputs) > 0 {
@@ -35,7 +37,27 @@ func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.Subscript
 	if subscription.HeartbeatInterval.Duration > 0 {
 		config.HeartbeatInterval = &subscription.HeartbeatInterval.Duration
 	}
-
+	if subscription.Qos != nil {
+		config.Qos = subscription.Qos
+	}
+	if subscription.History != nil {
+		config.History = &gapi.HistoryConfig{
+			Snapshot: subscription.History.Snapshot.Time,
+			Start:    subscription.History.Start.Time,
+			End:      subscription.History.End.Time,
+		}
+	}
+	// handle streamSubscriptions
+	if len(subscription.StreamSubscriptions) > 0 {
+		config.StreamSubscriptions = make([]*gapi.SubscriptionConfig, len(subscription.StreamSubscriptions))
+		for i, streamSubscription := range subscription.StreamSubscriptions {
+			streamSubSpec, ok := allSubs[streamSubscription]
+			if !ok {
+				continue
+			}
+			config.StreamSubscriptions[i] = buildSubscriptionConfig(streamSubscription, &streamSubSpec, nil, nil)
+		}
+	}
 	return config
 }
 

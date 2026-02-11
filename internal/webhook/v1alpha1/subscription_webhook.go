@@ -19,8 +19,11 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -79,9 +82,7 @@ func (d *SubscriptionCustomDefaulter) Default(_ context.Context, obj runtime.Obj
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
-type SubscriptionCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+type SubscriptionCustomValidator struct{}
 
 var _ webhook.CustomValidator = &SubscriptionCustomValidator{}
 
@@ -93,33 +94,88 @@ func (v *SubscriptionCustomValidator) ValidateCreate(_ context.Context, obj runt
 	}
 	subscriptionlog.Info("Validation for Subscription upon creation", "name", subscription.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
+	return nil, validateSubscriptionSpec(&subscription.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
-func (v *SubscriptionCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *SubscriptionCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	subscription, ok := newObj.(*operatorv1alpha1.Subscription)
 	if !ok {
-		return nil, fmt.Errorf("expected a Subscription object for the newObj but got %T", newObj)
+		return nil, fmt.Errorf("expected a Subscription object but got %T", newObj)
 	}
 	subscriptionlog.Info("Validation for Subscription upon update", "name", subscription.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
-
-	return nil, nil
+	return nil, validateSubscriptionSpec(&subscription.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
-func (v *SubscriptionCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *SubscriptionCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	subscription, ok := obj.(*operatorv1alpha1.Subscription)
 	if !ok {
 		return nil, fmt.Errorf("expected a Subscription object but got %T", obj)
 	}
 	subscriptionlog.Info("Validation for Subscription upon deletion", "name", subscription.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
 	return nil, nil
+}
+
+// validateSubscriptionSpec validates the SubscriptionSpec fields.
+func validateSubscriptionSpec(spec *operatorv1alpha1.SubscriptionSpec) error {
+	var allErrs field.ErrorList
+	specPath := field.NewPath("spec")
+
+	// at least one path is required unless streamSubscriptions are provided.
+	if len(spec.Paths) == 0 && len(spec.StreamSubscriptions) == 0 {
+		allErrs = append(allErrs, field.Required(
+			specPath.Child("paths"),
+			"at least one path is required when streamSubscriptions is empty",
+		))
+	}
+
+	// when streamSubscriptions are set, the mode must be a STREAM mode.
+	if len(spec.StreamSubscriptions) > 0 && !strings.HasPrefix(spec.Mode, "STREAM") {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("mode"),
+			spec.Mode,
+			"mode must be STREAM when streamSubscriptions are set",
+		))
+	}
+
+	// sampleInterval must be positive when set.
+	if spec.SampleInterval.Duration < 0 {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("sampleInterval"),
+			spec.SampleInterval.Duration.String(),
+			"sampleInterval must be a positive duration",
+		))
+	}
+
+	// heartbeatInterval must be positive when set.
+	if spec.HeartbeatInterval.Duration < 0 {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("heartbeatInterval"),
+			spec.HeartbeatInterval.Duration.String(),
+			"heartbeatInterval must be a positive duration",
+		))
+	}
+
+	// history: start must be before end when both are set.
+	if spec.History != nil {
+		if !spec.History.Start.IsZero() && !spec.History.End.IsZero() && spec.History.Start.Before(&spec.History.End) {
+			allErrs = append(allErrs, field.Invalid(
+				specPath.Child("history", "start"),
+				spec.History.Start,
+				"history start must be before end",
+			))
+		}
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+	return apierrors.NewInvalid(
+		operatorv1alpha1.GroupVersion.WithKind("Subscription").GroupKind(),
+		"",
+		allErrs,
+	)
 }

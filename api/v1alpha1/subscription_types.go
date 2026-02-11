@@ -24,10 +24,12 @@ import (
 type SubscriptionSpec struct {
 	// The gNMI prefix to subscribe to
 	Prefix string `json:"prefix,omitempty"`
+	// The gNMI target to subscribe to
+	Target string `json:"target,omitempty"`
 	// The gNMI paths to subscribe to
 	Paths []string `json:"paths,omitempty"`
 	// The gNMI SubscriptionList mode (ONCE, STREAM/SAMPLE, STREAM/ON_CHANGE, STREAM/TARGET_DEFINED or POLL)
-	// +kubebuilder:validation:Enum=ONCE;STREAM/SAMPLE;STREAM/ON_CHANGE;STREAM/TARGET_DEFINED;POLL
+	// +kubebuilder:validation:Enum=ONCE;STREAM;STREAM/SAMPLE;STREAM/ON_CHANGE;STREAM/TARGET_DEFINED;POLL
 	Mode string `json:"mode,omitempty"`
 	// The gNMI Subscription sample interval
 	SampleInterval metav1.Duration `json:"sampleInterval,omitempty"`
@@ -42,6 +44,21 @@ type SubscriptionSpec struct {
 	// The gNMI Subscription encoding (JSON, BYTES, PROTO, ASCII, JSON_IETF)
 	// +kubebuilder:validation:Enum=JSON;BYTES;PROTO;ASCII;JSON_IETF
 	Encoding string `json:"encoding,omitempty"`
+	// The gNMI Subscription QoS (0-9)
+	Qos *uint32 `json:"qos,omitempty"`
+	// Whether to suppress redundant updates
+	SuppressRedundant bool `json:"suppressRedundant,omitempty"`
+	// The gNMI Subscription history configuration
+	History *SubscriptionHistoryConfig `json:"history,omitempty"`
+}
+
+type SubscriptionHistoryConfig struct {
+	// The gNMI Subscription history snapshot time
+	Snapshot metav1.Time `json:"snapshot,omitempty"`
+	// The gNMI Subscription history start time
+	Start metav1.Time `json:"start,omitempty"`
+	// The gNMI Subscription history end time
+	End metav1.Time `json:"end,omitempty"`
 }
 
 // SubscriptionStatus defines the observed state of Subscription

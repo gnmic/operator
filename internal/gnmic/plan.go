@@ -263,7 +263,7 @@ func (b *PlanBuilder) buildSubscriptions(plan *ApplyPlan, pipelineData *Pipeline
 			}
 		}
 
-		subConfig := buildSubscriptionConfig(subNN, &subSpec, outputs)
+		subConfig := buildSubscriptionConfig(subNN, &subSpec, outputs, pipelineData.Subscriptions)
 
 		plan.Subscriptions[subNN] = subConfig
 	}
