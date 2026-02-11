@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -79,9 +81,7 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
-type PipelineCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+type PipelineCustomValidator struct{}
 
 var _ webhook.CustomValidator = &PipelineCustomValidator{}
 
@@ -93,33 +93,82 @@ func (v *PipelineCustomValidator) ValidateCreate(_ context.Context, obj runtime.
 	}
 	pipelinelog.Info("Validation for Pipeline upon creation", "name", pipeline.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
+	return nil, validatePipelineSpec(&pipeline.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *PipelineCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	pipeline, ok := newObj.(*operatorv1alpha1.Pipeline)
 	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object for the newObj but got %T", newObj)
+		return nil, fmt.Errorf("expected a Pipeline object but got %T", newObj)
 	}
 	pipelinelog.Info("Validation for Pipeline upon update", "name", pipeline.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
-
-	return nil, nil
+	return nil, validatePipelineSpec(&pipeline.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *PipelineCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	pipeline, ok := obj.(*operatorv1alpha1.Pipeline)
 	if !ok {
 		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
 	}
 	pipelinelog.Info("Validation for Pipeline upon deletion", "name", pipeline.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
 	return nil, nil
+}
+
+// validatePipelineSpec validates the PipelineSpec fields.
+func validatePipelineSpec(spec *operatorv1alpha1.PipelineSpec) error {
+	var allErrs field.ErrorList
+	specPath := field.NewPath("spec")
+
+	// clusterRef is required.
+	if spec.ClusterRef == "" {
+		allErrs = append(allErrs, field.Required(
+			specPath.Child("clusterRef"),
+			"clusterRef is required",
+		))
+	}
+
+	// at least one data source must be configured:
+	// targets (selectors or refs), tunnel target policies (selectors or refs), or inputs (selectors or refs).
+	hasTargets := len(spec.TargetSelectors) > 0 || len(spec.TargetRefs) > 0
+	hasTunnelTargets := len(spec.TunnelTargetPolicySelectors) > 0 || len(spec.TunnelTargetPolicyRefs) > 0
+	hasInputs := len(spec.Inputs.InputSelectors) > 0 || len(spec.Inputs.InputRefs) > 0
+	if !hasTargets && !hasTunnelTargets && !hasInputs {
+		allErrs = append(allErrs, field.Required(
+			specPath,
+			"at least one data source is required: configure targetSelectors, targetRefs, tunnelTargetPolicySelectors, tunnelTargetPolicyRefs, or inputs",
+		))
+	}
+
+	// when targets or tunnel target policies are configured, at least one subscription source is required.
+	if hasTargets || hasTunnelTargets {
+		hasSubscriptions := len(spec.SubscriptionSelectors) > 0 || len(spec.SubscriptionRefs) > 0
+		if !hasSubscriptions {
+			allErrs = append(allErrs, field.Required(
+				specPath,
+				"at least one subscription is required when targets or tunnel target policies are configured: set subscriptionSelectors or subscriptionRefs",
+			))
+		}
+	}
+
+	// at least one output must be configured.
+	hasOutputs := len(spec.Outputs.OutputSelectors) > 0 || len(spec.Outputs.OutputRefs) > 0
+	if !hasOutputs {
+		allErrs = append(allErrs, field.Required(
+			specPath.Child("outputs"),
+			"at least one output is required: set outputSelectors or outputRefs",
+		))
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+	return apierrors.NewInvalid(
+		operatorv1alpha1.GroupVersion.WithKind("Pipeline").GroupKind(),
+		"",
+		allErrs,
+	)
 }
