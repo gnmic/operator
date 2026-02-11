@@ -19,8 +19,12 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -79,9 +83,7 @@ func (d *TargetCustomDefaulter) Default(_ context.Context, obj runtime.Object) e
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
-type TargetCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+type TargetCustomValidator struct{}
 
 var _ webhook.CustomValidator = &TargetCustomValidator{}
 
@@ -93,33 +95,84 @@ func (v *TargetCustomValidator) ValidateCreate(_ context.Context, obj runtime.Ob
 	}
 	targetlog.Info("Validation for Target upon creation", "name", target.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
+	return nil, validateTargetSpec(&target.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Target.
-func (v *TargetCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *TargetCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	target, ok := newObj.(*operatorv1alpha1.Target)
 	if !ok {
-		return nil, fmt.Errorf("expected a Target object for the newObj but got %T", newObj)
+		return nil, fmt.Errorf("expected a Target object but got %T", newObj)
 	}
 	targetlog.Info("Validation for Target upon update", "name", target.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
-
-	return nil, nil
+	return nil, validateTargetSpec(&target.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Target.
-func (v *TargetCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *TargetCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	target, ok := obj.(*operatorv1alpha1.Target)
 	if !ok {
 		return nil, fmt.Errorf("expected a Target object but got %T", obj)
 	}
 	targetlog.Info("Validation for Target upon deletion", "name", target.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
 	return nil, nil
+}
+
+// validateTargetSpec validates the TargetSpec fields.
+func validateTargetSpec(spec *operatorv1alpha1.TargetSpec) error {
+	var allErrs field.ErrorList
+	specPath := field.NewPath("spec")
+
+	// address is required.
+	if spec.Address == "" {
+		allErrs = append(allErrs, field.Required(
+			specPath.Child("address"),
+			"address is required",
+		))
+	} else {
+		// address must be a valid host:port.
+		host, portStr, err := net.SplitHostPort(spec.Address)
+		if err != nil {
+			allErrs = append(allErrs, field.Invalid(
+				specPath.Child("address"),
+				spec.Address,
+				"address must be in host:port format",
+			))
+		} else {
+			if host == "" {
+				allErrs = append(allErrs, field.Invalid(
+					specPath.Child("address"),
+					spec.Address,
+					"address must include a host",
+				))
+			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil || port < 1 || port > 65535 {
+				allErrs = append(allErrs, field.Invalid(
+					specPath.Child("address"),
+					spec.Address,
+					"port must be between 1 and 65535",
+				))
+			}
+		}
+	}
+
+	// profile is required.
+	if spec.Profile == "" {
+		allErrs = append(allErrs, field.Required(
+			specPath.Child("profile"),
+			"profile is required",
+		))
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+	return apierrors.NewInvalid(
+		operatorv1alpha1.GroupVersion.WithKind("Target").GroupKind(),
+		"",
+		allErrs,
+	)
 }
