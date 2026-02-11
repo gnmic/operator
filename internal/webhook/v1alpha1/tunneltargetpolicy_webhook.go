@@ -19,8 +19,11 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"regexp"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -79,9 +82,7 @@ func (d *TunnelTargetPolicyCustomDefaulter) Default(_ context.Context, obj runti
 //
 // NOTE: The +kubebuilder:object:generate=false marker prevents controller-gen from generating DeepCopy methods,
 // as this struct is used only for temporary operations and does not need to be deeply copied.
-type TunnelTargetPolicyCustomValidator struct {
-	// TODO(user): Add more fields as needed for validation
-}
+type TunnelTargetPolicyCustomValidator struct{}
 
 var _ webhook.CustomValidator = &TunnelTargetPolicyCustomValidator{}
 
@@ -93,33 +94,75 @@ func (v *TunnelTargetPolicyCustomValidator) ValidateCreate(_ context.Context, ob
 	}
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon creation", "name", tunneltargetpolicy.GetName())
 
-	// TODO(user): fill in your validation logic upon object creation.
-
-	return nil, nil
+	return nil, validateTunnelTargetPolicySpec(&tunneltargetpolicy.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
-func (v *TunnelTargetPolicyCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *TunnelTargetPolicyCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	tunneltargetpolicy, ok := newObj.(*operatorv1alpha1.TunnelTargetPolicy)
 	if !ok {
-		return nil, fmt.Errorf("expected a TunnelTargetPolicy object for the newObj but got %T", newObj)
+		return nil, fmt.Errorf("expected a TunnelTargetPolicy object but got %T", newObj)
 	}
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon update", "name", tunneltargetpolicy.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
-
-	return nil, nil
+	return nil, validateTunnelTargetPolicySpec(&tunneltargetpolicy.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
-func (v *TunnelTargetPolicyCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *TunnelTargetPolicyCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	tunneltargetpolicy, ok := obj.(*operatorv1alpha1.TunnelTargetPolicy)
 	if !ok {
 		return nil, fmt.Errorf("expected a TunnelTargetPolicy object but got %T", obj)
 	}
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon deletion", "name", tunneltargetpolicy.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
 	return nil, nil
+}
+
+// validateTunnelTargetPolicySpec validates the TunnelTargetPolicySpec fields.
+func validateTunnelTargetPolicySpec(spec *operatorv1alpha1.TunnelTargetPolicySpec) error {
+	var allErrs field.ErrorList
+	specPath := field.NewPath("spec")
+
+	// profile is required.
+	if spec.Profile == "" {
+		allErrs = append(allErrs, field.Required(
+			specPath.Child("profile"),
+			"profile is required",
+		))
+	}
+
+	// validate match regex patterns when set.
+	if spec.Match != nil {
+		matchPath := specPath.Child("match")
+
+		if spec.Match.Type != "" {
+			if _, err := regexp.Compile(spec.Match.Type); err != nil {
+				allErrs = append(allErrs, field.Invalid(
+					matchPath.Child("type"),
+					spec.Match.Type,
+					fmt.Sprintf("must be a valid regex: %v", err),
+				))
+			}
+		}
+
+		if spec.Match.ID != "" {
+			if _, err := regexp.Compile(spec.Match.ID); err != nil {
+				allErrs = append(allErrs, field.Invalid(
+					matchPath.Child("id"),
+					spec.Match.ID,
+					fmt.Sprintf("must be a valid regex: %v", err),
+				))
+			}
+		}
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+	return apierrors.NewInvalid(
+		operatorv1alpha1.GroupVersion.WithKind("TunnelTargetPolicy").GroupKind(),
+		"",
+		allErrs,
+	)
 }
