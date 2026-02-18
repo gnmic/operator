@@ -21,6 +21,12 @@ spec:
     - jsonPath: .spec.profile
       name: Profile
       type: string
+    - jsonPath: .status.clusters
+      name: Clusters
+      type: integer
+    - jsonPath: .status.connectionState
+      name: State
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -57,24 +63,59 @@ spec:
             - profile
             type: object
           status:
-            description: TargetStatus defines the observed state of Target
+            description: |-
+              TargetStatus defines the observed state of Target.
+              A single Target may be collected by multiple Clusters (via different Pipelines),
+              so the status is reported per-cluster.
             properties:
+              clusterStates:
+                additionalProperties:
+                  description: ClusterTargetState represents the state of a target
+                    on a specific gNMIc cluster pod.
+                  properties:
+                    connectionState:
+                      description: The gNMI connection state (CONNECTING, READY, TRANSIENT_FAILURE,
+                        etc.).
+                      type: string
+                    failedReason:
+                      description: The reason for failure when state is "failed".
+                      type: string
+                    lastUpdated:
+                      description: When this state was last updated by the gNMIc pod.
+                      format: date-time
+                      type: string
+                    pod:
+                      description: The pod within the cluster that currently owns
+                        this target.
+                      type: string
+                    state:
+                      description: The target's operational state (starting, running,
+                        stopping, stopped, failed).
+                      type: string
+                    subscriptions:
+                      additionalProperties:
+                        type: string
+                      description: Per-subscription state (subscription name -> running/stopped).
+                      type: object
+                  required:
+                  - pod
+                  type: object
+                description: |-
+                  Per-cluster target state, keyed by Cluster CR name.
+                  A target may be collected by multiple clusters (via different pipelines).
+                type: object
+              clusters:
+                description: Number of clusters currently collecting this target.
+                format: int32
+                type: integer
               connectionState:
-                description: The connection state of the target
-                type: string
-              lastConnected:
-                format: date-time
-                type: string
-              lastDisconnected:
-                format: date-time
-                type: string
-              lastError:
+                description: |-
+                  Aggregate connection state across all clusters.
+                  READY if all clusters report READY, DEGRADED if any do not.
+                  Empty when no clusters are collecting this target.
                 type: string
             required:
-            - connectionState
-            - lastConnected
-            - lastDisconnected
-            - lastError
+            - clusters
             type: object
         type: object
     served: true

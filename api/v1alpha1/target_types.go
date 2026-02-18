@@ -28,19 +28,46 @@ type TargetSpec struct {
 	Profile string `json:"profile"`
 }
 
-// TargetStatus defines the observed state of Target
+// TargetStatus defines the observed state of Target.
+// A single Target may be collected by multiple Clusters (via different Pipelines),
+// so the status is reported per-cluster.
 type TargetStatus struct {
-	// The connection state of the target
-	ConnectionState  string      `json:"connectionState"`
-	LastConnected    metav1.Time `json:"lastConnected"`
-	LastDisconnected metav1.Time `json:"lastDisconnected"`
-	LastError        string      `json:"lastError"`
+	// Number of clusters currently collecting this target.
+	Clusters int32 `json:"clusters"`
+	// Aggregate connection state across all clusters.
+	// READY if all clusters report READY, DEGRADED if any do not.
+	// Empty when no clusters are collecting this target.
+	ConnectionState string `json:"connectionState,omitempty"`
+	// Per-cluster target state, keyed by Cluster CR name.
+	// A target may be collected by multiple clusters (via different pipelines).
+	// +optional
+	ClusterStates map[string]ClusterTargetState `json:"clusterStates,omitempty"`
+}
+
+// ClusterTargetState represents the state of a target on a specific gNMIc cluster pod.
+type ClusterTargetState struct {
+	// The pod within the cluster that currently owns this target.
+	Pod string `json:"pod"`
+	// The target's operational state (starting, running, stopping, stopped, failed).
+	State string `json:"state,omitempty"`
+	// The reason for failure when state is "failed".
+	// +optional
+	FailedReason string `json:"failedReason,omitempty"`
+	// The gNMI connection state (CONNECTING, READY, TRANSIENT_FAILURE, etc.).
+	ConnectionState string `json:"connectionState,omitempty"`
+	// Per-subscription state (subscription name -> running/stopped).
+	// +optional
+	Subscriptions map[string]string `json:"subscriptions,omitempty"`
+	// When this state was last updated by the gNMIc pod.
+	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.spec.address`
 // +kubebuilder:printcolumn:name="Profile",type=string,JSONPath=`.spec.profile`
+// +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusters`
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.connectionState`
 
 // Target is the Schema for the targets API
 type Target struct {

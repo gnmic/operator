@@ -1978,13 +1978,24 @@ func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *
 		}
 	}
 
-	// update status if changed
+	// update status if changed, with retry on conflict
 	if !pipelineStatusEqual(pipeline.Status, newStatus) {
-		pipeline.Status = newStatus
-		if err := r.Status().Update(ctx, pipeline); err != nil {
-			return fmt.Errorf("failed to update pipeline status: %w", err)
+		pipelineNN := types.NamespacedName{Name: pipeline.Name, Namespace: pipeline.Namespace}
+		for attempt := 0; attempt < 5; attempt++ {
+			// re-fetch to get the latest resourceVersion
+			if err := r.Get(ctx, pipelineNN, pipeline); err != nil {
+				return fmt.Errorf("failed to re-fetch pipeline: %w", err)
+			}
+			pipeline.Status = newStatus
+			if err := r.Status().Update(ctx, pipeline); err != nil {
+				if errors.IsConflict(err) {
+					continue
+				}
+				return fmt.Errorf("failed to update pipeline status: %w", err)
+			}
+			logger.Info("updated pipeline status", "pipeline", pipeline.Name, "targets", newStatus.TargetsCount)
+			break
 		}
-		logger.Info("updated pipeline status", "pipeline", pipeline.Name, "targets", newStatus.TargetsCount)
 	}
 
 	return nil
@@ -2032,8 +2043,21 @@ func (r *ClusterReconciler) updatePipelineStatusWithError(ctx context.Context, p
 		},
 	}
 
-	pipeline.Status = newStatus
-	return r.Status().Update(ctx, pipeline)
+	pipelineNN := types.NamespacedName{Name: pipeline.Name, Namespace: pipeline.Namespace}
+	for attempt := 0; attempt < 5; attempt++ {
+		if err := r.Get(ctx, pipelineNN, pipeline); err != nil {
+			return fmt.Errorf("failed to re-fetch pipeline: %w", err)
+		}
+		pipeline.Status = newStatus
+		if err := r.Status().Update(ctx, pipeline); err != nil {
+			if errors.IsConflict(err) {
+				continue
+			}
+			return fmt.Errorf("failed to update pipeline status: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("failed to update pipeline status after retries: conflict")
 }
 
 // listPipelinesForCluster returns all enabled Pipelines that reference this Cluster
