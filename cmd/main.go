@@ -178,6 +178,13 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	if err = (&controller.TargetStateReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "TargetState")
+		os.Exit(1)
+	}
 	if err := (&controller.TunnelTargetPolicyReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
