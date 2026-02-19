@@ -30,6 +30,7 @@ type TargetProfileSpec struct {
 	TLS *TargetTLSConfig `json:"tls,omitempty"`
 
 	// Target connection timeout
+	// +kubebuilder:default="10s"
 	Timeout metav1.Duration `json:"timeout,omitempty"`
 
 	// default is 2 seconds
@@ -39,6 +40,7 @@ type TargetProfileSpec struct {
 
 	// The gNMI Subscription encoding (JSON, BYTES, PROTO, ASCII, JSON_IETF)
 	// +kubebuilder:validation:Enum=JSON;BYTES;PROTO;ASCII;JSON_IETF
+	// +kubebuilder:default="JSON"
 	Encoding string `json:"encoding,omitempty"`
 
 	// The labels to add to the target's updates

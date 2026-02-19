@@ -19,8 +19,11 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -106,8 +109,14 @@ func (v *TargetProfileCustomValidator) ValidateUpdate(_ context.Context, oldObj,
 	}
 	targetprofilelog.Info("Validation for TargetProfile upon update", "name", targetprofile.GetName())
 
-	// TODO(user): fill in your validation logic upon object update.
-
+	errs := validateTargetProfileSpec(&targetprofile.Spec)
+	if len(errs) > 0 {
+		return nil, apierrors.NewInvalid(
+			operatorv1alpha1.GroupVersion.WithKind("TargetProfile").GroupKind(),
+			targetprofile.GetName(),
+			errs,
+		)
+	}
 	return nil, nil
 }
 
@@ -119,7 +128,52 @@ func (v *TargetProfileCustomValidator) ValidateDelete(ctx context.Context, obj r
 	}
 	targetprofilelog.Info("Validation for TargetProfile upon deletion", "name", targetprofile.GetName())
 
-	// TODO(user): fill in your validation logic upon object deletion.
-
+	errs := validateTargetProfileSpec(&targetprofile.Spec)
+	if len(errs) > 0 {
+		return nil, apierrors.NewInvalid(
+			operatorv1alpha1.GroupVersion.WithKind("TargetProfile").GroupKind(),
+			targetprofile.GetName(),
+			errs,
+		)
+	}
 	return nil, nil
+}
+
+func validateTargetProfileSpec(spec *operatorv1alpha1.TargetProfileSpec) field.ErrorList {
+	var allErrs field.ErrorList
+	specPath := field.NewPath("spec")
+
+	if spec.Timeout.Duration < 1*time.Second {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("timeout"), spec.Timeout.Duration, "timeout must be at least 1 second"))
+	}
+	if spec.RetryTimer.Duration < 1*time.Second {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("retryTimer"), spec.RetryTimer.Duration, "retry timer must be at least 1 second"))
+	}
+	if spec.Encoding != "JSON" && spec.Encoding != "BYTES" && spec.Encoding != "PROTO" && spec.Encoding != "ASCII" && spec.Encoding != "JSON_IETF" {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("encoding"), spec.Encoding, "encoding must be one of JSON, BYTES, PROTO, ASCII, or JSON_IETF"))
+	}
+
+	if spec.TLS != nil {
+		tlsPath := specPath.Child("tls")
+		if spec.TLS.MaxVersion != "" && spec.TLS.MaxVersion != "1.1" && spec.TLS.MaxVersion != "1.2" && spec.TLS.MaxVersion != "1.3" {
+			allErrs = append(allErrs, field.Invalid(tlsPath.Child("maxVersion"), spec.TLS.MaxVersion, "TLS max version must be one of 1.1, 1.2, or 1.3"))
+		}
+		if spec.TLS.MinVersion != "" && spec.TLS.MinVersion != "1.1" && spec.TLS.MinVersion != "1.2" && spec.TLS.MinVersion != "1.3" {
+			allErrs = append(allErrs, field.Invalid(tlsPath.Child("minVersion"), spec.TLS.MinVersion, "TLS min version must be one of 1.1, 1.2, or 1.3"))
+		}
+	}
+	if spec.TCPKeepAlive != nil && spec.TCPKeepAlive.Duration < 1*time.Second {
+		tcpKeepAlivePath := specPath.Child("tcpKeepAlive")
+		allErrs = append(allErrs, field.Invalid(tcpKeepAlivePath.Child("duration"), spec.TCPKeepAlive.Duration, "TCP keep-alive interval must be at least 1 second"))
+	}
+	if spec.GRCPKeepAlive != nil {
+		grpcKeepAlivePath := specPath.Child("grpcKeepAlive")
+		if spec.GRCPKeepAlive.Time.Duration < 1*time.Second {
+			allErrs = append(allErrs, field.Invalid(grpcKeepAlivePath.Child("time", "duration"), spec.GRCPKeepAlive.Time.Duration, "gRPC keep-alive time must be at least 1 second"))
+		}
+		if spec.GRCPKeepAlive.Timeout.Duration < 1*time.Second {
+			allErrs = append(allErrs, field.Invalid(grpcKeepAlivePath.Child("timeout"), spec.GRCPKeepAlive.Timeout.Duration, "gRPC keep-alive timeout must be at least 1 second"))
+		}
+	}
+	return allErrs
 }
