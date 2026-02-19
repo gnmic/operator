@@ -94,7 +94,7 @@ func (v *TunnelTargetPolicyCustomValidator) ValidateCreate(_ context.Context, ob
 	}
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon creation", "name", tunneltargetpolicy.GetName())
 
-	return nil, validateTunnelTargetPolicySpec(&tunneltargetpolicy.Spec)
+	return nil, validateTunnelTargetPolicySpec(tunneltargetpolicy.GetName(), &tunneltargetpolicy.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
@@ -105,7 +105,7 @@ func (v *TunnelTargetPolicyCustomValidator) ValidateUpdate(_ context.Context, _,
 	}
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon update", "name", tunneltargetpolicy.GetName())
 
-	return nil, validateTunnelTargetPolicySpec(&tunneltargetpolicy.Spec)
+	return nil, validateTunnelTargetPolicySpec(tunneltargetpolicy.GetName(), &tunneltargetpolicy.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
@@ -120,7 +120,7 @@ func (v *TunnelTargetPolicyCustomValidator) ValidateDelete(_ context.Context, ob
 }
 
 // validateTunnelTargetPolicySpec validates the TunnelTargetPolicySpec fields.
-func validateTunnelTargetPolicySpec(spec *operatorv1alpha1.TunnelTargetPolicySpec) error {
+func validateTunnelTargetPolicySpec(name string, spec *operatorv1alpha1.TunnelTargetPolicySpec) error {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
 
@@ -162,7 +162,7 @@ func validateTunnelTargetPolicySpec(spec *operatorv1alpha1.TunnelTargetPolicySpe
 	}
 	return apierrors.NewInvalid(
 		operatorv1alpha1.GroupVersion.WithKind("TunnelTargetPolicy").GroupKind(),
-		"",
+		name,
 		allErrs,
 	)
 }

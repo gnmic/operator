@@ -95,7 +95,7 @@ func (v *TargetCustomValidator) ValidateCreate(_ context.Context, obj runtime.Ob
 	}
 	targetlog.Info("Validation for Target upon creation", "name", target.GetName())
 
-	return nil, validateTargetSpec(&target.Spec)
+	return nil, validateTargetSpec(target.GetName(), &target.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Target.
@@ -106,7 +106,7 @@ func (v *TargetCustomValidator) ValidateUpdate(_ context.Context, _, newObj runt
 	}
 	targetlog.Info("Validation for Target upon update", "name", target.GetName())
 
-	return nil, validateTargetSpec(&target.Spec)
+	return nil, validateTargetSpec(target.GetName(), &target.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Target.
@@ -121,7 +121,7 @@ func (v *TargetCustomValidator) ValidateDelete(_ context.Context, obj runtime.Ob
 }
 
 // validateTargetSpec validates the TargetSpec fields.
-func validateTargetSpec(spec *operatorv1alpha1.TargetSpec) error {
+func validateTargetSpec(name string, spec *operatorv1alpha1.TargetSpec) error {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
 
@@ -172,7 +172,7 @@ func validateTargetSpec(spec *operatorv1alpha1.TargetSpec) error {
 	}
 	return apierrors.NewInvalid(
 		operatorv1alpha1.GroupVersion.WithKind("Target").GroupKind(),
-		"",
+		name,
 		allErrs,
 	)
 }

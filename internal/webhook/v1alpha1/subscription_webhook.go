@@ -94,7 +94,7 @@ func (v *SubscriptionCustomValidator) ValidateCreate(_ context.Context, obj runt
 	}
 	subscriptionlog.Info("Validation for Subscription upon creation", "name", subscription.GetName())
 
-	return nil, validateSubscriptionSpec(&subscription.Spec)
+	return nil, validateSubscriptionSpec(subscription.GetName(), &subscription.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
@@ -105,7 +105,7 @@ func (v *SubscriptionCustomValidator) ValidateUpdate(_ context.Context, _, newOb
 	}
 	subscriptionlog.Info("Validation for Subscription upon update", "name", subscription.GetName())
 
-	return nil, validateSubscriptionSpec(&subscription.Spec)
+	return nil, validateSubscriptionSpec(subscription.GetName(), &subscription.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
@@ -120,7 +120,7 @@ func (v *SubscriptionCustomValidator) ValidateDelete(_ context.Context, obj runt
 }
 
 // validateSubscriptionSpec validates the SubscriptionSpec fields.
-func validateSubscriptionSpec(spec *operatorv1alpha1.SubscriptionSpec) error {
+func validateSubscriptionSpec(name string, spec *operatorv1alpha1.SubscriptionSpec) error {
 	var allErrs field.ErrorList
 	specPath := field.NewPath("spec")
 
@@ -175,7 +175,7 @@ func validateSubscriptionSpec(spec *operatorv1alpha1.SubscriptionSpec) error {
 	}
 	return apierrors.NewInvalid(
 		operatorv1alpha1.GroupVersion.WithKind("Subscription").GroupKind(),
-		"",
+		name,
 		allErrs,
 	)
 }
