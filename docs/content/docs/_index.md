@@ -11,7 +11,7 @@ Welcome to the gNMIc Operator documentation. This guide will help you deploy and
 
 ## What is gNMIc Operator?
 
-gNMIc Operator is a Kubernetes operator that manages the lifecycle of [gNMIc](https://gnmic.dev) collectors. It allows you to:
+gNMIc Operator is a Kubernetes operator that manages the lifecycle of [gNMIc](https://gnmic.openconfig.net) collectors. It allows you to:
 
 - **Deploy** gNMIc collectors as StatefulSets with automatic service discovery
 - **Configure** targets, subscriptions, inputs and outputs using Kubernetes Custom Resources
