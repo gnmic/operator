@@ -8,3 +8,18 @@ spec:
     spec:
       containers:
       - name: manager
+        args:
+        - "--health-probe-bind-address=:8081"
+        - "--metrics-bind-address=:8080"
+        - "--api-bind-address=:8082"
+        - "--leader-elect"
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+          name: metrics
+        - containerPort: 8081
+          protocol: TCP
+          name: health
+        - containerPort: 8082
+          protocol: TCP
+          name: api
