@@ -38,6 +38,9 @@ spec:
             {{- end }}
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:8081
+            {{- if .Values.api.port }}
+            - --api-bind-address=:{{ .Values.api.port }}
+            {{- end }}
           ports:
             {{- if .Values.webhook.enabled }}
             - name: webhook
@@ -47,6 +50,11 @@ spec:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
               protocol: TCP
+            {{- if .Values.api.port }}
+            - name: api
+              containerPort: {{ .Values.api.port }}
+              protocol: TCP
+            {{- end }}
             - name: health
               containerPort: 8081
               protocol: TCP

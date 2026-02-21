@@ -1,0 +1,16 @@
+{{- if .Values.api.port }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gnmic-operator.fullname" . }}-api
+  labels:
+    {{- include "gnmic-operator.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: {{ .Values.api.port }}
+      targetPort: api
+      protocol: TCP
+      name: api
+  selector:
+    {{- include "gnmic-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

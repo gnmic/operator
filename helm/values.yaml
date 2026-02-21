@@ -65,6 +65,11 @@ metrics:
     interval: 30s
     scrapeTimeout: 10s
 
+# Operator API endpoint configuration
+# Set to a port number to enable, or empty to disable
+api:
+  port: 8082
+
 # Health probes configuration
 health:
   livenessProbe:
