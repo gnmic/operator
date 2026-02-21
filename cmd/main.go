@@ -17,8 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -31,10 +33,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -58,13 +62,17 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var devMode bool
+	var apiAddr string
+	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
+	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	opts := zap.Options{
-		Development: true,
+		Development: devMode,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -93,11 +101,11 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
-	if err = (&controller.ClusterReconciler{
+	clusterReconciler := &controller.ClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if err = clusterReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
 		os.Exit(1)
 	}
@@ -210,6 +218,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	if apiAddr != "" {
+		apiServer := apiserver.New(apiAddr, clusterReconciler)
+		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+			errCh := make(chan error)
+			go func() {
+				errCh <- apiServer.Server.ListenAndServe()
+			}()
+			select {
+			case err := <-errCh:
+				return err
+			case <-ctx.Done():
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				return apiServer.Server.Shutdown(ctx)
+			}
+		}))
+		if err != nil {
+			setupLog.Error(err, "unable to add api server")
+			os.Exit(1)
+		}
+	}
+
+	// start manager
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")

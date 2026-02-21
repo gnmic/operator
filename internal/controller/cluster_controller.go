@@ -31,6 +31,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -44,7 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -64,6 +65,11 @@ import (
 type ClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	m *sync.RWMutex
+	// key is namespace/name of the cluster
+	// value is the apply plan for the cluster
+	plans map[string]*gnmic.ApplyPlan
 }
 
 const (
@@ -157,6 +163,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			if cleanupErr := r.cleanupPrometheusServices(ctx, &cluster); cleanupErr != nil {
 				return ctrl.Result{}, err
 			}
+			// cleanup plan
+			r.cleanupPlan(cluster.Namespace, cluster.Name)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -165,6 +173,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// handle deletion with a finalizer to guarantee statefulset, headless service and Prometheus output services cleanup
 	if !cluster.DeletionTimestamp.IsZero() {
+		// cleanup plan
+		r.cleanupPlan(cluster.Namespace, cluster.Name)
 		// if the Cluster CR is being deleted, cleanup related resources
 		if controllerutil.ContainsFinalizer(&cluster, clusterFinalizer) {
 			nn := types.NamespacedName{Name: resourcePrefix + cluster.Name, Namespace: cluster.Namespace}
@@ -299,7 +309,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("reconciled cluster statefulset", "replicas", pointer.Int32Deref(statefulSet.Spec.Replicas, 0), "image", statefulSet.Spec.Template.Spec.Containers[0].Image)
+	logger.Info("reconciled cluster statefulset", "replicas", ptr.Deref(statefulSet.Spec.Replicas, 0), "image", statefulSet.Spec.Template.Spec.Containers[0].Image)
 
 	// retrieve enabled pipelines referencing this cluster
 	pipelines, err := r.listPipelinesForCluster(ctx, &cluster)
@@ -467,15 +477,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// debug: pretty-print the apply plan
-	prettyPlan, err := json.MarshalIndent(applyPlan, "", "  ")
-	if err != nil {
-		logger.Error(err, "failed to marshal applyPlan (pretty-print) for debug")
-		fmt.Printf("ApplyPlan (debug): %+v\n", applyPlan)
-	} else {
-		fmt.Printf("ApplyPlan (debug): %s\n", string(prettyPlan))
-	}
+	r.m.Lock()
+	r.plans[cluster.Namespace+"/"+cluster.Name] = applyPlan
+	r.m.Unlock()
 
 	// reconcile Prometheus output services
 	if err := r.reconcilePrometheusServices(ctx, &cluster, pipelineDataMap, applyPlan.PrometheusPorts); err != nil {
@@ -830,8 +834,10 @@ func (p generationOrLabelsChangedPredicate) Update(e event.UpdateEvent) bool {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	specOrLabelsPredicate := generationOrLabelsChangedPredicate{}
+	r.m = &sync.RWMutex{}
+	r.plans = make(map[string]*gnmic.ApplyPlan)
 
+	specOrLabelsPredicate := generationOrLabelsChangedPredicate{}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.Cluster{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
@@ -2587,7 +2593,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 				VolumeSource: corev1.VolumeSource{
 					CSI: &corev1.CSIVolumeSource{
 						Driver:   "csi.cert-manager.io",
-						ReadOnly: pointer.Bool(true),
+						ReadOnly: ptr.To(true),
 						VolumeAttributes: map[string]string{
 							"csi.cert-manager.io/issuer-name": cluster.Spec.API.TLS.IssuerRef,
 							"csi.cert-manager.io/issuer-kind": "Issuer",
@@ -2616,7 +2622,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 							{Key: "tls.key", Path: fmt.Sprintf("%s/tls.key", podName)},
 							{Key: "ca.crt", Path: fmt.Sprintf("%s/ca.crt", podName)},
 						},
-						Optional: pointer.Bool(true),
+						Optional: ptr.To(true),
 					},
 				})
 			}
@@ -2679,7 +2685,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 					LocalObjectReference: corev1.LocalObjectReference{
 						Name: controllerCACMName,
 					},
-					Optional: pointer.Bool(true), // Optional in case controller CA isn't configured
+					Optional: ptr.To(true), // Optional in case controller CA isn't configured
 				},
 			},
 		})
@@ -2701,7 +2707,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 					VolumeSource: corev1.VolumeSource{
 						CSI: &corev1.CSIVolumeSource{
 							Driver:   "csi.cert-manager.io",
-							ReadOnly: pointer.Bool(true),
+							ReadOnly: ptr.To(true),
 							VolumeAttributes: map[string]string{
 								"csi.cert-manager.io/issuer-name": cluster.Spec.GRPCTunnel.TLS.IssuerRef,
 								"csi.cert-manager.io/issuer-kind": "Issuer",
@@ -2726,7 +2732,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 								{Key: "tls.key", Path: fmt.Sprintf("%s/tls.key", podName)},
 								{Key: "ca.crt", Path: fmt.Sprintf("%s/ca.crt", podName)},
 							},
-							Optional: pointer.Bool(true),
+							Optional: ptr.To(true),
 						},
 					})
 				}
@@ -2806,7 +2812,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 					VolumeSource: corev1.VolumeSource{
 						CSI: &corev1.CSIVolumeSource{
 							Driver:   "csi.cert-manager.io",
-							ReadOnly: pointer.Bool(true),
+							ReadOnly: ptr.To(true),
 							VolumeAttributes: map[string]string{
 								"csi.cert-manager.io/issuer-name": cluster.Spec.ClientTLS.IssuerRef,
 								"csi.cert-manager.io/issuer-kind": "Issuer",
@@ -2823,7 +2829,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
 							SecretName: clientCertSecretName,
-							Optional:   pointer.Bool(true),
+							Optional:   ptr.To(true),
 						},
 					},
 				})
