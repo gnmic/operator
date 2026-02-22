@@ -115,8 +115,8 @@ github.com/onsi/ginkgo/v2 v2.27.3 h1:ICsZJ8JoYafeXFFlFAG75a7CxMsJHwgKwtO+82SE9L8
 github.com/onsi/ginkgo/v2 v2.27.3/go.mod h1:ArE1D/XhNXBXCBkKOLkbsb2c81dQHCRcF5zwn/ykDRo=
 github.com/onsi/gomega v1.38.3 h1:eTX+W6dobAYfFeGC2PV6RwXRu/MyT+cQguijutvkpSM=
 github.com/onsi/gomega v1.38.3/go.mod h1:ZCU1pkQcXDO5Sl9/VVEGlDyp+zm0m1cmeG5TOzLgdh4=
-github.com/openconfig/gnmic/pkg/api v0.1.9 h1:XPln4mDgC2Bjh9VqE+BY1LLvQrk1tGHZLivDnCR3Nbg=
-github.com/openconfig/gnmic/pkg/api v0.1.9/go.mod h1:Sbjj4ITlGT1w2cXt1qEMU6jBYpRm6aoR6Spe4Do86ec=
+github.com/openconfig/gnmic/pkg/api v0.1.10 h1:zU57bogHrnraDFCYDnxHZB8Hcd53bWx1fDkRTPw/R2w=
+github.com/openconfig/gnmic/pkg/api v0.1.10/go.mod h1:6PntONfjCMq3XzsDfWMkLeoVuBRbkm2foQO5m6PeYo0=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

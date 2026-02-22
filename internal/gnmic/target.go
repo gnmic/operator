@@ -83,6 +83,16 @@ func buildTargetConfig(target *gnmicv1alpha1.Target, profile *gnmicv1alpha1.Targ
 		config.CipherSuites = profile.TLS.CipherSuites
 	}
 
+	if profile.TCPKeepAlive != nil {
+		config.TCPKeepalive = profile.TCPKeepAlive.Duration
+	}
+	if profile.GRCPKeepAlive != nil {
+		config.GRPCKeepalive = &gapi.ClientKeepalive{
+			Time:                profile.GRCPKeepAlive.Time.Duration,
+			Timeout:             profile.GRCPKeepAlive.Timeout.Duration,
+			PermitWithoutStream: profile.GRCPKeepAlive.PermitWithoutStream,
+		}
+	}
 	return config
 }
 
