@@ -1,0 +1,10 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: spine1
+  labels:
+    vendor: nokia_srlinux
+    role: spine
+spec:
+  address: clab-3-nodes-spine1:57400
+  profile: default

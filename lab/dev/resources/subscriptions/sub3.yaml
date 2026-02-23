@@ -1,0 +1,13 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: sub3
+  labels:
+    vendor: nokia_srlinux
+    group: bgp_state
+spec:
+  paths:
+    - /network-instance[name=default]/protocols/bgp
+  mode: STREAM/ON_CHANGE
+  encoding: PROTO
+  depth: 1

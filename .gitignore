@@ -24,7 +24,8 @@ Dockerfile.cross
 *.swp
 *.swo
 *~
-lab/
+private/
+lab/dev/clab-*
 design/
 notes/
 docs/public

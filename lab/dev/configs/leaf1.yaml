@@ -1,0 +1,100 @@
+updates:
+  - path: /interface[name=system0]
+    encoding: JSON_IETF
+    value:
+      name: system0
+      admin-state: enable
+      subinterface:
+        - index: 0
+          ipv4:
+            admin-state: enable
+            address:
+              - ip-prefix: 10.0.1.1/32
+  - path: /interface[name=ethernet-1/49]
+    encoding: JSON_IETF
+    value:
+      admin-state: enable
+      subinterface:
+        - index: 0
+          ipv4:
+            admin-state: enable
+            address:
+              - ip-prefix: 192.168.11.0/31
+          ip-mtu: 9000
+  - path: /network-instance[name=default]
+    encoding: JSON_IETF
+    value:
+      interface:
+        - name: system0.0
+        - name: ethernet-1/49.0
+      protocols:
+        bgp:
+          admin-state: enable
+          autonomous-system: 101
+          router-id: 10.0.1.1
+          ebgp-default-policy:
+            import-reject-all: false
+            export-reject-all: false
+          afi-safi:
+            - afi-safi-name: ipv4-unicast
+              admin-state: enable
+              multipath:
+                allow-multiple-as: true
+                ebgp:
+                  maximum-paths: 64
+          group:
+            - group-name: eBGP
+              export-policy:
+                - export-local
+              afi-safi:
+                - afi-safi-name: ipv4-unicast
+                  admin-state: enable
+            - group-name: iBGP-overlay
+              peer-as: 100
+              export-policy:
+                - all
+              import-policy:
+              - all
+              afi-safi:
+                - afi-safi-name: evpn
+                  admin-state: enable
+                - afi-safi-name: ipv4-unicast
+                  admin-state: disable
+              local-as:
+                as-number: 100
+              timers:
+                connect-retry: 1
+                minimum-advertisement-interval: 1
+          neighbor:
+          - peer-address: 10.0.2.1
+            peer-group: iBGP-overlay
+            transport:
+              local-address: 10.0.1.1
+          - peer-address: 192.168.11.1
+            admin-state: enable
+            peer-as: 201
+            peer-group: eBGP
+  - path: /routing-policy
+    encoding: JSON_IETF
+    value:
+      prefix-set:
+        - name: local
+          prefix:
+            - ip-prefix: 10.0.0.0/16
+              mask-length-range: 16..32
+            - ip-prefix: 172.17.11.0/24
+              mask-length-range: 24..32
+            - ip-prefix: 192.16.0.0/16
+              mask-length-range: 16..32
+      policy:
+        - name: all
+          default-action:
+            policy-result: accept
+        - name: export-local
+          statement:
+            - name: 10
+              match:
+                prefix:
+                  prefix-set: local
+              action:
+                policy-result: accept

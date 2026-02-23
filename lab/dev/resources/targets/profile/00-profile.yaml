@@ -1,0 +1,15 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: default
+spec:
+  credentialsRef: srl-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  tls: {}
+  tcpKeepAlive: 10s
+  retryTimer: 5s
+  grpcKeepAlive:
+    time: 10s
+    timeout: 10s
+    permitWithoutStream: true

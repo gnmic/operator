@@ -197,3 +197,97 @@ helm-template: ## Template Helm chart for debugging
 .PHONY: helm-package
 helm-package: helm-crds ## Package Helm chart
 	helm package $(HELM_CHART_DIR)
+
+##@ Development
+
+CLUSTER_NAME ?= gnmic-dev
+CERT_MANAGER_VERSION ?= v1.19.3
+
+.PHONY: setup-dev-cluster
+setup-dev-cluster: deploy-dev-cluster install-dev-cluster-dependencies load-dev-image
+
+.PHONY: deploy-dev-cluster
+deploy-dev-cluster: ## Deploy the development cluster
+	kind create cluster --name $(CLUSTER_NAME)
+
+.PHONY: undeploy-dev-cluster
+undeploy-dev-cluster: ## Undeploy the development cluster
+	kind delete cluster --name $(CLUSTER_NAME)
+
+.PHONY: install-dev-cluster-dependencies
+install-dev-cluster-dependencies: ## Install the dependencies for the development cluster
+	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	echo "waiting for cert manager to be ready..."
+	kubectl wait --namespace cert-manager --for=condition=Available deployment --all --timeout=180s
+	echo "cert manager ready"
+
+.PHONY: load-dev-image
+load-dev-image: ## Load the development image into the development cluster
+	kind load docker-image $(IMG) --name $(CLUSTER_NAME)
+
+##@ Development Lab
+
+TARGET_USERNAME ?= admin
+TARGET_PASSWORD ?= NokiaSrl1!
+
+.PHONY: setup-dev-lab
+setup-dev-lab: deploy-dev-lab configure-nodes-dev-lab apply-resources-dev-lab ## Setup the development lab cluster
+
+.PHONY: deploy-dev-lab
+deploy-dev-lab: ## Deploy a simple 3-node container lab topology
+	sudo containerlab deploy -t lab/dev/3-nodes.clab.yaml -c
+
+.PHONY: undeploy-dev-lab
+undeploy-dev-lab: ## Undeploy the operator from the development lab cluster
+	sudo containerlab destroy -t lab/dev/3-nodes.clab.yaml -c
+
+.PHONY: configure-nodes-dev-lab
+configure-nodes-dev-lab: ## Configure the nodes in the development lab cluster
+	gnmic -a clab-3-nodes-spine1:57400 -u $(TARGET_USERNAME) -p $(TARGET_PASSWORD) --skip-verify set --request-file lab/dev/configs/spine1.yaml
+	gnmic -a clab-3-nodes-leaf1:57400 -u $(TARGET_USERNAME) -p $(TARGET_PASSWORD) --skip-verify set --request-file lab/dev/configs/leaf1.yaml
+	gnmic -a clab-3-nodes-leaf2:57400 -u $(TARGET_USERNAME) -p $(TARGET_PASSWORD) --skip-verify set --request-file lab/dev/configs/leaf2.yaml
+
+.PHONY: apply-resources-dev-lab
+apply-resources-dev-lab: apply-targets-dev-lab apply-subscriptions-dev-lab apply-outputs-dev-lab apply-pipelines-dev-lab apply-clusters-dev-lab ## Apply the resources for the development lab cluster
+.PHONY: delete-resources-dev-lab
+delete-resources-dev-lab: delete-clusters-dev-lab delete-targets-dev-lab delete-subscriptions-dev-lab delete-outputs-dev-lab delete-pipelines-dev-lab ## Delete the resources for the development lab cluster
+.PHONY: apply-targets-dev-lab
+apply-targets-dev-lab: ## Apply the targets for the development lab cluster
+	kubectl apply -f lab/dev/resources/targets/profile
+	kubectl apply -f lab/dev/resources/targets
+
+.PHONY: delete-targets-dev-lab
+delete-targets-dev-lab: ## Delete the targets for the development lab cluster
+	kubectl delete -f lab/dev/resources/targets
+
+.PHONY: apply-subscriptions-dev-lab
+apply-subscriptions-dev-lab: ## Apply the subscriptions for the development lab cluster
+	kubectl apply -f lab/dev/resources/subscriptions
+
+.PHONY: delete-subscriptions-dev-lab
+delete-subscriptions-dev-lab: ## Delete the subscriptions for the development lab cluster
+	kubectl delete -f lab/dev/resources/subscriptions
+
+.PHONY: apply-outputs-dev-lab
+apply-outputs-dev-lab: ## Apply the outputs for the development lab cluster
+	kubectl apply -f lab/dev/resources/outputs
+
+.PHONY: delete-outputs-dev-lab
+delete-outputs-dev-lab: ## Delete the outputs for the development lab cluster
+	kubectl delete -f lab/dev/resources/outputs
+
+.PHONY: apply-pipelines-dev-lab
+apply-pipelines-dev-lab: ## Apply the pipelines for the development lab cluster
+	kubectl apply -f lab/dev/resources/pipelines
+
+.PHONY: delete-pipelines-dev-lab
+delete-pipelines-dev-lab: ## Delete the pipelines for the development lab cluster
+	kubectl delete -f lab/dev/resources/pipelines
+.PHONY: apply-clusters-dev-lab
+apply-clusters-dev-lab: ## Apply the clusters for the development lab cluster
+	kubectl apply -f lab/dev/resources/clusters
+
+.PHONY: delete-clusters-dev-lab
+delete-clusters-dev-lab: ## Delete the clusters for the development lab cluster
+	kubectl delete -f lab/dev/resources/clusters
+

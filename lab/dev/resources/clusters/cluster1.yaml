@@ -1,0 +1,7 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: ghcr.io/openconfig/gnmic:0.44.1
+  replicas: 1

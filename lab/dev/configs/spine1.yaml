@@ -1,0 +1,126 @@
+updates:
+  - path: /interface[name=system0]
+    encoding: JSON_IETF
+    value:
+      name: system0
+      admin-state: enable
+      subinterface:
+        - index: 0
+          ipv4:
+            admin-state: enable
+            address:
+              - ip-prefix: 10.0.2.1/32
+  - path: /interface[name=ethernet-1/1]
+    encoding: JSON_IETF
+    value:
+      admin-state: enable
+      subinterface:
+        - index: 0
+          ipv4:
+            admin-state: enable
+            address:
+              - ip-prefix: 192.168.11.1/31
+  - path: /interface[name=ethernet-1/2]
+    encoding: JSON_IETF
+    value:
+      admin-state: enable
+      subinterface:
+        - index: 0
+          ipv4:
+            admin-state: enable
+            address:
+              - ip-prefix: 192.168.21.1/31
+  - path: /network-instance[name=default]
+    encoding: JSON_IETF
+    value:
+      ip-forwarding:
+        receive-ipv4-check: false
+      interface:
+        - name: ethernet-1/1.0
+        - name: ethernet-1/2.0
+        - name: system0.0
+      protocols:
+        bgp:
+          admin-state: enable
+          autonomous-system: 201
+          router-id: 10.0.2.1
+          dynamic-neighbors:
+            accept:
+              match:
+                - prefix: 0.0.0.0/0
+                  peer-group: iBGP-overlay
+          ebgp-default-policy:
+            import-reject-all: false
+            export-reject-all: false
+          afi-safi:
+            - afi-safi-name: ipv4-unicast
+              admin-state: enable
+              multipath:
+                allow-multiple-as: true
+                ebgp:
+                  maximum-paths: 64
+            - afi-safi-name: ipv6-unicast
+              admin-state: enable
+              multipath:
+                allow-multiple-as: true
+                ebgp:
+                  maximum-paths: 64
+          group:
+            - group-name: eBGPv6
+              export-policy:
+                - system_ip
+              afi-safi:
+                - afi-safi-name: ipv4-unicast
+                  admin-state: enable
+                  ipv4-unicast:
+                    advertise-ipv6-next-hops: true
+                    receive-ipv6-next-hops: true
+                - afi-safi-name: ipv6-unicast
+                  admin-state: enable
+            - group-name: iBGP-overlay
+              peer-as: 100
+              export-policy:
+                - all
+              import-policy:
+                - all
+              afi-safi:
+                - afi-safi-name: evpn
+                  admin-state: enable
+                - afi-safi-name: ipv4-unicast
+                  admin-state: disable
+              local-as:
+                as-number: 100
+              route-reflector:
+                client: true
+                cluster-id: 10.10.10.10
+              timers:
+                minimum-advertisement-interval: 1
+          neighbor:
+            - peer-address: 192.168.11.0
+              admin-state: enable
+              peer-as: 101
+              peer-group: eBGPv6
+            - peer-address: 192.168.21.0
+              admin-state: enable
+              peer-as: 102
+              peer-group: eBGPv6
+  - path: /routing-policy
+    encoding: JSON_IETF
+    value:
+      prefix-set:
+        - name: system_ip
+          prefix:
+            - ip-prefix: 10.0.0.0/16
+              mask-length-range: 16..32
+      policy:
+        - name: all
+          default-action:
+            policy-result: accept
+        - name: system_ip
+          statement:
+            - name: 10
+              match:
+                prefix:
+                  prefix-set: system_ip
+              action:
+                policy-result: accept

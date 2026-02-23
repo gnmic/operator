@@ -130,7 +130,7 @@ func ParseTargetStateObject(raw json.RawMessage) (*TargetStateObject, error) {
 
 // PollTargetEntry represents a single target returned by GET /api/v1/targets.
 type PollTargetEntry struct {
-	Name  string            `json:"name"`
+	Name  string             `json:"name"`
 	State *TargetStateObject `json:"state"`
 }
 
