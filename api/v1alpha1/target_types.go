@@ -34,10 +34,10 @@ type TargetSpec struct {
 type TargetStatus struct {
 	// Number of clusters currently collecting this target.
 	Clusters int32 `json:"clusters"`
-	// Aggregate connection state across all clusters.
-	// READY if all clusters report READY, DEGRADED if any do not.
+	// Aggregate state across all clusters.
+	// READY if all clusters report running and READY, DEGRADED if any do not.
 	// Empty when no clusters are collecting this target.
-	ConnectionState string `json:"connectionState,omitempty"`
+	State string `json:"connectionState,omitempty"`
 	// Per-cluster target state, keyed by Cluster CR name.
 	// A target may be collected by multiple clusters (via different pipelines).
 	// +optional

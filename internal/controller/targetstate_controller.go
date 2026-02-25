@@ -87,16 +87,18 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var cluster gnmicv1alpha1.Cluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
 		if apierrors.IsNotFound(err) {
-			// cluster deleted — stop all streams for it
+			// cluster deleted — stop all streams and clean up target statuses
 			r.stopStreamsForCluster(req.Namespace, req.Name)
+			r.removeClusterFromTargets(ctx, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	// if replicas is nil or 0, stop all streams
+	// if replicas is nil or 0, stop all streams and clean up target statuses
 	if cluster.Spec.Replicas == nil || *cluster.Spec.Replicas == 0 {
 		r.stopStreamsForCluster(cluster.Namespace, cluster.Name)
+		r.removeClusterFromTargets(ctx, cluster.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -372,23 +374,27 @@ func (r *TargetStateReconciler) handleEvent(ctx context.Context, event gnmic.SSE
 
 // computeStatusSummary updates the top-level summary fields (Clusters, ConnectionState)
 // based on the current ClusterStates map.
+//
+// A cluster is considered healthy only when both its State is "running" and
+// its ConnectionState is "READY". Any failed/stopped target or non-READY
+// connection results in a DEGRADED summary.
 func computeStatusSummary(status *gnmicv1alpha1.TargetStatus) {
 	status.Clusters = int32(len(status.ClusterStates))
 	if status.Clusters == 0 {
-		status.ConnectionState = ""
+		status.State = ""
 		return
 	}
-	allReady := true
+	allHealthy := true
 	for _, s := range status.ClusterStates {
-		if s.ConnectionState != "READY" {
-			allReady = false
+		if s.State != "running" || s.ConnectionState != "READY" {
+			allHealthy = false
 			break
 		}
 	}
-	if allReady {
-		status.ConnectionState = "READY"
+	if allHealthy {
+		status.State = "READY"
 	} else {
-		status.ConnectionState = "DEGRADED"
+		status.State = "DEGRADED"
 	}
 }
 
@@ -399,6 +405,51 @@ func (r *TargetStateReconciler) stopStreamsForCluster(namespace, clusterName str
 		if strings.HasPrefix(key, prefix) {
 			cancel()
 			delete(r.streams, key)
+		}
+	}
+}
+
+// removeClusterFromTargets removes the cluster's entry from all Target CR statuses.
+func (r *TargetStateReconciler) removeClusterFromTargets(ctx context.Context, clusterName string) {
+	logger := log.FromContext(ctx).WithValues("controller", "TargetState")
+
+	var targets gnmicv1alpha1.TargetList
+	if err := r.List(ctx, &targets); err != nil {
+		logger.Error(err, "failed to list targets for cluster cleanup")
+		return
+	}
+
+	for i := range targets.Items {
+		target := &targets.Items[i]
+		if target.Status.ClusterStates == nil {
+			continue
+		}
+		if _, ok := target.Status.ClusterStates[clusterName]; !ok {
+			continue
+		}
+
+		for attempt := 0; attempt < maxConflictRetries; attempt++ {
+			if attempt > 0 {
+				if err := r.Get(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, target); err != nil {
+					if !apierrors.IsNotFound(err) {
+						logger.Error(err, "failed to re-fetch target during cluster cleanup", "target", target.Name)
+					}
+					break
+				}
+			}
+
+			delete(target.Status.ClusterStates, clusterName)
+			computeStatusSummary(&target.Status)
+
+			if err := r.Status().Update(ctx, target); err != nil {
+				if apierrors.IsConflict(err) {
+					continue
+				}
+				logger.Error(err, "failed to remove cluster state from target", "target", target.Name, "cluster", clusterName)
+				break
+			}
+			logger.Info("removed cluster state from target", "target", target.Name, "cluster", clusterName)
+			break
 		}
 	}
 }
