@@ -28,6 +28,7 @@ import (
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -89,7 +90,7 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if apierrors.IsNotFound(err) {
 			// cluster deleted — stop all streams and clean up target statuses
 			r.stopStreamsForCluster(req.Namespace, req.Name)
-			r.removeClusterFromTargets(ctx, req.Name)
+			r.removeClusterFromTargets(ctx, req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -98,7 +99,7 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// if replicas is nil or 0, stop all streams and clean up target statuses
 	if cluster.Spec.Replicas == nil || *cluster.Spec.Replicas == 0 {
 		r.stopStreamsForCluster(cluster.Namespace, cluster.Name)
-		r.removeClusterFromTargets(ctx, cluster.Name)
+		r.removeClusterFromTargets(ctx, cluster.Namespace, cluster.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -116,32 +117,13 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	desiredPods := int(*cluster.Spec.Replicas)
 
-	// build the set of desired stream keys
-	desiredKeys := make(map[string]struct{}, desiredPods)
+	// stop all existing streams for this cluster so they reconnect
+	// with the latest cluster config (port, TLS, image, etc.)
+	r.stopStreamsForCluster(cluster.Namespace, cluster.Name)
+
+	// start a stream for each pod
 	for i := 0; i < desiredPods; i++ {
 		key := streamKey(cluster.Namespace, cluster.Name, i)
-		desiredKeys[key] = struct{}{}
-	}
-
-	// stop streams that are no longer needed (e.g., scale down)
-	prefix := cluster.Namespace + "/" + cluster.Name + "/"
-	for key, cancel := range r.streams {
-		if !strings.HasPrefix(key, prefix) {
-			continue
-		}
-		if _, ok := desiredKeys[key]; !ok {
-			logger.Info("stopping SSE stream (pod removed)", "key", key)
-			cancel()
-			delete(r.streams, key)
-		}
-	}
-
-	// start streams for new pods
-	for i := 0; i < desiredPods; i++ {
-		key := streamKey(cluster.Namespace, cluster.Name, i)
-		if _, ok := r.streams[key]; ok {
-			continue // already running
-		}
 
 		podURL, err := r.buildPodSSEURL(&cluster, stsName, i)
 		if err != nil {
@@ -195,17 +177,17 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 			streamDone <- gnmic.StreamTargetState(ctx, httpClient, sseURL, events)
 		}()
 
-		// reset backoff on successful connection
-		delay = reconnectMinDelay
-
 		// process events and poll periodically until the stream ends
-		r.processEvents(ctx, httpClient, events, streamDone, cluster.Name, cluster.Namespace, podName, pollURL, logger)
+		receivedEvents := r.processEvents(ctx, httpClient, events, streamDone, cluster.Name, cluster.Namespace, podName, pollURL, logger)
 
 		// check if context was cancelled (intentional stop)
 		select {
 		case <-ctx.Done():
 			return
 		default:
+			if receivedEvents {
+				delay = reconnectMinDelay
+			}
 			logger.Info("SSE stream disconnected, reconnecting", "delay", delay)
 			sleepOrDone(ctx, delay)
 			delay = backoff(delay)
@@ -215,53 +197,57 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 
 // processEvents reads from the events channel, updates Target CR statuses,
 // and periodically polls the pod for a full state snapshot to catch missed events.
+// Returns true if at least one event was received (indicating the connection was live).
 func (r *TargetStateReconciler) processEvents(
 	ctx context.Context,
 	httpClient *http.Client,
 	events <-chan gnmic.SSEEvent,
 	streamDone <-chan error,
 	clusterName, namespace, podName, pollURL string,
-	logger interface {
-		Info(string, ...any)
-		Error(error, string, ...any)
-	},
-) {
+	logger logr.Logger,
+) bool {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	receivedEvents := false
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return receivedEvents
 		case err := <-streamDone:
 			if err != nil {
 				logger.Error(err, "SSE stream ended with error")
 			}
-			return
+			return receivedEvents
 		case event := <-events:
-			r.handleEvent(ctx, event, clusterName, namespace, podName)
+			receivedEvents = true
+			r.handleEvent(ctx, event, clusterName, podName)
 		case <-ticker.C:
-			r.pollAndSync(ctx, httpClient, pollURL, clusterName, podName, logger)
+			r.pollAndSync(ctx, httpClient, pollURL, clusterName, namespace, podName, logger)
 		}
 	}
 }
 
 // pollAndSync fetches the full target state from a pod and reconciles it
 // with the Target CR statuses to catch any events missed by the SSE stream.
+// It also removes stale entries for targets no longer reported by the pod.
 func (r *TargetStateReconciler) pollAndSync(
 	ctx context.Context,
 	httpClient *http.Client,
-	pollURL, clusterName, podName string,
-	logger interface {
-		Info(string, ...any)
-		Error(error, string, ...any)
-	},
+	pollURL, clusterName, namespace, podName string,
+	logger logr.Logger,
 ) {
-	entries, err := gnmic.PollTargetState(ctx, httpClient, pollURL)
+	pollCtx, pollCancel := context.WithTimeout(ctx, pollInterval)
+	defer pollCancel()
+
+	entries, err := gnmic.PollTargetState(pollCtx, httpClient, pollURL)
 	if err != nil {
 		logger.Error(err, "periodic poll failed")
 		return
 	}
+
+	// build the set of target names reported by this pod
+	reportedTargets := make(map[string]struct{}, len(entries))
 
 	for _, entry := range entries {
 		if entry.State == nil {
@@ -273,6 +259,7 @@ func (r *TargetStateReconciler) pollAndSync(
 			continue
 		}
 
+		reportedTargets[targetName] = struct{}{}
 		targetNN := types.NamespacedName{Name: targetName, Namespace: targetNamespace}
 
 		for attempt := 0; attempt < maxConflictRetries; attempt++ {
@@ -308,12 +295,62 @@ func (r *TargetStateReconciler) pollAndSync(
 			break
 		}
 	}
+
+	// remove stale entries: targets that have a clusterStates entry for this
+	// cluster/pod but are no longer reported by the pod
+	var targets gnmicv1alpha1.TargetList
+	if err := r.List(ctx, &targets, client.InNamespace(namespace)); err != nil {
+		logger.Error(err, "poll: failed to list targets for stale cleanup")
+		return
+	}
+
+	for i := range targets.Items {
+		target := &targets.Items[i]
+		if target.Status.ClusterStates == nil {
+			continue
+		}
+		cs, ok := target.Status.ClusterStates[clusterName]
+		if !ok {
+			continue
+		}
+		// only clean up entries owned by this pod
+		if cs.Pod != podName {
+			continue
+		}
+		if _, reported := reportedTargets[target.Name]; reported {
+			continue
+		}
+
+		for attempt := 0; attempt < maxConflictRetries; attempt++ {
+			if attempt > 0 {
+				if err := r.Get(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, target); err != nil {
+					if !apierrors.IsNotFound(err) {
+						logger.Error(err, "poll: failed to re-fetch target for stale cleanup", "target", target.Name)
+					}
+					break
+				}
+			}
+
+			delete(target.Status.ClusterStates, clusterName)
+			computeStatusSummary(&target.Status)
+
+			if err := r.Status().Update(ctx, target); err != nil {
+				if apierrors.IsConflict(err) {
+					continue
+				}
+				logger.Error(err, "poll: failed to remove stale cluster state", "target", target.Name, "cluster", clusterName)
+				break
+			}
+			logger.Info("poll: removed stale cluster state", "target", target.Name, "cluster", clusterName, "pod", podName)
+			break
+		}
+	}
 }
 
 const maxConflictRetries = 5
 
 // handleEvent processes a single SSE event and updates the corresponding Target CR status.
-func (r *TargetStateReconciler) handleEvent(ctx context.Context, event gnmic.SSEEvent, clusterName, namespace, podName string) {
+func (r *TargetStateReconciler) handleEvent(ctx context.Context, event gnmic.SSEEvent, clusterName, podName string) {
 	logger := log.FromContext(ctx)
 
 	targetNamespace, targetName, ok := parseTargetName(event.Data.Name)
@@ -409,12 +446,13 @@ func (r *TargetStateReconciler) stopStreamsForCluster(namespace, clusterName str
 	}
 }
 
-// removeClusterFromTargets removes the cluster's entry from all Target CR statuses.
-func (r *TargetStateReconciler) removeClusterFromTargets(ctx context.Context, clusterName string) {
+// removeClusterFromTargets removes the cluster's entry from all Target CR statuses
+// in the same namespace as the cluster.
+func (r *TargetStateReconciler) removeClusterFromTargets(ctx context.Context, namespace, clusterName string) {
 	logger := log.FromContext(ctx).WithValues("controller", "TargetState")
 
 	var targets gnmicv1alpha1.TargetList
-	if err := r.List(ctx, &targets); err != nil {
+	if err := r.List(ctx, &targets, client.InNamespace(namespace)); err != nil {
 		logger.Error(err, "failed to list targets for cluster cleanup")
 		return
 	}
