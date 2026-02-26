@@ -232,8 +232,7 @@ spec:
   paths:
     - /interfaces/interface/state/counters
     - /interfaces/interface/state/oper-status
-  mode: STREAM
-  streamMode: SAMPLE
+  mode: STREAM/SAMPLE
   sampleInterval: 10s
 {{< /tab >}}
 {{< tab header="kubectl" lang="bash" >}}
@@ -284,8 +283,7 @@ spec:
   paths:
     - /interfaces/interface/state/counters
     - /interfaces/interface/state/oper-status
-  mode: STREAM
-  streamMode: SAMPLE
+  mode: STREAM/SAMPLE
   sampleInterval: 10s
 EOF
 {{< /tab >}}

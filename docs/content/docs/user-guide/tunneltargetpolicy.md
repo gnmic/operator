@@ -238,8 +238,7 @@ metadata:
 spec:
   paths:
     - /interfaces/interface/state/counters
-  mode: stream
-  streamMode: sample
+  mode: STREAM/SAMPLE
   sampleInterval: 10s
 ---
 # 6. Output to Prometheus
@@ -250,7 +249,6 @@ metadata:
 spec:
   type: prometheus
   config:
-    listen: ":9804"
     path: /metrics
 ---
 # 7. Pipeline connecting everything
