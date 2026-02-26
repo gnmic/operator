@@ -14,7 +14,7 @@ import (
 //
 // Uses bounded load rendezvous hashing for stable AND even distribution:
 // - Targets are assigned to pods based on highest hash score
-// - Each pod has a capacity limit of ceil(numTargets/numPods) + 1
+// - Each pod has a capacity limit of ceil(numTargets/numPods)
 // - When a pod is full, the target goes to the next highest scoring pod
 func DistributeTargets(plan *ApplyPlan, podIndex, numPods int) *ApplyPlan {
 	if numPods <= 0 {
@@ -80,18 +80,21 @@ func boundedRendezvousAssign(targets map[string]*gapi.TargetConfig, numPods int)
 	return assignments
 }
 
+type podScore struct {
+	index int
+	score uint32
+}
+
 // boundedRendezvousHash returns the pod index with the highest score that has capacity.
 func boundedRendezvousHash(targetNN string, numPods, capacity int, podLoad []int) int {
-	// get all pods sorted by score (highest first)
-	type podScore struct {
-		index int
-		score uint32
-	}
 	scores := make([]podScore, numPods)
-	for i := 0; i < numPods; i++ {
+	for i := range numPods {
 		scores[i] = podScore{index: i, score: hashScore(targetNN, i)}
 	}
 	sort.Slice(scores, func(i, j int) bool {
+		if scores[i].score == scores[j].score {
+			return scores[i].index < scores[j].index
+		}
 		return scores[i].score > scores[j].score
 	})
 
@@ -127,7 +130,7 @@ func getTargetAssignments(targetNNs []string, numPods int) map[int][]string {
 
 	// convert to pod -> targets format
 	result := make(map[int][]string)
-	for i := 0; i < numPods; i++ {
+	for i := range numPods {
 		result[i] = []string{}
 	}
 	for targetNN, podIndex := range assignments {
