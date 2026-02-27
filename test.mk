@@ -30,8 +30,15 @@ install-kind: ## Install kind if not present
 install-gnmic: ## Install gnmic if not present
 	@if ! command -v gnmic >/dev/null 2>&1; then \
 		echo "gnmic not found, installing..."; \
-		bash -c "$(curl -sL https://get-gnmic.openconfig.net)" -- -v $(GNMIC_VERSION); \
-		gnmic version; \
+		bash -c "$$(curl -sL https://get-gnmic.openconfig.net)" -- -v $(GNMIC_VERSION); \
+		echo "Adding gnmic to PATH"; \
+		echo "PATH: $$PATH"; \
+		if [ -f $$HOME/bin/gnmic ]; then \
+			export PATH="$$HOME/bin:$$PATH"; \
+		elif [ -f /usr/local/bin/gnmic ]; then \
+			export PATH="/usr/local/bin:$$PATH"; \
+		fi; \
+		gnmic version || echo "gnmic not found in PATH after install"; \
 	else \
 		echo "gnmic is already installed."; \
 	fi
