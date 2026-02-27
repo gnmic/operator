@@ -1,6 +1,6 @@
-CLAB_VERSION ?= v0.70.1
+CLAB_VERSION ?= 0.70.1
 KIND_VERSION ?= v0.20.0
-GNMIC_VERSION ?= v0.44.1
+GNMIC_VERSION ?= 0.44.1
 KUBECTL_VERSION ?= v1.31.0
 TEST_CLUSTER_NAME ?= test-kind
 
@@ -30,12 +30,7 @@ install-kind: ## Install kind if not present
 install-gnmic: ## Install gnmic if not present
 	@if ! command -v gnmic >/dev/null 2>&1; then \
 		echo "gnmic not found, installing..."; \
-		GNMIC_VERSION=$$(curl -s https://api.github.com/repos/openconfig/gnmic/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/'); \
-		curl -Lo gnmic.tar.gz https://github.com/openconfig/gnmic/releases/download/$${GNMIC_VERSION}/gnmic_${GNMIC_VERSION}_Linux_x86_64.tar.gz; \
-		tar -xzf gnmic.tar.gz gnmic; \
-		chmod +x gnmic; \
-		sudo mv gnmic /usr/local/bin/; \
-		rm -f gnmic.tar.gz; \
+		bash -c "$(curl -sL https://get-gnmic.openconfig.net)" -- -v $(GNMIC_VERSION); \
 	else \
 		echo "gnmic is already installed."; \
 	fi
@@ -44,11 +39,7 @@ install-gnmic: ## Install gnmic if not present
 install-containerlab: ## Install containerlab if not present
 	@if ! command -v containerlab >/dev/null 2>&1; then \
 		echo "containerlab not found, installing..."; \
-		curl -Lo containerlab.tar.gz https://github.com/srl-labs/containerlab/releases/download/v0.30.1/containerlab-v0.30.1-linux-amd64.tar.gz; \
-		tar -xzf containerlab.tar.gz containerlab; \
-		chmod +x containerlab; \
-		sudo mv containerlab /usr/local/bin/; \
-		rm -f containerlab.tar.gz; \
+		bash -c "$(curl -sL https://get.containerlab.dev)" -- -v $(CLAB_VERSION); \
 	else \
 		echo "containerlab is already installed."; \
 	fi
