@@ -1,0 +1,12 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: sub5
+  labels:
+    vendor: nokia_srlinux
+    group: lldp_metrics
+spec:
+  paths:
+    - system/lldp/statistics
+  mode: STREAM/SAMPLE
+  sampleInterval: 10s

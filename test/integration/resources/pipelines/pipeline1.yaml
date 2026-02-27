@@ -1,0 +1,28 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: p1
+spec:
+  clusterRef: c1
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        vendor: nokia_srlinux
+        role: leaf
+    - matchLabels:
+        vendor: nokia_srlinux
+        role: spine
+  subscriptionSelectors:
+    - matchLabels:
+        vendor: nokia_srlinux
+        group: interface_metrics
+    - matchLabels:
+        vendor: nokia_srlinux
+        group: bgp_metrics
+    - matchLabels:
+        vendor: nokia_srlinux
+        group: lldp_metrics
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          type: metrics
