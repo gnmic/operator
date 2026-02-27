@@ -31,6 +31,7 @@ install-gnmic: ## Install gnmic if not present
 	@if ! command -v gnmic >/dev/null 2>&1; then \
 		echo "gnmic not found, installing..."; \
 		bash -c "$(curl -sL https://get-gnmic.openconfig.net)" -- -v $(GNMIC_VERSION); \
+		gnmic version; \
 	else \
 		echo "gnmic is already installed."; \
 	fi
@@ -40,6 +41,7 @@ install-containerlab: ## Install containerlab if not present
 	@if ! command -v containerlab >/dev/null 2>&1; then \
 		echo "containerlab not found, installing..."; \
 		bash -c "$(curl -sL https://get.containerlab.dev)" -- -v $(CLAB_VERSION); \
+		sudo clab version; \
 	else \
 		echo "containerlab is already installed."; \
 	fi
@@ -65,11 +67,11 @@ load-test-image: ## Load the test image into the test cluster
 
 .PHONY: deploy-test-topology
 deploy-test-topology: ## Deploy a test topology for testing
-	containerlab deploy -t test/integration/t1.clab.yaml -c
+	sudo containerlab deploy -t test/integration/t1.clab.yaml -c
 
 .PHONY: undeploy-test-topology
 undeploy-test-topology: ## Undeploy a test topology for testing
-		containerlab destroy -t test/integration/t1.clab.yaml -c
+	sudo containerlab destroy -t test/integration/t1.clab.yaml -c
 
 .PHONY: apply-test-targets
 apply-test-targets: ## Apply the test targets for testing
