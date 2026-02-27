@@ -48,6 +48,13 @@ install-containerlab: ## Install containerlab if not present
 	@if ! command -v containerlab >/dev/null 2>&1; then \
 		echo "containerlab not found, installing..."; \
 		bash -c "$(curl -sL https://get.containerlab.dev)" -- -v $(CLAB_VERSION); \
+		echo "Adding containerlab to PATH"; \
+		echo "PATH: $$PATH"; \
+		if [ -f $$HOME/bin/clab ]; then \
+			export PATH="$$HOME/bin:$$PATH"; \
+		elif [ -f /usr/local/bin/clab ]; then \
+			export PATH="/usr/local/bin:$$PATH"; \
+		fi; \
 		sudo clab version; \
 	else \
 		echo "containerlab is already installed."; \
