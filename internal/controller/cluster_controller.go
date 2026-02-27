@@ -487,14 +487,15 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	// only apply config if there's at least one ready pod
-	// TODO: wait for all pods ?
-	if statefulSet.Status.ReadyReplicas == 0 {
+	desiredReplicas := ptr.Deref(statefulSet.Spec.Replicas, 0)
+	// only apply new config when all desired replicas are ready
+	if statefulSet.Status.ReadyReplicas < desiredReplicas {
 		logger.Info("waiting for gNMIc pods to be ready before applying config")
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 	// send the plan to all gNMIc pods with distributed targets
-	numPods := int(statefulSet.Status.ReadyReplicas)
+	// distrubute to desired replicas only, this makes redistribution fast in case of scaling down.
+	numPods := int(desiredReplicas)
 	configApplied := false
 	var configError error
 	if err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
