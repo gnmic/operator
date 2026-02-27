@@ -55,7 +55,7 @@ install-containerlab: ## Install containerlab if not present
 		elif [ -f /usr/local/bin/clab ]; then \
 			export PATH="/usr/local/bin:$$PATH"; \
 		fi; \
-		sudo clab version; \
+		sudo containerlab version; \
 	else \
 		echo "containerlab is already installed."; \
 	fi
