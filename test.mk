@@ -30,7 +30,7 @@ install-kind: ## Install kind if not present
 install-gnmic: ## Install gnmic if not present
 	@if ! command -v gnmic >/dev/null 2>&1; then \
 		echo "gnmic not found, installing..."; \
-		bash -c "$$(curl -sL https://get-gnmic.openconfig.net)" -- -v $(GNMIC_VERSION); \
+		bash -c "$$(curl -sSL https://get-gnmic.openconfig.net)" -- -v $(GNMIC_VERSION); \
 		echo "Adding gnmic to PATH"; \
 		echo "PATH: $$PATH"; \
 		if [ -f $$HOME/bin/gnmic ]; then \
@@ -47,17 +47,12 @@ install-gnmic: ## Install gnmic if not present
 install-containerlab: ## Install containerlab if not present
 	@if ! command -v containerlab >/dev/null 2>&1; then \
 		echo "containerlab not found, installing..."; \
-		bash -c "$(curl -sL https://get.containerlab.dev)" -- -v $(CLAB_VERSION); \
-		echo "Adding containerlab to PATH"; \
-		echo "PATH: $$PATH"; \
-		ls -l $$HOME/bin; \
-		ls -l /usr/local/bin; \
-		if [ -f $$HOME/bin/containerlab ]; then \
-			export PATH="$$HOME/bin:$$PATH"; \
-		elif [ -f /usr/local/bin/containerlab ]; then \
-			export PATH="/usr/local/bin:$$PATH"; \
-		fi; \
-		sudo containerlab version; \
+		curl -sSL https://github.com/srl-labs/containerlab/releases/download/v$(CLAB_VERSION)/containerlab_$(CLAB_VERSION)_linux_amd64.tar.gz -o containerlab.tar.gz; \
+		tar -xzf containerlab.tar.gz containerlab; \
+		chmod +x containerlab; \
+		sudo mv containerlab /usr/local/bin/; \
+		rm -f containerlab.tar.gz; \
+		containerlab version; \
 	else \
 		echo "containerlab is already installed."; \
 	fi
