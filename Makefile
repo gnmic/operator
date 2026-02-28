@@ -298,6 +298,9 @@ delete-clusters-dev-lab: ## Delete the clusters for the development lab cluster
 
 .PHONY: run-integration-tests
 run-integration-tests: docker-build undeploy-test-cluster deploy-test-cluster install-test-cluster-dependencies load-test-image deploy install-kubectl install-gnmic install-containerlab deploy-test-topology apply-test-resources
+	kubectl wait --for=condition=Ready cluster --all --timeout=180s
+	kubectl wait --for=condition=Ready pipeline --all --timeout=180s
+	kubectl get targets
 	kubectl get targets -o yaml
 	kubectl get subscriptions -o yaml
 	kubectl get outputs -o yaml
