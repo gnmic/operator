@@ -1,8 +1,8 @@
 # gNMIc Operator
 
+[![Build Status](https://github.com/gnmic/operator/actions/workflows/ci.yaml/badge.svg)](https://github.com/gnmic/operator/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gnmic/operator)](https://goreportcard.com/report/github.com/gnmic/operator)
 [![github release](https://img.shields.io/github/release/gnmic/operator.svg?style=flat-square&color=00c9ff&labelColor=bec8d2)](https://github.com/gnmic/operator/releases/)
-[![Github all releases](https://img.shields.io/github/downloads/gnmic/operator/total.svg?style=flat-square&color=00c9ff&labelColor=bec8d2)](https://github.com/gnmic/operator/releases/)
 [![Doc](https://img.shields.io/badge/Docs-operator.gnmic.dev-blue?style=flat-square&color=00c9ff&labelColor=bec8d2)](https://operator.gnmic.dev)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
