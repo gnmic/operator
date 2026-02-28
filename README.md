@@ -10,7 +10,7 @@ A Kubernetes operator for deploying and managing [gNMIc](https://gnmic.openconfi
 
 ## Overview
 
-gNMIc Operator automates the deployment, configuration, and lifecycle management of gNMIc collectors on Kubernetes. Define your telemetry infrastructure as Custom Resources and let the operator handle StatefulSet creation, configuration generation, target distribution, and dynamic updates.
+gNMIc Operator automates the deployment, configuration, and lifecycle management of gNMIc collectors on Kubernetes. Define your telemetry infrastructure as Custom Resources and let the operator handle StatefulSet creation, configuration generation, target distribution, and dynamic pipeline updates.
 
 ## Features
 
@@ -41,7 +41,7 @@ kubectl apply -f https://github.com/gnmic/operator/releases/download/v0.1.0/inst
 Or using Helm
 
 ```bash
-helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.1.0
+helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.x.y
 ```
 
 Or using Kustomize with custom overlay
@@ -51,11 +51,11 @@ cat <<EOF > kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://github.com/gnmic/operator/config/default?ref=v0.1.0
+  - https://github.com/gnmic/operator/config/default?ref=v0.x.y
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.1.0"
+    newTag: "0.x.y"
 EOF
 kubectl apply -k .
 ```
@@ -101,9 +101,6 @@ metadata:
   name: prometheus
 spec:
   type: prometheus
-  config:
-    listen: ":9804"
-    path: /metrics
 ---
 # 5. Wire everything with a Pipeline
 apiVersion: operator.gnmic.dev/v1alpha1

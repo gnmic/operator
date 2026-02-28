@@ -152,15 +152,15 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				Namespace: req.Namespace,
 			}
 			// cleanup statefulset
-			if cleanupErr := r.ensureStatefulSetAbsent(ctx, prefixedNN); cleanupErr != nil {
-				return ctrl.Result{}, cleanupErr
+			if err := r.ensureStatefulSetAbsent(ctx, prefixedNN); err != nil {
+				return ctrl.Result{}, err
 			}
 			// cleanup headless service
-			if cleanupErr := r.ensureServiceAbsent(ctx, prefixedNN); cleanupErr != nil {
-				return ctrl.Result{}, cleanupErr
+			if err := r.ensureServiceAbsent(ctx, prefixedNN); err != nil {
+				return ctrl.Result{}, err
 			}
 			// clean up Prometheus output services
-			if cleanupErr := r.cleanupPrometheusServices(ctx, &cluster); cleanupErr != nil {
+			if err := r.cleanupPrometheusServices(ctx, &cluster); err != nil {
 				return ctrl.Result{}, err
 			}
 			// cleanup plan
@@ -803,12 +803,13 @@ func (r *ClusterReconciler) sendApplyRequest(ctx context.Context, url string, pl
 	// check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// TODO: stream read the body to avoid loading it all into memory
+		rspErr := fmt.Errorf("gNMIc pod returned non-success status: %d", resp.StatusCode)
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read response body: %w", err)
 		}
-		logger.Error(err, "gNMIc pod returned non-success status", "status", resp.StatusCode, "body", string(body))
-		return err
+		logger.Error(rspErr, "", "body", string(body))
+		return rspErr
 	}
 
 	return nil
@@ -2599,7 +2600,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 							"csi.cert-manager.io/issuer-name": cluster.Spec.API.TLS.IssuerRef,
 							"csi.cert-manager.io/issuer-kind": "Issuer",
 							"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc.cluster.local",
-							// "csi.cert-manager.io/rebewBefore": "72h", // TODO: make configurable ?
+							// "csi.cert-manager.io/renewBefore": "72h", // TODO: make configurable ?
 						},
 					},
 				},
