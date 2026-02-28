@@ -3,6 +3,7 @@ KIND_VERSION ?= v0.20.0
 GNMIC_VERSION ?= 0.44.1
 KUBECTL_VERSION ?= v1.31.0
 TEST_CLUSTER_NAME ?= test-kind
+CERT_MANAGER_VERSION ?= v1.19.3
 
 .PHONY: install-kubectl
 install-kubectl: ## Install kubectl if not present
@@ -19,7 +20,7 @@ install-kubectl: ## Install kubectl if not present
 install-kind: ## Install kind if not present
 	@if ! command -v kind >/dev/null 2>&1; then \
 		echo "kind not found, installing..."; \
-		curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64; \
+		curl -Lo ./kind https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-linux-amd64; \
 		chmod +x ./kind; \
 		sudo mv ./kind /usr/local/bin/; \
 	else \
