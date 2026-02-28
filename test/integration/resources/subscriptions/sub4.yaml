@@ -1,0 +1,12 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: sub4
+  labels:
+    vendor: nokia_srlinux
+    group: bgp_metrics
+spec:
+  paths:
+    - /network-instance[name=default]/protocols/bgp/statistics
+  mode: STREAM/SAMPLE
+  sampleInterval: 10s

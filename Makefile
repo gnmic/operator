@@ -1,3 +1,4 @@
+include test.mk
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
@@ -249,8 +250,10 @@ configure-nodes-dev-lab: ## Configure the nodes in the development lab cluster
 
 .PHONY: apply-resources-dev-lab
 apply-resources-dev-lab: apply-targets-dev-lab apply-subscriptions-dev-lab apply-outputs-dev-lab apply-pipelines-dev-lab apply-clusters-dev-lab ## Apply the resources for the development lab cluster
+
 .PHONY: delete-resources-dev-lab
 delete-resources-dev-lab: delete-clusters-dev-lab delete-targets-dev-lab delete-subscriptions-dev-lab delete-outputs-dev-lab delete-pipelines-dev-lab ## Delete the resources for the development lab cluster
+
 .PHONY: apply-targets-dev-lab
 apply-targets-dev-lab: ## Apply the targets for the development lab cluster
 	kubectl apply -f lab/dev/resources/targets/profile
@@ -291,3 +294,18 @@ apply-clusters-dev-lab: ## Apply the clusters for the development lab cluster
 delete-clusters-dev-lab: ## Delete the clusters for the development lab cluster
 	kubectl delete -f lab/dev/resources/clusters
 
+##@ Testing Lab
+
+.PHONY: run-integration-tests
+run-integration-tests: docker-build undeploy-test-cluster deploy-test-cluster install-test-cluster-dependencies load-test-image deploy install-kubectl install-gnmic install-containerlab deploy-test-topology apply-test-resources
+	kubectl wait --for=condition=Ready cluster --all --timeout=180s
+	kubectl wait --for=condition=Ready pipeline --all --timeout=180s
+	kubectl wait --for=jsonpath='{.status.connectionState}'=READY target --all --timeout=180s
+	kubectl get subscriptions -o yaml
+	kubectl get outputs -o yaml
+	kubectl get targets -o yaml
+	kubectl get pipelines -o yaml
+	kubectl get clusters -o yaml
+	kubectl get svc --selector=app.kubernetes.io/managed-by=gnmic-operator -o wide
+	kubectl get pods --selector=app.kubernetes.io/managed-by=gnmic-operator -o wide
+	kubectl logs -n gnmic-system deploy/gnmic-controller-manager
