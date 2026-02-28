@@ -303,8 +303,9 @@ run-integration-tests: docker-build undeploy-test-cluster deploy-test-cluster in
 	kubectl wait --for=jsonpath='{.status.connectionState}'=READY target --all --timeout=180s
 	kubectl get subscriptions -o yaml
 	kubectl get outputs -o yaml
-	kubectl get targets
 	kubectl get targets -o yaml
 	kubectl get pipelines -o yaml
 	kubectl get clusters -o yaml
-	kubectl logs -f -n gnmic-system deploy/gnmic-controller-manager
+	kubectl get svc --selector=app.kubernetes.io/managed-by=gnmic-operator -o wide
+	kubectl get pods --selector=app.kubernetes.io/managed-by=gnmic-operator -o wide
+	kubectl logs -n gnmic-system deploy/gnmic-controller-manager
