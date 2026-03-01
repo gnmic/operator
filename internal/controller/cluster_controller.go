@@ -39,7 +39,7 @@ import (
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -146,7 +146,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var cluster gnmicv1alpha1.Cluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
 		// if the Cluster CR was deleted before we reconciled, cleanup related resources
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			prefixedNN := types.NamespacedName{
 				Name:      resourcePrefix + req.Name,
 				Namespace: req.Namespace,
@@ -160,11 +160,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				return ctrl.Result{}, err
 			}
 			// clean up Prometheus output services
-			if err := r.cleanupPrometheusServices(ctx, &cluster); err != nil {
+			if err := r.cleanupPrometheusServices(ctx, req.Namespace, req.Name); err != nil {
 				return ctrl.Result{}, err
 			}
 			// cleanup plan
-			r.cleanupPlan(cluster.Namespace, cluster.Name)
+			r.cleanupPlan(req.Namespace, req.Name)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -174,7 +174,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// handle deletion with a finalizer to guarantee statefulset, headless service and Prometheus output services cleanup
 	if !cluster.DeletionTimestamp.IsZero() {
 		// cleanup plan
-		r.cleanupPlan(cluster.Namespace, cluster.Name)
+		r.cleanupPlan(req.Namespace, req.Name)
 		// if the Cluster CR is being deleted, cleanup related resources
 		if controllerutil.ContainsFinalizer(&cluster, clusterFinalizer) {
 			nn := types.NamespacedName{Name: resourcePrefix + cluster.Name, Namespace: cluster.Namespace}
@@ -187,7 +187,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				return ctrl.Result{}, cleanupErr
 			}
 			// clean up Prometheus output services
-			if cleanupErr := r.cleanupPrometheusServices(ctx, &cluster); cleanupErr != nil {
+			if cleanupErr := r.cleanupPrometheusServices(ctx, req.Namespace, req.Name); cleanupErr != nil {
 				return ctrl.Result{}, cleanupErr
 			}
 			// cleanup TLS certificates (only if not using CSI driver)
@@ -452,7 +452,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			var targetProfile gnmicv1alpha1.TargetProfile
 			if err := r.Get(ctx, types.NamespacedName{Name: profileName, Namespace: pipeline.Namespace}, &targetProfile); err != nil {
-				if !errors.IsNotFound(err) {
+				if !apierrors.IsNotFound(err) {
 					return ctrl.Result{}, err
 				}
 				logger.Info("target profile not found for tunnel target policy, skipping", "profile", profileName)
@@ -535,6 +535,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// update status
 	newStatus := gnmicv1alpha1.ClusterStatus{
 		ReadyReplicas:      statefulSet.Status.ReadyReplicas,
+		Selector:           metav1.FormatLabelSelector(statefulSet.Spec.Selector),
 		PipelinesCount:     int32(len(pipelines)),
 		TargetsCount:       totalTargets,
 		SubscriptionsCount: totalSubscriptions,
@@ -551,7 +552,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObservedGeneration: cluster.Generation,
 		LastTransitionTime: now,
 	}
-	if statefulSet.Status.ReadyReplicas >= *cluster.Spec.Replicas && configApplied {
+	desired := ptr.Deref(cluster.Spec.Replicas, 0)
+	if statefulSet.Status.ReadyReplicas >= desired && configApplied {
 		readyCondition.Status = metav1.ConditionTrue
 		readyCondition.Reason = "ClusterReady"
 		readyCondition.Message = fmt.Sprintf("All %d replicas are ready and configured", statefulSet.Status.ReadyReplicas)
@@ -614,13 +616,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 		}
 	}
-
 	// update status if changed
 	if !clusterStatusEqual(cluster.Status, newStatus) {
 		cluster.Status = newStatus
 		if err := r.Status().Update(ctx, &cluster); err != nil {
 			logger.Error(err, "failed to update cluster status")
-			return ctrl.Result{}, err
 		}
 	}
 
@@ -1114,7 +1114,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 
 	var current appsv1.StatefulSet
 	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		if err := controllerutil.SetControllerReference(cluster, desired, r.Scheme); err != nil {
 			return nil, err
 		}
@@ -1216,7 +1216,7 @@ func (r *ClusterReconciler) reconcileConfigMap(ctx context.Context, cluster *gnm
 
 	var current corev1.ConfigMap
 	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
 	if err != nil {
@@ -1258,7 +1258,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 
 		var current certmanagerv1.Certificate
 		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			logger.Info("creating certificate", "certificate", certName)
 			if err := r.Create(ctx, cert); err != nil {
 				return false, err
@@ -1298,7 +1298,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 		ordinal := r.extractOrdinalFromCertName(cert.Name, stsName)
 		if ordinal >= int(replicas) {
 			logger.Info("deleting certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+			if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 				return false, err
 			}
 		}
@@ -1406,7 +1406,7 @@ func (r *ClusterReconciler) cleanupCertificates(ctx context.Context, cluster *gn
 
 	for _, cert := range certList.Items {
 		logger.Info("deleting certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -1441,7 +1441,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 
 		var current certmanagerv1.Certificate
 		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			logger.Info("creating tunnel certificate", "certificate", certName)
 			if err := r.Create(ctx, cert); err != nil {
 				return false, err
@@ -1482,7 +1482,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 		ordinal := r.extractOrdinalFromTunnelCertName(cert.Name, stsName)
 		if ordinal >= int(replicas) {
 			logger.Info("deleting tunnel certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+			if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 				return false, err
 			}
 		}
@@ -1576,7 +1576,7 @@ func (r *ClusterReconciler) cleanupTunnelCertificates(ctx context.Context, clust
 
 	for _, cert := range certList.Items {
 		logger.Info("deleting tunnel certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -1605,7 +1605,7 @@ func (r *ClusterReconciler) reconcileClientTLSCertificates(ctx context.Context, 
 
 	var current certmanagerv1.Certificate
 	err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		logger.Info("creating client TLS certificate", "certificate", certName)
 		if err := r.Create(ctx, cert); err != nil {
 			return false, err
@@ -1688,7 +1688,7 @@ func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cl
 	}
 
 	logger.Info("deleting client TLS certificate", "certificate", certName)
-	if err := r.Delete(ctx, cert); err != nil && !errors.IsNotFound(err) {
+	if err := r.Delete(ctx, cert); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
@@ -1710,7 +1710,7 @@ func (r *ClusterReconciler) cleanupClientTLSCertificatesLegacy(ctx context.Conte
 
 	for _, cert := range certList.Items {
 		logger.Info("deleting client TLS certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -1779,7 +1779,7 @@ func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster 
 
 	var current corev1.Service
 	err := r.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: cluster.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		logger.Info("creating tunnel service", "service", serviceName)
 		return r.Create(ctx, desired)
 	}
@@ -1813,7 +1813,7 @@ func (r *ClusterReconciler) cleanupTunnelService(ctx context.Context, cluster *g
 	}
 
 	err := r.Delete(ctx, service)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
@@ -1862,7 +1862,7 @@ func (r *ClusterReconciler) reconcileControllerCA(ctx context.Context, cluster *
 
 	var current corev1.ConfigMap
 	err = r.Get(ctx, types.NamespacedName{Name: cmName, Namespace: cluster.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		logger.Info("creating controller CA configmap", "configmap", cmName)
 		return r.Create(ctx, desired)
 	}
@@ -1996,7 +1996,7 @@ func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *
 			}
 			pipeline.Status = newStatus
 			if err := r.Status().Update(ctx, pipeline); err != nil {
-				if errors.IsConflict(err) {
+				if apierrors.IsConflict(err) {
 					continue
 				}
 				return fmt.Errorf("failed to update pipeline status: %w", err)
@@ -2058,7 +2058,7 @@ func (r *ClusterReconciler) updatePipelineStatusWithError(ctx context.Context, p
 		}
 		pipeline.Status = newStatus
 		if err := r.Status().Update(ctx, pipeline); err != nil {
-			if errors.IsConflict(err) {
+			if apierrors.IsConflict(err) {
 				continue
 			}
 			return fmt.Errorf("failed to update pipeline status: %w", err)
@@ -2130,7 +2130,7 @@ func (r *ClusterReconciler) resolveTargets(ctx context.Context, pipeline *gnmicv
 	for _, ref := range pipeline.Spec.TargetRefs {
 		var target gnmicv1alpha1.Target
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &target); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2174,7 +2174,7 @@ func (r *ClusterReconciler) resolveSubscriptions(ctx context.Context, pipeline *
 	for _, ref := range pipeline.Spec.SubscriptionRefs {
 		var sub gnmicv1alpha1.Subscription
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &sub); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2218,7 +2218,7 @@ func (r *ClusterReconciler) resolveOutputs(ctx context.Context, pipeline *gnmicv
 	for _, ref := range pipeline.Spec.Outputs.OutputRefs {
 		var output gnmicv1alpha1.Output
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &output); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2346,7 +2346,7 @@ func (r *ClusterReconciler) resolveInputs(ctx context.Context, pipeline *gnmicv1
 	for _, ref := range pipeline.Spec.Inputs.InputRefs {
 		var input gnmicv1alpha1.Input
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &input); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2394,7 +2394,7 @@ func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipelin
 	for _, ref := range pipeline.Spec.Outputs.ProcessorRefs {
 		var processor gnmicv1alpha1.Processor
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &processor); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			logger.Info("output processor not found, skipping", "ref", ref)
@@ -2453,7 +2453,7 @@ func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline
 	for _, ref := range pipeline.Spec.Inputs.ProcessorRefs {
 		var processor gnmicv1alpha1.Processor
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &processor); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			logger.Info("input processor not found, skipping", "ref", ref)
@@ -2507,7 +2507,7 @@ func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pip
 	for _, ref := range pipeline.Spec.TunnelTargetPolicyRefs {
 		var policy gnmicv1alpha1.TunnelTargetPolicy
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &policy); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2968,7 +2968,7 @@ func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, cluste
 
 	var current corev1.Service
 	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
 	if err != nil {
@@ -3030,7 +3030,7 @@ func (r *ClusterReconciler) buildHeadlessService(cluster *gnmicv1alpha1.Cluster)
 func (r *ClusterReconciler) ensureStatefulSetAbsent(ctx context.Context, nn types.NamespacedName) error {
 	var sts appsv1.StatefulSet
 	if err := r.Get(ctx, nn, &sts); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -3041,7 +3041,7 @@ func (r *ClusterReconciler) ensureStatefulSetAbsent(ctx context.Context, nn type
 func (r *ClusterReconciler) ensureServiceAbsent(ctx context.Context, nn types.NamespacedName) error {
 	var service corev1.Service
 	if err := r.Get(ctx, nn, &service); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -3068,7 +3068,7 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	}
 
 	// get existing Prometheus services managed by this cluster
-	existingServices, err := r.listPrometheusServicesForCluster(ctx, cluster)
+	existingServices, err := r.listPrometheusServicesForCluster(ctx, cluster.Namespace, cluster.Name)
 	if err != nil {
 		return err
 	}
@@ -3131,7 +3131,7 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	for _, svc := range existingServices {
 		if _, ok := desiredServiceNames[svc.Name]; !ok {
 			logger.Info("deleting unused Prometheus service", "service", svc.Name)
-			if err := r.Delete(ctx, &svc); err != nil && !errors.IsNotFound(err) {
+			if err := r.Delete(ctx, &svc); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
 		}
@@ -3141,12 +3141,12 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 }
 
 // listPrometheusServicesForCluster lists all Prometheus output services for a cluster
-func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context, cluster *gnmicv1alpha1.Cluster) ([]corev1.Service, error) {
+func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context, clusterNamespace, clusterName string) ([]corev1.Service, error) {
 	var serviceList corev1.ServiceList
 	err := r.List(ctx, &serviceList,
-		client.InNamespace(cluster.Namespace),
+		client.InNamespace(clusterNamespace),
 		client.MatchingLabels{
-			LabelClusterName: cluster.Name,
+			LabelClusterName: clusterName,
 			LabelServiceType: LabelValueServiceTypePrometheusOutput,
 		},
 	)
@@ -3157,13 +3157,13 @@ func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context
 }
 
 // cleanupPrometheusServices deletes all Prometheus output services for a cluster
-func (r *ClusterReconciler) cleanupPrometheusServices(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
-	services, err := r.listPrometheusServicesForCluster(ctx, cluster)
+func (r *ClusterReconciler) cleanupPrometheusServices(ctx context.Context, clusterNamespace, clusterName string) error {
+	services, err := r.listPrometheusServicesForCluster(ctx, clusterNamespace, clusterName)
 	if err != nil {
 		return err
 	}
 	for _, svc := range services {
-		if err := r.Delete(ctx, &svc); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &svc); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -3180,7 +3180,7 @@ func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, clus
 
 	var current corev1.Service
 	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
 	if err != nil {
