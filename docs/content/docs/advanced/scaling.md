@@ -1,7 +1,7 @@
 ---
 title: "Scaling"
 linkTitle: "Scaling"
-weight: 1
+weight: 2
 description: >
   Scaling gNMIc clusters horizontally
 ---
@@ -75,7 +75,7 @@ Estimate based on:
 
 ### Use Resource Limits
 
-Ensure pods have appropriate resources:
+Ensure clusters (pods) have appropriate resources:
 
 ```yaml
 spec:
@@ -103,34 +103,23 @@ container_memory_usage_bytes{pod=~"gnmic-.*"}
 gnmic_target_status{cluster="my-cluster"}
 ```
 
-### Scale Gradually
+## Horizontal Pod Autoscaler
 
-For large changes, scale gradually:
+The operator's Cluster resource supports the `scale` subresource, allowing you to enable automatic scaling using the Horizontal Pod Autoscaler (HPA).
 
-```bash
-# Instead of 3 → 10
-kubectl patch cluster my-cluster -p '{"spec":{"replicas":5}}'
-# Wait for stabilization
-kubectl patch cluster my-cluster -p '{"spec":{"replicas":7}}'
-# Wait for stabilization
-kubectl patch cluster my-cluster -p '{"spec":{"replicas":10}}'
-```
-
-## Horizontal Pod Autoscaler (Comming Soon)
-
-You can use HPA for automatic scaling:
+To set up autoscaling, create an HPA resource that targets the Cluster resource. Specify the desired minimum and maximum number of replicas, as well as the metrics that will determine when scaling occurs:
 
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: gnmic-cluster-hpa
+  name: gnmic-c1-hpa
 spec:
   scaleTargetRef:
-    apiVersion: apps/v1
-    kind: StatefulSet
-    name: gnmic-my-cluster
-  minReplicas: 2
+    apiVersion: operator.gnmic.dev/v1alpha1
+    kind: Cluster
+    name: c1
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource
@@ -139,6 +128,83 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
+```
+
+> **Note:** You must install the Kubernetes metrics server to enable HPA based on CPU or Memory:
+>
+> ```shell
+> kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+> ```
+
+### Autoscaling based on custom resources
+
+gNMIc pods provide various Prometheus metrics that can be leveraged by an HPA resource for autoscaling.
+
+One common use case is to scale based on the number of targets assigned to each Pod.
+The gNMIc pods export metrics like:
+
+```
+gnmic_target_up{name="default/leaf1"} 0
+gnmic_target_up{name="default/leaf2"} 0
+gnmic_target_up{name="default/spine1"} 1
+```
+
+Here, a value of `1` indicates that the target is present, while `0` denotes it is absent.
+
+With [Prometheus Adapter](https://github.com/kubernetes-sigs/prometheus-adapter), this metric can be made available as `targets_per_pod{cluster="c1", pod="gnmic-c1-0"}` = 1.
+You can use the following promQL to aggregate these into a “targets per pod” metric: `sum(gnmic_target_up == 1) by (namespace, pod)`.
+
+> You can assign `namespace` and `pod` labels to metrics using scrape configurations or relabeling.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-adapter-rules
+  namespace: monitoring
+data:
+  config.yaml: |
+    rules:
+      default: false
+      custom:
+        - seriesQuery: 'gnmic_target_up{namespace!="",pod!=""}'
+          resources:
+            overrides:
+              namespace:
+                resource: namespace
+              pod:
+                resource: pod
+          name:
+            matches: "^gnmic_target_up$"
+            as: "gnmic_targets_present"
+          metricsQuery: |
+            sum(gnmic_target_up{<<.LabelMatchers>>} == 1) by (namespace, pod)
+```
+
+The corresponding HPA resource would look like this:
+
+In other words: Scale **Cluster** `c1` to a max of `10` replicas if the average number of targets present in the current pods is above `30`.
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gnmic-c1-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: operator.gnmic.dev/v1alpha1
+    kind: Cluster
+    name: c1
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: gnmic_targets_present
+        target:
+          type: AverageValue
+          averageValue: "30"
 ```
 
 ## Considerations
