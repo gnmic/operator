@@ -97,8 +97,12 @@ type ClusterTLSConfig struct {
 
 // ClusterStatus defines the observed state of Cluster
 type ClusterStatus struct {
+	// The conditions of the cluster
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// The number of ready replicas
 	ReadyReplicas int32 `json:"readyReplicas"`
+	// The selector for the cluster statefulset
+	Selector string `json:"selector"`
 	// The number of pipelines referencing this cluster
 	PipelinesCount int32 `json:"pipelinesCount"`
 	// The number of targets referenced by the pipelines
@@ -109,13 +113,12 @@ type ClusterStatus struct {
 	InputsCount int32 `json:"inputsCount"`
 	// The number of outputs referenced by the pipelines
 	OutputsCount int32 `json:"outputsCount"`
-	// The conditions of the cluster
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.readyReplicas,selectorpath=.status.selector
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`
 // +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.spec.replicas`
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`

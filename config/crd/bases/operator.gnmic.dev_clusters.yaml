@@ -475,6 +475,9 @@ spec:
                 description: The number of ready replicas
                 format: int32
                 type: integer
+              selector:
+                description: The selector for the cluster statefulset
+                type: string
               subscriptionsCount:
                 description: The number of subscriptions referenced by the pipelines
                 format: int32
@@ -488,6 +491,7 @@ spec:
             - outputsCount
             - pipelinesCount
             - readyReplicas
+            - selector
             - subscriptionsCount
             - targetsCount
             type: object
@@ -495,4 +499,8 @@ spec:
     served: true
     storage: true
     subresources:
+      scale:
+        labelSelectorPath: .status.selector
+        specReplicasPath: .spec.replicas
+        statusReplicasPath: .status.readyReplicas
       status: {}

@@ -1,12 +1,15 @@
 ---
 title: "Target Distribution"
 linkTitle: "Target Distribution"
-weight: 2
+weight: 1
 description: >
   How targets are distributed across pods
 ---
 
-The gNMIc Operator uses a sophisticated algorithm to distribute targets across pods. This page explains the algorithm and its properties.
+The gNMIc Operator uses a simple algorithm to distribute targets across pods. 
+More placement/distribution strategies will be implemented in the future.
+
+This page explains the algorithm and its properties.
 
 ## Algorithm: Bounded Load Rendezvous Hashing
 
@@ -40,13 +43,6 @@ For each target:
 2. Sort pods by score (highest first)
 3. Assign to highest-scoring pod that has capacity
 
-```
-Target: "router1"
-Scores: pod0=892341, pod1=234567, pod2=567890
-Order:  pod0, pod2, pod1
-pod0 has capacity → assign to pod0
-```
-
 ### Step 4: Track Load
 
 After each assignment, increment the pod's load count. When a pod reaches capacity, it's skipped for future assignments.
@@ -79,7 +75,7 @@ With capacity = ceil(n/p), no pod can have more than `capacity` targets:
 
 When scaling:
 
-**Adding a pod**: Only targets that score highest for the new pod AND are on an over-capacity pod will move. Typically ~1/(N+1) targets move.
+**Adding a pod**: Only targets that score highest for the new pod will move.
 
 **Removing a pod**: Only targets on the removed pod redistribute. Targets on remaining pods stay put.
 
@@ -119,49 +115,4 @@ Targets moved: 3 out of 10 (30%)
 | Consistent hash | High | Variable | Medium |
 | Rendezvous hash | High | Variable | Medium |
 | **Bounded load rendezvous** | **Good** | **Good** | **Medium** |
-
-## Implementation Details
-
-The distribution logic is in `internal/gnmic/distribute.go`:
-
-```go
-func DistributeTargets(plan *ApplyPlan, podIndex, numPods int) *ApplyPlan {
-    // Get assignments using bounded rendezvous hashing
-    assignments := boundedRendezvousAssign(plan.Targets, numPods)
-    
-    // Filter to only targets for this pod
-    for targetNN, assignedPod := range assignments {
-        if assignedPod == podIndex {
-            distributed.Targets[targetNN] = plan.Targets[targetNN]
-        }
-    }
-    return distributed
-}
-```
-
-## Debugging Distribution
-
-To see how targets are distributed:
-
-```bash
-# Check targets per pod
-for i in 0 1 2; do
-  echo "Pod $i:"
-  kubectl exec gnmic-my-cluster-$i -- curl -s localhost:7890/api/v1/config/targets | jq 'keys'
-done
-```
-
-Or check the operator logs:
-
-```bash
-kubectl logs -n gnmic-operator-system deployment/gnmic-operator-controller-manager | grep "config applied"
-```
-
-Output shows target count per pod:
-
-```
-config applied to pod  pod=0  targets=34
-config applied to pod  pod=1  targets=33
-config applied to pod  pod=2  targets=33
-```
 
