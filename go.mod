@@ -7,7 +7,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/onsi/ginkgo/v2 v2.27.3
 	github.com/onsi/gomega v1.38.3
-	github.com/openconfig/gnmic/pkg/api v0.1.10
+	github.com/openconfig/gnmic/pkg/api v0.1.11
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.35.1
 	k8s.io/apiextensions-apiserver v0.35.1
