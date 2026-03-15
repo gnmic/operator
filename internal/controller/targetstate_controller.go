@@ -121,6 +121,9 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// with the latest cluster config (port, TLS, image, etc.)
 	r.stopStreamsForCluster(cluster.Namespace, cluster.Name)
 
+	// clean up target status entries that reference pods beyond the desired count
+	r.removeStalePodsFromTargets(ctx, cluster.Namespace, cluster.Name, stsName, desiredPods)
+
 	// start a stream for each pod
 	for i := 0; i < desiredPods; i++ {
 		key := streamKey(cluster.Namespace, cluster.Name, i)
@@ -487,6 +490,62 @@ func (r *TargetStateReconciler) removeClusterFromTargets(ctx context.Context, na
 				break
 			}
 			logger.Info("removed cluster state from target", "target", target.Name, "cluster", clusterName)
+			break
+		}
+	}
+}
+
+// removeStalePodsFromTargets clears ClusterStates entries that reference pods
+// with an index >= desiredPods (i.e., pods removed during scale-down).
+func (r *TargetStateReconciler) removeStalePodsFromTargets(ctx context.Context, namespace, clusterName, stsName string, desiredPods int) {
+	logger := log.FromContext(ctx).WithValues("controller", "TargetState")
+
+	// build the set of valid pod names
+	validPods := make(map[string]struct{}, desiredPods)
+	for i := 0; i < desiredPods; i++ {
+		validPods[fmt.Sprintf("%s-%d", stsName, i)] = struct{}{}
+	}
+
+	var targets gnmicv1alpha1.TargetList
+	if err := r.List(ctx, &targets, client.InNamespace(namespace)); err != nil {
+		logger.Error(err, "failed to list targets for stale pod cleanup")
+		return
+	}
+
+	for i := range targets.Items {
+		target := &targets.Items[i]
+		if target.Status.ClusterStates == nil {
+			continue
+		}
+		cs, ok := target.Status.ClusterStates[clusterName]
+		if !ok {
+			continue
+		}
+		if _, valid := validPods[cs.Pod]; valid {
+			continue
+		}
+
+		for attempt := 0; attempt < maxConflictRetries; attempt++ {
+			if attempt > 0 {
+				if err := r.Get(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, target); err != nil {
+					if !apierrors.IsNotFound(err) {
+						logger.Error(err, "failed to re-fetch target for stale pod cleanup", "target", target.Name)
+					}
+					break
+				}
+			}
+
+			delete(target.Status.ClusterStates, clusterName)
+			computeStatusSummary(&target.Status)
+
+			if err := r.Status().Update(ctx, target); err != nil {
+				if apierrors.IsConflict(err) {
+					continue
+				}
+				logger.Error(err, "failed to remove stale pod state from target", "target", target.Name, "cluster", clusterName, "pod", cs.Pod)
+				break
+			}
+			logger.Info("removed stale pod state from target", "target", target.Name, "cluster", clusterName, "pod", cs.Pod)
 			break
 		}
 	}

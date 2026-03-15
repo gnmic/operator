@@ -87,6 +87,8 @@ const (
 	ConditionTypeCertificatesReady = "CertificatesReady"
 	// ConditionTypeConfigApplied indicates configuration was applied to pods
 	ConditionTypeConfigApplied = "ConfigApplied"
+	// ConditionTypeCapacityExhausted indicates some targets could not be assigned
+	ConditionTypeCapacityExhausted = "CapacityExhausted"
 )
 
 // Condition types for Pipeline status
@@ -318,10 +320,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// build pipeline data for the gNMIc plan builder
-	planBuilder := gnmic.NewPlanBuilder(r).
-		WithClientTLS(
-			gnmic.ClientTLSConfigForCluster(&cluster),
-		)
+	planBuilder := gnmic.NewPlanBuilder(cluster.Name, r)
+	planBuilder = planBuilder.WithClientTLS(
+		gnmic.ClientTLSConfigForCluster(&cluster),
+	)
+	if cluster.Spec.TargetDistribution != nil && cluster.Spec.TargetDistribution.PodCapacity > 0 {
+		planBuilder.WithTargetDistributionCapacity(cluster.Spec.TargetDistribution.PodCapacity)
+	}
 	pipelineDataMap := make(map[string]*gnmic.PipelineData)
 
 	for _, pipeline := range pipelines {
@@ -339,7 +344,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		targetProfilesNames := make(map[string]struct{})
 		for _, target := range targets {
-			pipelineData.Targets[target.Namespace+gnmic.Delimiter+target.Name] = target.Spec
+			pipelineData.Targets[target.Namespace+gnmic.Delimiter+target.Name] = target
 			targetProfilesNames[target.Spec.Profile] = struct{}{}
 		}
 
@@ -498,11 +503,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	numPods := int(desiredReplicas)
 	configApplied := false
 	var configError error
-	if err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
+	var unassignedTargets int32
+	if unassigned, err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
 		logger.Error(err, "failed to apply config to gNMIc pods")
 		configError = err
 	} else {
 		configApplied = true
+		unassignedTargets = unassigned
 		logger.Info("successfully applied config to gNMIc cluster", "pods", numPods)
 	}
 
@@ -538,6 +545,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		Selector:           metav1.FormatLabelSelector(statefulSet.Spec.Selector),
 		PipelinesCount:     int32(len(pipelines)),
 		TargetsCount:       totalTargets,
+		UnassignedTargets:  unassignedTargets,
 		SubscriptionsCount: totalSubscriptions,
 		InputsCount:        totalInputs,
 		OutputsCount:       totalOutputs,
@@ -606,6 +614,27 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	newStatus.Conditions = append(newStatus.Conditions, configCondition)
 
+	// capacityExhausted condition
+	if unassignedTargets > 0 {
+		newStatus.Conditions = append(newStatus.Conditions, metav1.Condition{
+			Type:               ConditionTypeCapacityExhausted,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "InsufficientCapacity",
+			Message:            fmt.Sprintf("%d target(s) could not be assigned, all pods at capacity", unassignedTargets),
+		})
+	} else if configApplied {
+		newStatus.Conditions = append(newStatus.Conditions, metav1.Condition{
+			Type:               ConditionTypeCapacityExhausted,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "SufficientCapacity",
+			Message:            "All targets assigned",
+		})
+	}
+
 	// preserve LastTransitionTime for unchanged conditions
 	for i := range newStatus.Conditions {
 		for _, oldCond := range cluster.Status.Conditions {
@@ -636,6 +665,7 @@ func clusterStatusEqual(a, b gnmicv1alpha1.ClusterStatus) bool {
 	if a.ReadyReplicas != b.ReadyReplicas ||
 		a.PipelinesCount != b.PipelinesCount ||
 		a.TargetsCount != b.TargetsCount ||
+		a.UnassignedTargets != b.UnassignedTargets ||
 		a.SubscriptionsCount != b.SubscriptionsCount ||
 		a.InputsCount != b.InputsCount ||
 		a.OutputsCount != b.OutputsCount {
@@ -655,8 +685,9 @@ func clusterStatusEqual(a, b gnmicv1alpha1.ClusterStatus) bool {
 	return true
 }
 
-// applyConfigToPods sends the apply plan to all gNMIc pods with distributed targets
-func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan *gnmic.ApplyPlan, numPods int) error {
+// applyConfigToPods sends the apply plan to all gNMIc pods with distributed targets.
+// Returns the number of targets that could not be assigned due to capacity limits.
+func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan *gnmic.ApplyPlan, numPods int) (int32, error) {
 	logger := log.FromContext(ctx)
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
@@ -668,13 +699,16 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 	// create an HTTP client to send the apply plan to the gNMIc pods
 	httpClient, err := r.createHTTPClientForCluster(ctx, cluster)
 	if err != nil {
-		return fmt.Errorf("failed to create HTTP client: %w", err)
+		return 0, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
+	distResult := gnmic.DistributeTargets(plan, numPods, cluster.Spec.TargetDistribution)
 	// apply config to each pod with distributed targets
 	for podIndex := 0; podIndex < numPods; podIndex++ {
 		// distribute targets for this pod
-		distributedPlan := gnmic.DistributeTargets(plan, podIndex, numPods)
-
+		podPlan, ok := distResult.PerPodPlans[podIndex]
+		if !ok {
+			continue
+		}
 		// build the URL for this pod
 		// statefulSet pods have predictable DNS names:
 		//  <statefulset-name>-<ordinal>.<service-name>.<namespace>.svc.cluster.local
@@ -685,14 +719,19 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		}
 		url := fmt.Sprintf("%s://%s:%d/api/v1/config/apply", scheme, podDNS, restPort)
 		logger.Info("sending config to gNMIc pod", "url", url)
-		if err := r.sendApplyRequest(ctx, url, distributedPlan, httpClient); err != nil {
-			return fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
+		if err := r.sendApplyRequest(ctx, url, podPlan, httpClient); err != nil {
+			return 0, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
 		}
 
-		logger.Info("config applied to pod", "pod", podIndex, "targets", len(distributedPlan.Targets))
+		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets))
 	}
 
-	return nil
+	unassigned := int32(len(distResult.UnassignedTargets))
+	if unassigned > 0 {
+		logger.Info("targets unassigned due to capacity limits", "count", unassigned)
+	}
+
+	return unassigned, nil
 }
 
 func (r *ClusterReconciler) createHTTPClientForCluster(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (*http.Client, error) {
