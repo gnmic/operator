@@ -402,7 +402,7 @@ spec:
               targetDistribution:
                 description: The target distribution configuration
                 properties:
-                  perPodCapacity:
+                  podCapacity:
                     description: |-
                       The capacity per pod for distributing targets
                       To be used in conjunction with Horizontal Pod Autoscaling (HPA) scaling.
