@@ -47,6 +47,15 @@ type ClusterSpec struct {
 
 	// Environment variables to set in the gNMIc pods
 	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// The target distribution configuration
+	TargetDistribution *TargetDistributionConfig `json:"targetDistribution,omitempty"`
+}
+
+type TargetDistributionConfig struct {
+	// The capacity per pod for distributing targets
+	// To be used in conjunction with Horizontal Pod Autoscaling (HPA) scaling.
+	PodCapacity int `json:"podCapacity,omitempty"`
 }
 
 type APIConfig struct {
@@ -107,6 +116,9 @@ type ClusterStatus struct {
 	PipelinesCount int32 `json:"pipelinesCount"`
 	// The number of targets referenced by the pipelines
 	TargetsCount int32 `json:"targetsCount"`
+	// The number of targets that could not be assigned to any pod due to capacity limits.
+	// Non-zero when total targets exceed numPods × perPodCapacity.
+	UnassignedTargets int32 `json:"unassignedTargets"`
 	// The number of subscriptions referenced by the pipelines
 	SubscriptionsCount int32 `json:"subscriptionsCount"`
 	// The number of inputs referenced by the pipelines
@@ -124,6 +136,7 @@ type ClusterStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
 // +kubebuilder:printcolumn:name="Pipelines",type=integer,JSONPath=`.status.pipelinesCount`
 // +kubebuilder:printcolumn:name="Targets",type=integer,JSONPath=`.status.targetsCount`
+// +kubebuilder:printcolumn:name="Unassigned",type=integer,JSONPath=`.status.unassignedTargets`
 // +kubebuilder:printcolumn:name="Subs",type=integer,JSONPath=`.status.subscriptionsCount`
 // +kubebuilder:printcolumn:name="Inputs",type=integer,JSONPath=`.status.inputsCount`
 // +kubebuilder:printcolumn:name="Outputs",type=integer,JSONPath=`.status.outputsCount`
