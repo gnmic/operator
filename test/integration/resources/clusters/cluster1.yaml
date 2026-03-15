@@ -13,4 +13,4 @@ spec:
       memory: "500Mi"
       cpu: "1"
   targetDistribution:
-    perPodCapacity: 5
+    podCapacity: 5
