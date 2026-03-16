@@ -20,7 +20,10 @@ The operator uses **bounded load rendezvous hashing**, which combines two techni
 
 ## How It Works
 
-### Step 1: Calculate Capacity
+### Step 1: Determine Capacity
+
+If the Cluster CR specifies `spec.targetDistribution.perPodCapacity`, that value
+is used as a fixed ceiling. Otherwise capacity is calculated automatically:
 
 ```
 capacity = ceil(numTargets / numPods)
@@ -28,22 +31,42 @@ capacity = ceil(numTargets / numPods)
 
 Example: 10 targets, 3 pods → capacity = 4
 
-### Step 2: Sort Targets
+A fixed `perPodCapacity` is useful when combined with [autoscaling](../scaling/)
+— it sets a hard ceiling per pod so HPA has time to add replicas before pods are
+full.
 
-Targets are processed in alphabetical order for determinism:
+### Step 2: Preserve Current Assignments
+
+If target status already records which pod each target is on (the **current
+assignment**), the algorithm keeps those assignments as long as the pod is still
+present and under capacity.
+
+When a pod has more pre-assigned targets than its capacity allows (e.g., after a
+scale-down or capacity reduction), targets with the **lowest** hash score for
+that pod are displaced first. This ensures deterministic selection of which
+targets stay.
+
+### Step 3: Sort Remaining Targets
+
+Unassigned targets are processed in alphabetical order for determinism:
 
 ```
 [target1, target10, target2, target3, ...]
 ```
 
-### Step 3: Assign Each Target
+### Step 4: Assign Each Target
 
-For each target:
+For each unassigned target:
 1. Calculate a score against each pod: `hash(targetName + podIndex)`
 2. Sort pods by score (highest first)
-3. Assign to highest-scoring pod that has capacity
+3. Assign to highest-scoring pod that still has capacity
 
-### Step 4: Track Load
+If no pod has capacity, the target is left unassigned until the next
+reconciliation (e.g., after HPA scales up a new replica). The Cluster CR status
+reports the number of unassigned targets via the `unassignedTargets` field and
+the `CapacityExhausted` condition.
+
+### Step 5: Track Load
 
 After each assignment, increment the pod's load count. When a pod reaches capacity, it's skipped for future assignments.
 
@@ -51,7 +74,12 @@ After each assignment, increment the pod's load count. When a pod reaches capaci
 
 ### Stability
 
-The same target gets the same score for each pod across reconciliations. Unless capacity constraints force a change, targets stay on their assigned pods.
+The same target gets the same score for each pod across reconciliations. Unless
+capacity constraints force a change, targets stay on their assigned pods.
+
+When current assignments are available, targets are kept on their existing pod
+without recomputing scores — only truly unassigned targets go through the
+hashing step.
 
 ```
 # Before scaling: router1 on pod0
@@ -73,11 +101,16 @@ With capacity = ceil(n/p), no pod can have more than `capacity` targets:
 
 ### Minimal Redistribution
 
-When scaling:
+Current assignment awareness keeps churn to the minimum required:
 
-**Adding a pod**: Only targets that score highest for the new pod will move.
+**Adding a pod**: Existing targets stay on their current pods. Only unassigned
+targets (or targets displaced by capacity limits) may land on the new pod.
 
-**Removing a pod**: Only targets on the removed pod redistribute. Targets on remaining pods stay put.
+**Removing a pod**: Only targets on the removed pod redistribute. Targets on
+remaining pods stay put.
+
+**Adding/removing a target**: Other targets' assignments are unaffected when
+current assignments are provided.
 
 ## Visualization
 

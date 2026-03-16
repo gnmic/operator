@@ -5,6 +5,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/gnmic/operator/api/v1alpha1"
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
 )
 
@@ -32,13 +33,15 @@ func TestDistributeTargets(t *testing.T) {
 	numPods := 3
 
 	// distribute targets across pods
-	distributedPlans := make([]*ApplyPlan, numPods)
+	distResult := DistributeTargets(plan, numPods, &v1alpha1.TargetDistributionConfig{})
 	for i := 0; i < numPods; i++ {
-		distributedPlans[i] = DistributeTargets(plan, i, numPods)
-	}
+		dp, ok := distResult.PerPodPlans[i]
+		if !ok {
+			t.Errorf("failed to get distributed plan for pod %d", i)
+			continue
+		}
 
-	// verify each pod gets subscriptions, outputs, inputs
-	for i, dp := range distributedPlans {
+		// verify each pod gets subscriptions, outputs, inputs
 		if len(dp.Subscriptions) != 1 {
 			t.Errorf("pod %d: expected 1 subscription, got %d", i, len(dp.Subscriptions))
 		}
@@ -50,9 +53,13 @@ func TestDistributeTargets(t *testing.T) {
 		}
 	}
 
+	if len(distResult.UnassignedTargets) != 0 {
+		t.Errorf("expected no unassigned targets, got %v", distResult.UnassignedTargets)
+	}
+
 	// verify all targets are distributed (no duplicates, no missing)
 	allTargets := make(map[string]int) // targetNN -> count
-	for i, dp := range distributedPlans {
+	for i, dp := range distResult.PerPodPlans {
 		t.Logf("pod %d targets: %v", i, keys(dp.Targets))
 		for targetNN := range dp.Targets {
 			allTargets[targetNN]++
@@ -88,8 +95,8 @@ func TestDistributeTargetsDeterministic(t *testing.T) {
 
 	// run distribution multiple times
 	for run := 0; run < 10; run++ {
-		plan1 := DistributeTargets(plan, 0, numPods)
-		plan2 := DistributeTargets(plan, 0, numPods)
+		plan1 := DistributeTargets(plan, numPods, &v1alpha1.TargetDistributionConfig{}).PerPodPlans[0]
+		plan2 := DistributeTargets(plan, numPods, &v1alpha1.TargetDistributionConfig{}).PerPodPlans[0]
 
 		// should get the same targets each time
 		if len(plan1.Targets) != len(plan2.Targets) {
@@ -109,6 +116,7 @@ func TestDistributeTargetsSinglePod(t *testing.T) {
 		Targets: map[string]*gapi.TargetConfig{
 			"default/target1": {Name: "target1"},
 			"default/target2": {Name: "target2"},
+			"default/target3": {Name: "target3"},
 		},
 		Subscriptions: map[string]*gapi.SubscriptionConfig{},
 		Outputs:       map[string]map[string]any{},
@@ -116,8 +124,8 @@ func TestDistributeTargetsSinglePod(t *testing.T) {
 	}
 
 	// single pod should get all targets
-	distributed := DistributeTargets(plan, 0, 1)
-	if len(distributed.Targets) != 2 {
+	distributed := DistributeTargets(plan, 1, &v1alpha1.TargetDistributionConfig{}).PerPodPlans[0]
+	if len(distributed.Targets) != 3 {
 		t.Errorf("single pod should get all targets, got %d", len(distributed.Targets))
 	}
 }
@@ -133,19 +141,68 @@ func TestDistributeTargetsEdgeCases(t *testing.T) {
 	}
 
 	// invalid numPods should default to 1
-	distributed := DistributeTargets(plan, 0, 0)
+	distributed := DistributeTargets(plan, 0, &v1alpha1.TargetDistributionConfig{}).PerPodPlans[0]
 	if len(distributed.Targets) != 1 {
 		t.Errorf("zero pods should default to 1, got %d targets", len(distributed.Targets))
 	}
+	// invalid numPods should default to 1
+	distributed = DistributeTargets(plan, -1, &v1alpha1.TargetDistributionConfig{}).PerPodPlans[0]
+	if len(distributed.Targets) != 1 {
+		t.Errorf("negative pods should default to 1, got %d targets", len(distributed.Targets))
+	}
+}
 
-	// invalid podIndex should default to 0
-	distributed = DistributeTargets(plan, -1, 2)
-	// just verify it doesn't panic
-	t.Logf("negative podIndex: %d targets", len(distributed.Targets))
+func TestDistributeTargets_CapacityOverflow(t *testing.T) {
+	plan := &ApplyPlan{
+		Targets: map[string]*gapi.TargetConfig{
+			"default/target1":  {Name: "target1"},
+			"default/target2":  {Name: "target2"},
+			"default/target3":  {Name: "target3"},
+			"default/target4":  {Name: "target4"},
+			"default/target5":  {Name: "target5"},
+			"default/target6":  {Name: "target6"},
+			"default/target7":  {Name: "target7"},
+			"default/target8":  {Name: "target8"},
+			"default/target9":  {Name: "target9"},
+			"default/target10": {Name: "target10"},
+		},
+		Subscriptions: map[string]*gapi.SubscriptionConfig{},
+		Outputs:       map[string]map[string]any{},
+		Inputs:        map[string]map[string]any{},
+	}
 
-	distributed = DistributeTargets(plan, 5, 2)
-	// should default to pod 0
-	t.Logf("out of range podIndex: %d targets", len(distributed.Targets))
+	// 10 targets, 2 pods, capacity=3 → total capacity=6, so 4 targets unassigned
+	distResult := DistributeTargets(plan, 2, &v1alpha1.TargetDistributionConfig{
+		PodCapacity: 3,
+	})
+
+	totalAssigned := 0
+	for _, dp := range distResult.PerPodPlans {
+		if len(dp.Targets) > 3 {
+			t.Errorf("pod exceeds capacity 3, has %d targets", len(dp.Targets))
+		}
+		totalAssigned += len(dp.Targets)
+	}
+
+	if totalAssigned != 6 {
+		t.Errorf("expected 6 assigned targets, got %d", totalAssigned)
+	}
+	if len(distResult.UnassignedTargets) != 4 {
+		t.Errorf("expected 4 unassigned targets, got %d: %v", len(distResult.UnassignedTargets), distResult.UnassignedTargets)
+	}
+
+	t.Logf("assigned: %d, unassigned: %v", totalAssigned, distResult.UnassignedTargets)
+}
+
+// getTargetAssignments returns a map of podIndex -> list of targetNNs.
+// used in tests
+func getTargetAssignments(targetNNs []string, numPods int) Assignment {
+	// build a fake targets map
+	targets := make(map[string]*gapi.TargetConfig, len(targetNNs))
+	for _, nn := range targetNNs {
+		targets[nn] = &gapi.TargetConfig{}
+	}
+	return boundedLoadRendezvousHash(targets, &PlacementStrategyOpts{NumPods: numPods})
 }
 
 func TestGetTargetAssignments(t *testing.T) {

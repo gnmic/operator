@@ -30,6 +30,9 @@ spec:
     - jsonPath: .status.targetsCount
       name: Targets
       type: integer
+    - jsonPath: .status.unassignedTargets
+      name: Unassigned
+      type: integer
     - jsonPath: .status.subscriptionsCount
       name: Subs
       type: integer
@@ -396,6 +399,15 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              targetDistribution:
+                description: The target distribution configuration
+                properties:
+                  podCapacity:
+                    description: |-
+                      The capacity per pod for distributing targets
+                      To be used in conjunction with Horizontal Pod Autoscaling (HPA) scaling.
+                    type: integer
+                type: object
             required:
             - image
             type: object
@@ -486,6 +498,12 @@ spec:
                 description: The number of targets referenced by the pipelines
                 format: int32
                 type: integer
+              unassignedTargets:
+                description: |-
+                  The number of targets that could not be assigned to any pod due to capacity limits.
+                  Non-zero when total targets exceed numPods × perPodCapacity.
+                format: int32
+                type: integer
             required:
             - inputsCount
             - outputsCount
@@ -494,6 +512,7 @@ spec:
             - selector
             - subscriptionsCount
             - targetsCount
+            - unassignedTargets
             type: object
         type: object
     served: true

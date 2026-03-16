@@ -10,13 +10,15 @@ const Delimiter = "/"
 
 // ApplyPlan represents the configuration to be applied to gNMIc
 type ApplyPlan struct {
-	Targets             map[string]*gapi.TargetConfig       `json:"targets,omitempty"`
-	Subscriptions       map[string]*gapi.SubscriptionConfig `json:"subscriptions,omitempty"`
-	Outputs             map[string]map[string]any           `json:"outputs,omitempty"`
-	Inputs              map[string]map[string]any           `json:"inputs,omitempty"`
-	Processors          map[string]map[string]any           `json:"processors,omitempty"`
-	TunnelTargetMatches map[string]*TunnelTargetMatch       `json:"tunnel-target-matches,omitempty"`
-	PrometheusPorts     map[string]int32                    `json:"prometheus-output-ports,omitempty"` // For status reporting
+	Targets map[string]*gapi.TargetConfig `json:"targets,omitempty"`
+	// pod index -> target names
+	CurrentTargetAssignment map[int]map[string]struct{}         `json:"current-target-assignment,omitempty"`
+	Subscriptions           map[string]*gapi.SubscriptionConfig `json:"subscriptions,omitempty"`
+	Outputs                 map[string]map[string]any           `json:"outputs,omitempty"`
+	Inputs                  map[string]map[string]any           `json:"inputs,omitempty"`
+	Processors              map[string]map[string]any           `json:"processors,omitempty"`
+	TunnelTargetMatches     map[string]*TunnelTargetMatch       `json:"tunnel-target-matches,omitempty"`
+	PrometheusPorts         map[string]int32                    `json:"prometheus-output-ports,omitempty"` // For status reporting
 }
 
 // TunnelTargetMatch defines a policy for matching tunnel targets
@@ -34,7 +36,7 @@ type TunnelTargetMatch struct {
 
 // PipelineData holds the resolved resources for a single pipeline
 type PipelineData struct {
-	Targets              map[string]gnmicv1alpha1.TargetSpec
+	Targets              map[string]gnmicv1alpha1.Target
 	TargetProfiles       map[string]gnmicv1alpha1.TargetProfileSpec
 	Subscriptions        map[string]gnmicv1alpha1.SubscriptionSpec
 	Outputs              map[string]gnmicv1alpha1.OutputSpec
@@ -53,7 +55,7 @@ type PipelineData struct {
 // NewPipelineData creates a new PipelineData with initialized maps
 func NewPipelineData() *PipelineData {
 	return &PipelineData{
-		Targets:                 make(map[string]gnmicv1alpha1.TargetSpec),
+		Targets:                 make(map[string]gnmicv1alpha1.Target),
 		TargetProfiles:          make(map[string]gnmicv1alpha1.TargetProfileSpec),
 		Subscriptions:           make(map[string]gnmicv1alpha1.SubscriptionSpec),
 		Outputs:                 make(map[string]gnmicv1alpha1.OutputSpec),
