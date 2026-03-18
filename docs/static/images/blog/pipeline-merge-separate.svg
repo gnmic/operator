@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 290" role="img" aria-label="Shared targets deduplicated, outputs stay pipeline-specific">
+  <defs>
+    <marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#888"/>
+    </marker>
+    <marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5C9BD6"/>
+    </marker>
+    <marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#66BB6A"/>
+    </marker>
+    <marker id="ah-prom" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#E07B39"/>
+    </marker>
+    <marker id="ah-kafka" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9C59B5"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="290" fill="#1f2020"/>
+
+  <!-- Column labels -->
+  <text x="110" y="28" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1">OUTPUTS</text>
+  <text x="340" y="28" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1">PIPELINES</text>
+  <text x="580" y="28" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1">MERGED TARGET</text>
+  <text x="820" y="28" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1">TARGET</text>
+
+  <!-- Column separators -->
+  <line x1="224" y1="42" x2="224" y2="258" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 3"/>
+  <line x1="456" y1="42" x2="456" y2="258" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 3"/>
+  <line x1="688" y1="42" x2="688" y2="258" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- Prometheus output box -->
+  <rect x="14" y="58" width="196" height="52" rx="4" fill="#1f2020" stroke="#E07B39" stroke-width="1.5"/>
+  <text x="112" y="80" fill="#E07B39" font-family="arial,sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Output</text>
+  <text x="112" y="98" fill="#999" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Prometheus</text>
+
+  <!-- Kafka output box -->
+  <rect x="14" y="178" width="196" height="52" rx="4" fill="#1f2020" stroke="#9C59B5" stroke-width="1.5"/>
+  <text x="112" y="200" fill="#9C59B5" font-family="arial,sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Output</text>
+  <text x="112" y="218" fill="#999" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Kafka</text>
+
+  <!-- Pipeline dc1-common box -->
+  <rect x="238" y="44" width="204" height="84" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="258" y="68" fill="#5C9BD6" font-family="arial,sans-serif" font-size="13" font-weight="bold">Pipeline</text>
+  <text x="258" y="86" fill="#999" font-family="arial,sans-serif" font-size="11">dc1-common</text>
+  <text x="258" y="102" fill="#777" font-family="arial,sans-serif" font-size="10">interfaces -&gt; Prometheus</text>
+  <text x="258" y="116" fill="#777" font-family="arial,sans-serif" font-size="10">all dc1 devices</text>
+
+  <!-- Pipeline dc1-leaf box -->
+  <rect x="238" y="160" width="204" height="84" rx="4" fill="#1f2020" stroke="#66BB6A" stroke-width="1.5"/>
+  <text x="258" y="184" fill="#66BB6A" font-family="arial,sans-serif" font-size="13" font-weight="bold">Pipeline</text>
+  <text x="258" y="202" fill="#999" font-family="arial,sans-serif" font-size="11">dc1-leaf</text>
+  <text x="258" y="218" fill="#777" font-family="arial,sans-serif" font-size="10">bgp-evpn -&gt; Kafka</text>
+  <text x="258" y="232" fill="#777" font-family="arial,sans-serif" font-size="10">dc1 leaf devices</text>
+
+  <!-- Merged target box (dual-color border) -->
+  <rect x="470" y="96" width="204" height="96" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="2"/>
+  <rect x="475" y="101" width="194" height="86" rx="3" fill="none" stroke="#66BB6A" stroke-width="1" stroke-dasharray="5 3"/>
+  <text x="572" y="130" fill="#ccc" font-family="arial,sans-serif" font-size="13" font-weight="bold" text-anchor="middle">leaf-1</text>
+  <text x="572" y="148" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="middle">Target (merged)</text>
+  <text x="572" y="164" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="middle">interfaces + bgp-evpn</text>
+  <text x="572" y="180" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="middle">1 gRPC session</text>
+
+  <!-- Device box -->
+  <rect x="702" y="118" width="200" height="52" rx="4" fill="#282929" stroke="rgba(255,255,255,0.28)" stroke-width="1"/>
+  <text x="802" y="142" fill="#ccc" font-family="arial,sans-serif" font-size="12" text-anchor="middle">leaf-1</text>
+  <text x="802" y="158" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="middle">network device</text>
+
+  <!-- Arrow: dc1-common -> Prometheus (dashed orange, left-pointing) -->
+  <path d="M 238 84 L 210 84" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="5 3" fill="none" marker-end="url(#ah-prom)"/>
+
+  <!-- Arrow: dc1-leaf -> Kafka (dashed purple, left-pointing) -->
+  <path d="M 238 202 L 210 202" stroke="#9C59B5" stroke-width="1.5" stroke-dasharray="5 3" fill="none" marker-end="url(#ah-kafka)"/>
+
+  <!-- Arrow: dc1-common -> merged target (solid blue, right-pointing) -->
+  <path d="M 442 86 C 456 86, 456 134, 470 134" stroke="#5C9BD6" stroke-width="1.5" fill="none" marker-end="url(#ah-blue)"/>
+
+  <!-- Arrow: dc1-leaf -> merged target (solid green, right-pointing) -->
+  <path d="M 442 202 C 456 202, 456 158, 470 158" stroke="#66BB6A" stroke-width="1.5" fill="none" marker-end="url(#ah-green)"/>
+
+  <!-- Arrow: merged target -> device (grey, labeled) -->
+  <path d="M 674 144 L 702 144" stroke="#888" stroke-width="2" fill="none" marker-end="url(#ah-gray)"/>
+  <text x="688" y="136" fill="#aaa" font-family="arial,sans-serif" font-size="9" text-anchor="middle">1 gRPC</text>
+
+  <!-- Annotations at bottom -->
+  <text x="112" y="272" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="10" text-anchor="middle">pipeline-specific</text>
+  <text x="572" y="272" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="10" text-anchor="middle">targets deduplicated</text>
+</svg>
