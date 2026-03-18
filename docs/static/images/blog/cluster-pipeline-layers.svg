@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" role="img" aria-label="Cluster and Pipeline resource layers">
+  <defs>
+    <marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5C9BD6"/>
+    </marker>
+    <marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#66BB6A"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="360" fill="#1f2020"/>
+
+  <!-- Zone labels -->
+  <text x="240" y="36" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">INTENT</text>
+  <text x="710" y="36" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">INFRASTRUCTURE</text>
+
+  <!-- Zone separator -->
+  <line x1="468" y1="50" x2="468" y2="330" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- Pipeline dc1-common -->
+  <rect x="46" y="64" width="376" height="108" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="66" y="88" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pipeline</text>
+  <text x="66" y="106" fill="#999" font-family="arial,sans-serif" font-size="12">dc1-common</text>
+  <rect x="66" y="116" width="70" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="101" y="131" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Targets</text>
+  <rect x="148" y="116" width="94" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="195" y="131" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Subscriptions</text>
+  <rect x="254" y="116" width="70" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="289" y="131" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Outputs</text>
+  <rect x="336" y="116" width="70" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="371" y="131" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Inputs</text>
+
+  <!-- Pipeline dc1-leaf -->
+  <rect x="46" y="202" width="376" height="108" rx="4" fill="#1f2020" stroke="#66BB6A" stroke-width="1.5"/>
+  <text x="66" y="226" fill="#66BB6A" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pipeline</text>
+  <text x="66" y="244" fill="#999" font-family="arial,sans-serif" font-size="12">dc1-leaf</text>
+  <rect x="66" y="254" width="70" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="101" y="269" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Targets</text>
+  <rect x="148" y="254" width="94" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="195" y="269" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Subscriptions</text>
+  <rect x="254" y="254" width="70" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="289" y="269" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Outputs</text>
+
+  <!-- Cluster dc1 -->
+  <rect x="496" y="54" width="424" height="272" rx="4" fill="#1f2020" stroke="#cccccc" stroke-width="1.5"/>
+  <text x="516" y="80" fill="#ccc" font-family="arial,sans-serif" font-size="14" font-weight="bold">Cluster</text>
+  <text x="516" y="98" fill="#999" font-family="arial,sans-serif" font-size="12">dc1</text>
+
+  <!-- Cluster sub-resources: Kubernetes primitives -->
+  <rect x="516" y="110" width="174" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="603" y="125" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">StatefulSet (3 pods)</text>
+  <rect x="516" y="144" width="96" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="564" y="159" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Services</text>
+  <rect x="516" y="178" width="120" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="576" y="193" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Certificates</text>
+  <rect x="516" y="212" width="106" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="569" y="227" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">ConfigMaps</text>
+  <rect x="516" y="246" width="156" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="594" y="261" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">gRPC Tunnel Service</text>
+  <rect x="516" y="280" width="130" height="22" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="581" y="295" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">Target Distribution</text>
+
+  <!-- Arrow from dc1-common to Cluster -->
+  <path d="M 422 118 C 456 118, 460 165, 496 175" stroke="#5C9BD6" stroke-width="1.5" fill="none" marker-end="url(#ah-blue)"/>
+
+  <!-- Arrow from dc1-leaf to Cluster -->
+  <path d="M 422 252 C 456 252, 460 215, 496 205" stroke="#66BB6A" stroke-width="1.5" fill="none" marker-end="url(#ah-green)"/>
+
+  <!-- "references" label -->
+  <text x="456" y="192" fill="#777" font-family="arial,sans-serif" font-size="10" text-anchor="middle">references</text>
+</svg>
