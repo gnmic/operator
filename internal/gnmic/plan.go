@@ -60,7 +60,6 @@ type resourceRelationship struct {
 
 // NewPlanBuilder creates a new PlanBuilder
 func NewPlanBuilder(clusterName string, credsFetcher CredentialsFetcher) *PlanBuilder {
-
 	return &PlanBuilder{
 		clusterName:  clusterName,
 		pipelines:    make(map[string]*PipelineData),

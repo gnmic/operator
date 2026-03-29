@@ -2334,6 +2334,11 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 		// use cluster DNS name for the service
 		host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
 		addr := gnmic.FormatServiceAddress(spec, host, port)
+		if spec.ServiceRef.URL != "" {
+			url := strings.TrimPrefix(spec.ServiceRef.URL, "/")
+			addr = strings.TrimSuffix(addr, "/")
+			addr = fmt.Sprintf("%s/%s", addr, url)
+		}
 		resolved = append(resolved, addr)
 	}
 
@@ -2369,6 +2374,11 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 			// use cluster DNS name for the service
 			host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
 			addr := gnmic.FormatServiceAddress(spec, host, port)
+			if spec.ServiceSelector.URL != "" {
+				url := strings.TrimPrefix(spec.ServiceSelector.URL, "/")
+				addr = strings.TrimSuffix(addr, "/")
+				addr = fmt.Sprintf("%s/%s", addr, url)
+			}
 			resolved = append(resolved, addr)
 		}
 	}

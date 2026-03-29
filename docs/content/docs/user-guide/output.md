@@ -51,6 +51,7 @@ Defines the output address or URL as a service reference.
 | `name` | string | Yes | Name of the Kubernetes Service |
 | `namespace` | string | No | Namespace of the Service (defaults to Output's namespace) |
 | `port` | string | No | Port name or number (defaults to first port) |
+| `url` | string | No | Path suffix appended after the resolved `scheme://host:port` (optional leading slash). Use for HTTP(S) outputs such as `prometheus_write` or `influxdb` (for example `api/v1/write` or `api/v1/push`) so you do not need the full URL in `config`. |
 
 ### ServiceSelector
 
@@ -61,6 +62,7 @@ Defines the output address or URL as a service selector.
 | `matchLabels` | map[string]string | Yes | Labels to match services |
 | `namespace` | string | No | Namespace to search (defaults to Output's namespace) |
 | `port` | string | No | Port name or number (defaults to first port) |
+| `url` | string | No | Path suffix appended after each resolved address; same meaning as `serviceRef.url`. |
 
 - It is recommended to label outputs for flexible selection when building Pipelines.
 
@@ -207,6 +209,19 @@ spec:
 ```
 
 The operator resolves the service and constructs the URL as `http://prometheus-server.{namespace}.svc.cluster.local:9090`.
+
+To set the HTTP path without duplicating the host in `config`, use `serviceRef.url` (for example Grafana Mimir at `/api/v1/push`):
+
+```yaml
+spec:
+  type: prometheus_write
+  serviceRef:
+    name: mimir-distributor
+    port: http
+    url: api/v1/push
+  config:
+    timeout: 10s
+```
 
 ### Using Service Selector
 
@@ -482,6 +497,10 @@ For outputs that connect to external systems (NATS, Kafka, InfluxDB, Prometheus 
 | **Use case** | Known, single service | Dynamic discovery |
 | **Result** | Single address | Multiple addresses (comma-separated) |
 | **Cross-namespace** | Yes (specify namespace) | Yes (specify namespace) |
+
+### Path suffix (`url`)
+
+For `serviceRef` and `serviceSelector`, optional field `url` is appended after the resolved address (scheme, DNS name, and port). It is most useful for `prometheus_write` and `influxdb`, where gNMIc expects a full URL: you can rely on service discovery for the host and port and set only the path here (for example `api/v1/write` for Prometheus or `api/v1/push` for Mimir). Leading slashes are optional.
 
 1. The operator watches for Output resources
 2. During reconciliation, it resolves the referenced Service(s)
