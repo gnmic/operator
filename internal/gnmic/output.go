@@ -47,6 +47,8 @@ type outputConfigOptions struct {
 	ResolvedAddresses []string
 	// TLS options to inject into the output config
 	TLS *TLSOptions
+	// URL to append to discovered service addresses
+	URL string
 }
 
 type TLSOptions struct {
@@ -89,6 +91,7 @@ func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec, options *outputConfigOpti
 				config["address"] = strings.Join(options.ResolvedAddresses, ",")
 			case PrometheusWriteOutputType:
 				config["url"] = strings.Join(options.ResolvedAddresses, ",")
+
 			case InfluxDBOutputType:
 				config["url"] = strings.Join(options.ResolvedAddresses, ",")
 			}
