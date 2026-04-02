@@ -17,10 +17,8 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"flag"
 	"os"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -33,7 +31,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -219,26 +216,31 @@ func main() {
 	}
 
 	if apiAddr != "" {
-		apiServer := apiserver.New(apiAddr, clusterReconciler)
-		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-			errCh := make(chan error)
-			go func() {
-				errCh <- apiServer.Server.ListenAndServe()
-			}()
-			select {
-			case err := <-errCh:
-				return err
-			case <-ctx.Done():
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				return apiServer.Server.Shutdown(ctx)
-			}
-		}))
-		if err != nil {
-			setupLog.Error(err, "unable to add api server")
-			os.Exit(1)
-		}
+		apiserver.New(apiAddr, clusterReconciler)
+		
 	}
+
+	// if apiAddr != "" {
+	// 	apiServer := apiserver.New(apiAddr, clusterReconciler)
+	// 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+	// 		errCh := make(chan error)
+	// 		go func() {
+	// 			errCh <- apiServer.Server.ListenAndServe()
+	// 		}()
+	// 		select {
+	// 		case err := <-errCh:
+	// 			return err
+	// 		case <-ctx.Done():
+	// 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 			defer cancel()
+	// 			return apiServer.Server.Shutdown(ctx)
+	// 		}
+	// 	}))
+	// 	if err != nil {
+	// 		setupLog.Error(err, "unable to add api server")
+	// 		os.Exit(1)
+	// 	}
+	// }
 
 	// start manager
 	setupLog.Info("starting manager")
