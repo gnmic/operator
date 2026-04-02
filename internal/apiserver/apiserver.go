@@ -2,6 +2,7 @@ package apiserver
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/gnmic/operator/internal/controller"
@@ -27,6 +28,7 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler) *APIServe
 
 func (a *APIServer) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /clusters/{namespace}/{name}/plan", a.getClusterPlan)
+	mux.HandleFunc("POST /clusters/{namespace}/{name}/createTarget", a.postCreateTarget)
 }
 
 func (a *APIServer) getClusterPlan(w http.ResponseWriter, r *http.Request) {
@@ -42,4 +44,12 @@ func (a *APIServer) getClusterPlan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+// kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
+// curl -X POST http://localhost:8082/clusters/gnmic-system/gnmic-controller-manager/createTarget
+
+func (a *APIServer) postCreateTarget(w http.ResponseWriter, r *http.Request) {
+	log.Printf("received POST request: path=%s method=%s remote=%s", r.URL.Path, r.Method, r.RemoteAddr)
+	w.WriteHeader(http.StatusAccepted)
 }
