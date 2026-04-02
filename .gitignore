@@ -26,6 +26,7 @@ Dockerfile.cross
 *~
 private/
 lab/dev/clab-*
+lab/dev/netbox/secrets
 design/
 notes/
 docs/public
