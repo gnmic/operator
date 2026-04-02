@@ -1,0 +1,40 @@
+- device:
+    name: spine1
+  name: e1-1
+  type: 1000base-t
+- device:
+    name: leaf1
+  name: e1-49
+  type: 1000base-t
+- device:
+    name: spine1
+  name: e1-2
+  type: 1000base-t
+- device:
+    name: leaf2
+  name: e1-49
+  type: 1000base-t
+- device:
+    name: spine1
+  name: e1-3
+  type: 1000base-t
+- device:
+    name: ceos1
+  name: eth1
+  type: 1000base-t
+- device:
+    name: spine1
+  name: mgmt0
+  type: 1000base-t
+- device:
+    name: leaf1
+  name: mgmt0
+  type: 1000base-t
+- device:
+    name: leaf2
+  name: mgmt0
+  type: 1000base-t
+- device:
+    name: ceos1
+  name: mgmt0
+  type: 1000base-t
