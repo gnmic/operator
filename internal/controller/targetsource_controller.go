@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -80,14 +81,16 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	for _, t := range diff.ToCreate {
 		err = controllerutil.SetControllerReference(&targetSource, &t, r.Scheme)
 		if err != nil {
+			logger.Error(err, "error setting the owner reference")
 			return ctrl.Result{}, err
 		}
 
 		err = r.Client.Create(ctx, &t)
 		if err != nil {
-			logger.Error(err, "error when creating target")
+			logger.Error(err, "error creating target object")
 			return ctrl.Result{}, err
 		}
+		logger.Info(fmt.Sprintf("created new target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
 	}
 
 	for _, t := range diff.ToUpdate {
@@ -99,7 +102,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}, existing)
 
 		if err != nil {
-			logger.Error(err, "error fetching existing object")
+			logger.Error(err, "error fetching existing target object")
 			return ctrl.Result{}, err
 		}
 
@@ -110,14 +113,17 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			logger.Error(err, "error updating object")
 			return ctrl.Result{}, err
 		}
+		logger.Info(fmt.Sprintf("updated existing target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
 	}
 
 	for _, t := range diff.ToDelete {
 		err = r.Client.Delete(ctx, &t)
+		logger.Info(fmt.Sprintf("resource name to be deleted: %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
 		if err != nil {
 			logger.Error(err, "error deleting the object")
 			return ctrl.Result{}, err
 		}
+		logger.Info(fmt.Sprintf("deleted target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
 	}
 
 	return ctrl.Result{}, nil
