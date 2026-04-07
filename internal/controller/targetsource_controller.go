@@ -59,13 +59,13 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// 4. Compute diff
 	// 5. Apply changes (create, update, delete)
 
-	discoveredTargets, err := discovery.FetchNewTargets(ctx, targetSource)
+	discoveredTargets, err := discovery.FetchDiscoveryTargets(ctx, targetSource)
 	if err != nil {
 		logger.Error(err, "error getting discovered targets")
 		return ctrl.Result{}, err
 	}
 
-	existingTargets, err := discovery.GetExistingTargets(ctx, r.Client, targetSource)
+	existingTargets, err := discovery.FetchExistingTargets(ctx, r.Client, targetSource)
 	if err != nil {
 		logger.Error(err, "error fetching existing targets")
 		return ctrl.Result{}, err

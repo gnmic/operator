@@ -9,7 +9,7 @@ import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
-func FetchNewTargets(ctx context.Context, ts gnmicv1alpha1.TargetSource) ([]gnmicv1alpha1.Target, error) {
+func FetchDiscoveryTargets(ctx context.Context, ts gnmicv1alpha1.TargetSource) ([]gnmicv1alpha1.Target, error) {
 	var targets []gnmicv1alpha1.Target
 
 	for _, e := range ts.Spec.Manual {
@@ -32,7 +32,7 @@ func FetchNewTargets(ctx context.Context, ts gnmicv1alpha1.TargetSource) ([]gnmi
 	return targets, nil
 }
 
-func GetExistingTargets(ctx context.Context, c client.Client, ts gnmicv1alpha1.TargetSource) ([]gnmicv1alpha1.Target, error) {
+func FetchExistingTargets(ctx context.Context, c client.Client, ts gnmicv1alpha1.TargetSource) ([]gnmicv1alpha1.Target, error) {
 	var targetList gnmicv1alpha1.TargetList
 
 	err := c.List(ctx, &targetList,
