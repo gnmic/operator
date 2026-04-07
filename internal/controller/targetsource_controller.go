@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -82,6 +83,30 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		err = r.Client.Create(ctx, &t)
 		if err != nil {
 			logger.Error(err, "error when creating target")
+			return ctrl.Result{}, err
+		}
+	}
+
+	updatedTargets, err := discovery.GetUpdatedTargets(existingTargets, discoveredTargets)
+
+	for _, t := range updatedTargets {
+		existing := &gnmicv1alpha1.Target{}
+
+		err := r.Get(ctx, types.NamespacedName{
+			Name:      t.ObjectMeta.Name,
+			Namespace: t.ObjectMeta.Namespace,
+		}, existing)
+
+		if err != nil {
+			logger.Error(err, "error fetching existing object")
+			return ctrl.Result{}, err
+		}
+
+		existing.Spec = t.Spec
+
+		err = r.Update(ctx, existing)
+		if err != nil {
+			logger.Error(err, "error updating object")
 			return ctrl.Result{}, err
 		}
 	}
