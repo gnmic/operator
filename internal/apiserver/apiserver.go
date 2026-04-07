@@ -2,27 +2,42 @@ package apiserver
 
 import (
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
 )
 
 type APIServer struct {
-	Server            *gin.Engine
+	Server            *http.Server
+	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler) *APIServer {
-	_ = addr
+	router := gin.Default()
 	a := &APIServer{
-		Server:            gin.Default(),
+		Server: &http.Server{
+			Addr:    addr,
+			Handler: router,
+		},
+		router:            router,
 		clusterReconciler: clusterReconciler,
 	}
 
-	a.Server.POST("/clusters/:namespace/:name/createTarget", a.postCreateTarget)
-	a.Server.GET("/clusters/:namespace/:name/plan", a.getClusterPlan)
-	a.Server.Run(":8082")
+	a.router.POST("/clusters/:namespace/:name/createTarget", a.postCreateTarget)
+	a.router.GET("/clusters/:namespace/:name/plan", a.getClusterPlan)
+	a.router.GET("/healthz", a.getHealthz)
+	a.router.GET("/readyz", a.getReadyz)
 	return a
+}
+
+func (a *APIServer) getHealthz(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
+func (a *APIServer) getReadyz(c *gin.Context) {
+	c.Status(http.StatusOK)
 }
 
 func (a *APIServer) getClusterPlan(c *gin.Context) {

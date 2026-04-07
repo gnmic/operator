@@ -17,8 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -29,8 +33,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -64,7 +68,7 @@ func main() {
 	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", "0", "Disabled: health and readiness probes are served by the gin API server.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -206,41 +210,35 @@ func main() {
 	}
 	//+kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
-	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
-	}
-
 	if apiAddr != "" {
-		apiserver.New(apiAddr, clusterReconciler)
-		
-	}
+		apiServer := apiserver.New(apiAddr, clusterReconciler)
+		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+			errCh := make(chan error, 1)
+			go func() {
+				err := apiServer.Server.ListenAndServe()
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					errCh <- err
+				}
+				close(errCh)
+			}()
 
-	// if apiAddr != "" {
-	// 	apiServer := apiserver.New(apiAddr, clusterReconciler)
-	// 	err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-	// 		errCh := make(chan error)
-	// 		go func() {
-	// 			errCh <- apiServer.Server.ListenAndServe()
-	// 		}()
-	// 		select {
-	// 		case err := <-errCh:
-	// 			return err
-	// 		case <-ctx.Done():
-	// 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// 			defer cancel()
-	// 			return apiServer.Server.Shutdown(ctx)
-	// 		}
-	// 	}))
-	// 	if err != nil {
-	// 		setupLog.Error(err, "unable to add api server")
-	// 		os.Exit(1)
-	// 	}
-	// }
+			select {
+			case err, ok := <-errCh:
+				if !ok {
+					return nil
+				}
+				return err
+			case <-ctx.Done():
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				return apiServer.Server.Shutdown(shutdownCtx)
+			}
+		}))
+		if err != nil {
+			setupLog.Error(err, "unable to add api server")
+			os.Exit(1)
+		}
+	}
 
 	// start manager
 	setupLog.Info("starting manager")
