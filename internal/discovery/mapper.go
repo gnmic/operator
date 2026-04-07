@@ -19,3 +19,17 @@ func GetNewTargets(existing, discovered []gnmicv1alpha1.Target) ([]gnmicv1alpha1
 
 	return new, nil
 }
+
+func GetDeletedTargets(existing, discovered []gnmicv1alpha1.Target) ([]gnmicv1alpha1.Target, error) {
+	var deleted []gnmicv1alpha1.Target
+
+	for _, e := range existing {
+		if !slices.ContainsFunc(discovered, func(d gnmicv1alpha1.Target) bool {
+			return d.ObjectMeta.Name == e.ObjectMeta.Name && d.ObjectMeta.Namespace == e.ObjectMeta.Namespace
+		}) {
+			deleted = append(deleted, e)
+		}
+	}
+
+	return deleted, nil
+}

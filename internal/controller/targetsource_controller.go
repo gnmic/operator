@@ -86,6 +86,16 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
+	deletedTargets, err := discovery.GetDeletedTargets(existingTargets, discoveredTargets)
+
+	for _, t := range deletedTargets {
+		err = r.Client.Delete(ctx, &t)
+		if err != nil {
+			logger.Error(err, "error deleting the object")
+			return ctrl.Result{}, err
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
