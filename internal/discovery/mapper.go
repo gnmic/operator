@@ -45,7 +45,7 @@ func BuildDiff(existing, discovered []gnmicv1alpha1.Target) Diff {
 	for _, e := range existing {
 		key := e.Namespace + "/" + e.Name
 
-		if e, found := discoveredMap[key]; !found {
+		if _, found := discoveredMap[key]; !found {
 			diff.ToDelete = append(diff.ToDelete, e)
 		}
 	}
