@@ -72,9 +72,9 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	newTargets, err := discovery.GetNewTargets(existingTargets, discoveredTargets)
+	diff := discovery.BuildDiff(existingTargets, discoveredTargets)
 
-	for _, t := range newTargets {
+	for _, t := range diff.ToCreate {
 		err = controllerutil.SetControllerReference(&targetSource, &t, r.Scheme)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -87,9 +87,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	updatedTargets, err := discovery.GetUpdatedTargets(existingTargets, discoveredTargets)
-
-	for _, t := range updatedTargets {
+	for _, t := range diff.ToUpdate {
 		existing := &gnmicv1alpha1.Target{}
 
 		err := r.Get(ctx, types.NamespacedName{
@@ -111,9 +109,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	deletedTargets, err := discovery.GetDeletedTargets(existingTargets, discoveredTargets)
-
-	for _, t := range deletedTargets {
+	for _, t := range diff.ToDelete {
 		err = r.Client.Delete(ctx, &t)
 		if err != nil {
 			logger.Error(err, "error deleting the object")
