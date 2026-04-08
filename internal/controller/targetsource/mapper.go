@@ -1,4 +1,7 @@
-package discovery
+package targetsource
+
+// This file makes diff between existing and new targets
+// file decides which targets to create/update/delete
 
 import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"

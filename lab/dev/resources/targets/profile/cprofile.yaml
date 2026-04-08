@@ -1,0 +1,15 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: eos
+spec:
+  credentialsRef: eos-credentials
+  tls: null
+  encoding: JSON_IETF
+  timeout: 10s
+  tcpKeepAlive: 10s
+  retryTimer: 5s
+  grpcKeepAlive:
+    time: 10s
+    timeout: 10s
+    permitWithoutStream: true
