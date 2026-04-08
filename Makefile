@@ -293,6 +293,8 @@ delete-clusters-dev-lab: ## Delete the clusters for the development lab cluster
 
 
 # Add NetBox instance to Kubernetes 
+# Only for development and testing purposes
+# is generally vibe coded and will be removed after development
 ##@ NetBox Image Build
 NETBOX_CHART ?= netbox/netbox
 NETBOX_RELEASE ?= netbox
