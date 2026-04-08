@@ -1,0 +1,45 @@
+openapi: 3.2.0
+info:
+  title: "gNMIc Operator REST API"
+  version: "0.0.1"
+paths:
+  /plan:
+    get:
+      summary: "Get cluster plan"
+      operationId: "getClusterPlan"
+      responses:
+        '200':
+          description: "ClusterPlan returned"
+  /createTargets:
+    post:
+      summary: "Create targets in the gNMIc Operator"
+      operationId: "createTargets"
+      responses:
+        '201':
+          description: "Targets created successfully"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Target'
+
+components:
+  schemas:
+    Target:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string # in the format "IP:port"
+        profile:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        # username:
+          # type: string
+        # password: # not sure if the password is needed
+          # type: string
