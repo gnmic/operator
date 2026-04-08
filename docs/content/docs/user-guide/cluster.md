@@ -41,6 +41,40 @@ spec:
 | `clientTLS.issuerRef` | string | No | | CertManager Issuer reference, used to sign the gNMI client certificates |
 | `clientTLS.bundleRef` | string | No | | ConfigMap reference, used to add gNMI client trust bundles to the POD (key=`ca.crt`) |
 | `clientTLS.useCSIDriver` | bool | No | | If true the gNMI client certificates are generated and mounted using CertManager CSI Driver |
+| **Target Distribution** | | | | |
+| `targetDistribution` | TargetDistributionConfig | No | | Target distribution configuration |
+| `targetDistribution.perPodCapacity` | int | No | ceil(targets/pods) | Maximum number of targets assigned to a single pod |
+
+## Target Distribution
+
+By default, the operator distributes targets evenly across pods using bounded
+load rendezvous hashing with an auto-calculated capacity of
+`ceil(totalTargets / replicas)`.
+
+When using [Horizontal Pod Autoscaling]({{< ref "../advanced/scaling" >}}), set
+an explicit `perPodCapacity` to create a hard ceiling per pod. This ensures the
+operator stops assigning targets before pods are overloaded, giving HPA time to
+scale up:
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: autoscaled-cluster
+spec:
+  replicas: 3
+  image: ghcr.io/openconfig/gnmic:latest
+  targetDistribution:
+    perPodCapacity: 100
+```
+
+When total targets exceed `replicas × perPodCapacity`, overflow targets remain
+unassigned. The Cluster status reports this via the `unassignedTargets` field
+and the `CapacityExhausted` condition.
+
+See [Target Distribution]({{< ref "../advanced/target-distribution" >}}) for
+details on the algorithm and [Scaling]({{< ref "../advanced/scaling" >}}) for
+HPA threshold sizing guidance.
 
 ## Resource Configuration
 
@@ -401,6 +435,7 @@ status:
   readyReplicas: 3
   pipelinesCount: 2
   targetsCount: 10
+  unassignedTargets: 0
   subscriptionsCount: 5
   inputsCount: 1
   outputsCount: 3
@@ -413,6 +448,10 @@ status:
       status: "True"
       reason: ConfigurationApplied
       message: "Configuration applied to 3 pods"
+    - type: CapacityExhausted
+      status: "False"
+      reason: SufficientCapacity
+      message: "All targets assigned"
 ```
 
 ### Status Fields
@@ -422,6 +461,7 @@ status:
 | `readyReplicas` | Number of pods that are ready |
 | `pipelinesCount` | Number of enabled pipelines using this cluster |
 | `targetsCount` | Total unique targets across all pipelines |
+| `unassignedTargets` | Number of targets that could not be assigned due to capacity limits (0 when all fit) |
 | `subscriptionsCount` | Total unique subscriptions |
 | `inputsCount` | Total unique inputs |
 | `outputsCount` | Total unique outputs |
@@ -434,6 +474,7 @@ status:
 | `Ready` | True when all replicas are ready and configured |
 | `CertificatesReady` | True when TLS certificates are issued (only present if TLS enabled) |
 | `ConfigApplied` | True when configuration is successfully applied to all pods |
+| `CapacityExhausted` | True when some targets could not be assigned because all pods are at capacity |
 
 ## Scaling
 
@@ -443,7 +484,10 @@ To scale the cluster, update the `replicas` field:
 kubectl patch cluster telemetry-cluster --type merge -p '{"spec":{"replicas":5}}'
 ```
 
-Targets are automatically redistributed across pods when scaling.
+Targets are automatically redistributed across pods when scaling. Existing
+assignments are preserved — only targets from removed pods or unassigned targets
+are placed on new pods. See [Scaling]({{< ref "../advanced/scaling" >}}) for
+details on HPA integration and capacity planning.
 
 ## Example: Production Cluster
 

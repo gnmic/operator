@@ -1,0 +1,16 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: registry.kmrd.dev/gnmic/gnmic:0.45.0-rc1
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "500Mi"
+      cpu: "1"
+  targetDistribution:
+    podCapacity: 5

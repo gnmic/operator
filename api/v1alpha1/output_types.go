@@ -36,12 +36,12 @@ type OutputSpec struct {
 	// +optional
 	Service *OutputServiceSpec `json:"service,omitempty"`
 	// ServiceRef references a Kubernetes Service to use as the output address.
-	// Supported for: nats, jetstream, kafka outputs.
+	// Supported for: nats, jetstream, kafka, remote_write, influxdb outputs.
 	// The service address will be resolved and injected into the output config.
 	// +optional
 	ServiceRef *ServiceReference `json:"serviceRef,omitempty"`
 	// ServiceSelector selects Kubernetes Services by labels to use as output addresses.
-	// Supported for: nats, jetstream, kafka outputs.
+	// Supported for: nats, jetstream, kafka, remote_write, influxdb outputs.
 	// All matching service addresses will be resolved and injected into the output config.
 	// +optional
 	ServiceSelector *ServiceSelector `json:"serviceSelector,omitempty"`
@@ -58,6 +58,13 @@ type ServiceReference struct {
 	// If not specified, the first port of the service is used.
 	// +optional
 	Port string `json:"port,omitempty"`
+	// URL is an optional path suffix appended after the resolved service address
+	// (scheme, host, and port). A leading slash on the value is optional; the
+	// operator joins the base and suffix with a single '/'. Use this for HTTP(S)
+	// outputs such as prometheus_write (for example api/v1/write or api/v1/push)
+	// or influxdb instead of putting the full URL in config.
+	// +optional
+	URL string `json:"url,omitempty"`
 }
 
 // ServiceSelector selects Services by labels
@@ -71,6 +78,10 @@ type ServiceSelector struct {
 	// If not specified, the first port of the service is used.
 	// +optional
 	Port string `json:"port,omitempty"`
+	// URL is an optional path suffix appended after each resolved service address.
+	// Same semantics as ServiceReference.url (see ServiceReference).
+	// +optional
+	URL string `json:"url,omitempty"`
 }
 
 // OutputServiceSpec defines the service configuration for outputs that expose an endpoint

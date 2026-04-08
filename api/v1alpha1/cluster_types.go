@@ -47,6 +47,15 @@ type ClusterSpec struct {
 
 	// Environment variables to set in the gNMIc pods
 	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// The target distribution configuration
+	TargetDistribution *TargetDistributionConfig `json:"targetDistribution,omitempty"`
+}
+
+type TargetDistributionConfig struct {
+	// The capacity per pod for distributing targets
+	// To be used in conjunction with Horizontal Pod Autoscaling (HPA) scaling.
+	PodCapacity int `json:"podCapacity,omitempty"`
 }
 
 type APIConfig struct {
@@ -97,30 +106,37 @@ type ClusterTLSConfig struct {
 
 // ClusterStatus defines the observed state of Cluster
 type ClusterStatus struct {
+	// The conditions of the cluster
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// The number of ready replicas
 	ReadyReplicas int32 `json:"readyReplicas"`
+	// The selector for the cluster statefulset
+	Selector string `json:"selector"`
 	// The number of pipelines referencing this cluster
 	PipelinesCount int32 `json:"pipelinesCount"`
 	// The number of targets referenced by the pipelines
 	TargetsCount int32 `json:"targetsCount"`
+	// The number of targets that could not be assigned to any pod due to capacity limits.
+	// Non-zero when total targets exceed numPods × perPodCapacity.
+	UnassignedTargets int32 `json:"unassignedTargets"`
 	// The number of subscriptions referenced by the pipelines
 	SubscriptionsCount int32 `json:"subscriptionsCount"`
 	// The number of inputs referenced by the pipelines
 	InputsCount int32 `json:"inputsCount"`
 	// The number of outputs referenced by the pipelines
 	OutputsCount int32 `json:"outputsCount"`
-	// The conditions of the cluster
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.readyReplicas,selectorpath=.status.selector
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`
 // +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.spec.replicas`
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=`.status.readyReplicas`
 // +kubebuilder:printcolumn:name="Pipelines",type=integer,JSONPath=`.status.pipelinesCount`
 // +kubebuilder:printcolumn:name="Targets",type=integer,JSONPath=`.status.targetsCount`
+// +kubebuilder:printcolumn:name="Unassigned",type=integer,JSONPath=`.status.unassignedTargets`
 // +kubebuilder:printcolumn:name="Subs",type=integer,JSONPath=`.status.subscriptionsCount`
 // +kubebuilder:printcolumn:name="Inputs",type=integer,JSONPath=`.status.inputsCount`
 // +kubebuilder:printcolumn:name="Outputs",type=integer,JSONPath=`.status.outputsCount`

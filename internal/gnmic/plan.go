@@ -3,17 +3,33 @@ package gnmic
 import (
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"maps"
+	"os"
 	"sort"
+	"strconv"
 
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/utils"
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+var logger *slog.Logger
+
+func init() {
+	logLevel := slog.LevelInfo
+	v, ok := os.LookupEnv("DEBUG")
+	if ok && v == "true" {
+		logLevel = slog.LevelDebug
+	}
+	logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: logLevel,
+	}))
+}
 
 // PlanBuilder builds an ApplyPlan from pipeline data
 type PlanBuilder struct {
+	clusterName string
 	// all currently active pipelines
 	pipelines map[string]*PipelineData
 	// an impl to get credentials from a secret
@@ -25,6 +41,8 @@ type PlanBuilder struct {
 	// prometheus output controller selected ports for each pipeline/output
 	// pipelineName -> outputNN -> port
 	prometheusOutputPorts map[string]map[string]int32
+	// target distribution capacity
+	targetDistributionCapacity int
 }
 
 type resourceRelationship struct {
@@ -41,8 +59,9 @@ type resourceRelationship struct {
 }
 
 // NewPlanBuilder creates a new PlanBuilder
-func NewPlanBuilder(credsFetcher CredentialsFetcher) *PlanBuilder {
+func NewPlanBuilder(clusterName string, credsFetcher CredentialsFetcher) *PlanBuilder {
 	return &PlanBuilder{
+		clusterName:  clusterName,
 		pipelines:    make(map[string]*PipelineData),
 		credsFetcher: credsFetcher,
 		relationships: resourceRelationship{
@@ -62,6 +81,11 @@ func (b *PlanBuilder) WithClientTLS(clientTLS *ClientTLSPaths) *PlanBuilder {
 	return b
 }
 
+func (b *PlanBuilder) WithTargetDistributionCapacity(capacity int) *PlanBuilder {
+	b.targetDistributionCapacity = capacity
+	return b
+}
+
 // AddPipeline adds pipeline data to the builder
 func (b *PlanBuilder) AddPipeline(name string, data *PipelineData) *PlanBuilder {
 	b.pipelines[name] = data
@@ -71,16 +95,17 @@ func (b *PlanBuilder) AddPipeline(name string, data *PipelineData) *PlanBuilder 
 // Build creates the ApplyPlan from all added pipelines
 func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 	plan := &ApplyPlan{
-		Targets:             make(map[string]*gapi.TargetConfig),
-		Subscriptions:       make(map[string]*gapi.SubscriptionConfig),
-		Outputs:             make(map[string]map[string]any),
-		Inputs:              make(map[string]map[string]any),
-		Processors:          make(map[string]map[string]any),
-		TunnelTargetMatches: make(map[string]*TunnelTargetMatch),
-		PrometheusPorts:     make(map[string]int32),
+		Targets:                 make(map[string]*gapi.TargetConfig),
+		CurrentTargetAssignment: make(map[int]map[string]struct{}),
+		Subscriptions:           make(map[string]*gapi.SubscriptionConfig),
+		Outputs:                 make(map[string]map[string]any),
+		Inputs:                  make(map[string]map[string]any),
+		Processors:              make(map[string]map[string]any),
+		TunnelTargetMatches:     make(map[string]*TunnelTargetMatch),
+		PrometheusPorts:         make(map[string]int32),
 	}
 	// 1) collect relationships across all pipelines
-	b.collectRelationships()
+	b.collectRelationships(plan)
 
 	// 2) build the configs
 	for _, pipelineData := range b.pipelines {
@@ -120,7 +145,7 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 	return plan, nil
 }
 
-func (b *PlanBuilder) collectRelationships() {
+func (b *PlanBuilder) collectRelationships(plan *ApplyPlan) {
 	for _, pipelineData := range b.pipelines {
 		// subscription -> outputs
 		outputNames := make([]string, 0, len(pipelineData.Outputs))
@@ -142,14 +167,34 @@ func (b *PlanBuilder) collectRelationships() {
 			subNames = append(subNames, subNN)
 		}
 
-		for targetNN := range pipelineData.Targets {
+		for targetNN, targetCR := range pipelineData.Targets {
+			// target --> subscriptions
 			if _, ok := b.relationships.targetSubscriptions[targetNN]; !ok {
 				b.relationships.targetSubscriptions[targetNN] = make(map[string]struct{})
 			}
 			for _, subName := range subNames {
 				b.relationships.targetSubscriptions[targetNN][subName] = struct{}{}
 			}
+
+			// pods --> targets
+			podIdx := b.findTargetCurrentAssignment(targetCR)
+			if podIdx != nil {
+				logger.Debug("target assigned to pod", "target", targetNN, "pod", *podIdx)
+			} else {
+				logger.Debug("target not assigned to any pod", "target", targetNN)
+			}
+			if podIdx != nil && *podIdx >= 0 {
+				if plan.CurrentTargetAssignment == nil {
+					plan.CurrentTargetAssignment = make(map[int]map[string]struct{})
+				}
+				if _, ok := plan.CurrentTargetAssignment[*podIdx]; !ok {
+					plan.CurrentTargetAssignment[*podIdx] = make(map[string]struct{})
+				}
+				plan.CurrentTargetAssignment[*podIdx][targetNN] = struct{}{}
+			}
+
 		}
+
 		// input -> outputs
 		inputOutputNames := make([]string, 0, len(pipelineData.Outputs))
 		for outputNN := range pipelineData.Outputs {
@@ -199,27 +244,43 @@ func (b *PlanBuilder) collectRelationships() {
 	}
 }
 
+func (b *PlanBuilder) findTargetCurrentAssignment(targetCR v1alpha1.Target) *int {
+	// TODO(KR): add other strategies here
+	return b.findTargetCurrentAssignmentBoundedLoadHashing(targetCR)
+}
+
+func (b *PlanBuilder) findTargetCurrentAssignmentBoundedLoadHashing(targetCR v1alpha1.Target) *int {
+	podID := targetCR.Status.ClusterStates[b.clusterName].Pod
+	if podID == "" {
+		return nil
+	}
+	// get pod index from pod ID
+	podSuffix := ""
+	for i := len(podID) - 1; i >= 0; i-- {
+		if podID[i] == '-' {
+			podSuffix = podID[i+1:]
+			break
+		}
+	}
+	podIdx, err := strconv.Atoi(podSuffix)
+	if err != nil {
+		return nil // KR: TODO warn ?
+	}
+	return &podIdx
+}
+
 func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData *PipelineData) error {
-	for targetNN, targetSpec := range pipelineData.Targets {
+	for targetNN, target := range pipelineData.Targets {
 		if _, ok := plan.Targets[targetNN]; ok {
 			continue
 		}
 
-		namespace, name := utils.SplitNN(targetNN)
+		namespace, _ := utils.SplitNN(targetNN)
 
 		// find the target profile: TODO: cannot happen once the data is collected ?
-		profileSpec, ok := pipelineData.TargetProfiles[namespace+Delimiter+targetSpec.Profile]
+		profileSpec, ok := pipelineData.TargetProfiles[namespace+Delimiter+target.Spec.Profile]
 		if !ok {
 			continue
-		}
-
-		// build target config
-		target := &gnmicv1alpha1.Target{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: namespace,
-			},
-			Spec: targetSpec,
 		}
 
 		// fetch credentials if needed
@@ -240,7 +301,7 @@ func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData *PipelineData) 
 			}
 		}
 
-		targetConfig := buildTargetConfig(target, &profileSpec, creds, b.clientTLS)
+		targetConfig := buildTargetConfig(&target, &profileSpec, creds, b.clientTLS)
 		targetConfig.Subscriptions = subscriptions
 
 		plan.Targets[targetNN] = targetConfig

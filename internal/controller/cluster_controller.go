@@ -39,7 +39,7 @@ import (
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -87,6 +87,8 @@ const (
 	ConditionTypeCertificatesReady = "CertificatesReady"
 	// ConditionTypeConfigApplied indicates configuration was applied to pods
 	ConditionTypeConfigApplied = "ConfigApplied"
+	// ConditionTypeCapacityExhausted indicates some targets could not be assigned
+	ConditionTypeCapacityExhausted = "CapacityExhausted"
 )
 
 // Condition types for Pipeline status
@@ -146,25 +148,25 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	var cluster gnmicv1alpha1.Cluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
 		// if the Cluster CR was deleted before we reconciled, cleanup related resources
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			prefixedNN := types.NamespacedName{
 				Name:      resourcePrefix + req.Name,
 				Namespace: req.Namespace,
 			}
 			// cleanup statefulset
-			if cleanupErr := r.ensureStatefulSetAbsent(ctx, prefixedNN); cleanupErr != nil {
-				return ctrl.Result{}, cleanupErr
+			if err := r.ensureStatefulSetAbsent(ctx, prefixedNN); err != nil {
+				return ctrl.Result{}, err
 			}
 			// cleanup headless service
-			if cleanupErr := r.ensureServiceAbsent(ctx, prefixedNN); cleanupErr != nil {
-				return ctrl.Result{}, cleanupErr
+			if err := r.ensureServiceAbsent(ctx, prefixedNN); err != nil {
+				return ctrl.Result{}, err
 			}
 			// clean up Prometheus output services
-			if cleanupErr := r.cleanupPrometheusServices(ctx, &cluster); cleanupErr != nil {
+			if err := r.cleanupPrometheusServices(ctx, req.Namespace, req.Name); err != nil {
 				return ctrl.Result{}, err
 			}
 			// cleanup plan
-			r.cleanupPlan(cluster.Namespace, cluster.Name)
+			r.cleanupPlan(req.Namespace, req.Name)
 		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -174,7 +176,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// handle deletion with a finalizer to guarantee statefulset, headless service and Prometheus output services cleanup
 	if !cluster.DeletionTimestamp.IsZero() {
 		// cleanup plan
-		r.cleanupPlan(cluster.Namespace, cluster.Name)
+		r.cleanupPlan(req.Namespace, req.Name)
 		// if the Cluster CR is being deleted, cleanup related resources
 		if controllerutil.ContainsFinalizer(&cluster, clusterFinalizer) {
 			nn := types.NamespacedName{Name: resourcePrefix + cluster.Name, Namespace: cluster.Namespace}
@@ -187,7 +189,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				return ctrl.Result{}, cleanupErr
 			}
 			// clean up Prometheus output services
-			if cleanupErr := r.cleanupPrometheusServices(ctx, &cluster); cleanupErr != nil {
+			if cleanupErr := r.cleanupPrometheusServices(ctx, req.Namespace, req.Name); cleanupErr != nil {
 				return ctrl.Result{}, cleanupErr
 			}
 			// cleanup TLS certificates (only if not using CSI driver)
@@ -318,10 +320,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// build pipeline data for the gNMIc plan builder
-	planBuilder := gnmic.NewPlanBuilder(r).
-		WithClientTLS(
-			gnmic.ClientTLSConfigForCluster(&cluster),
-		)
+	planBuilder := gnmic.NewPlanBuilder(cluster.Name, r)
+	planBuilder = planBuilder.WithClientTLS(
+		gnmic.ClientTLSConfigForCluster(&cluster),
+	)
+	if cluster.Spec.TargetDistribution != nil && cluster.Spec.TargetDistribution.PodCapacity > 0 {
+		planBuilder.WithTargetDistributionCapacity(cluster.Spec.TargetDistribution.PodCapacity)
+	}
 	pipelineDataMap := make(map[string]*gnmic.PipelineData)
 
 	for _, pipeline := range pipelines {
@@ -339,7 +344,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 		targetProfilesNames := make(map[string]struct{})
 		for _, target := range targets {
-			pipelineData.Targets[target.Namespace+gnmic.Delimiter+target.Name] = target.Spec
+			pipelineData.Targets[target.Namespace+gnmic.Delimiter+target.Name] = target
 			targetProfilesNames[target.Spec.Profile] = struct{}{}
 		}
 
@@ -452,7 +457,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			var targetProfile gnmicv1alpha1.TargetProfile
 			if err := r.Get(ctx, types.NamespacedName{Name: profileName, Namespace: pipeline.Namespace}, &targetProfile); err != nil {
-				if !errors.IsNotFound(err) {
+				if !apierrors.IsNotFound(err) {
 					return ctrl.Result{}, err
 				}
 				logger.Info("target profile not found for tunnel target policy, skipping", "profile", profileName)
@@ -487,21 +492,24 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
-	// only apply config if there's at least one ready pod
-	// TODO: wait for all pods ?
-	if statefulSet.Status.ReadyReplicas == 0 {
+	desiredReplicas := ptr.Deref(statefulSet.Spec.Replicas, 0)
+	// only apply new config when all desired replicas are ready
+	if statefulSet.Status.ReadyReplicas < desiredReplicas {
 		logger.Info("waiting for gNMIc pods to be ready before applying config")
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 	// send the plan to all gNMIc pods with distributed targets
-	numPods := int(statefulSet.Status.ReadyReplicas)
+	// distrubute to desired replicas only, this makes redistribution fast in case of scaling down.
+	numPods := int(desiredReplicas)
 	configApplied := false
 	var configError error
-	if err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
+	var unassignedTargets int32
+	if unassigned, err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
 		logger.Error(err, "failed to apply config to gNMIc pods")
 		configError = err
 	} else {
 		configApplied = true
+		unassignedTargets = unassigned
 		logger.Info("successfully applied config to gNMIc cluster", "pods", numPods)
 	}
 
@@ -534,8 +542,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// update status
 	newStatus := gnmicv1alpha1.ClusterStatus{
 		ReadyReplicas:      statefulSet.Status.ReadyReplicas,
+		Selector:           metav1.FormatLabelSelector(statefulSet.Spec.Selector),
 		PipelinesCount:     int32(len(pipelines)),
 		TargetsCount:       totalTargets,
+		UnassignedTargets:  unassignedTargets,
 		SubscriptionsCount: totalSubscriptions,
 		InputsCount:        totalInputs,
 		OutputsCount:       totalOutputs,
@@ -550,7 +560,8 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObservedGeneration: cluster.Generation,
 		LastTransitionTime: now,
 	}
-	if statefulSet.Status.ReadyReplicas >= *cluster.Spec.Replicas && configApplied {
+	desired := ptr.Deref(cluster.Spec.Replicas, 0)
+	if statefulSet.Status.ReadyReplicas >= desired && configApplied {
 		readyCondition.Status = metav1.ConditionTrue
 		readyCondition.Reason = "ClusterReady"
 		readyCondition.Message = fmt.Sprintf("All %d replicas are ready and configured", statefulSet.Status.ReadyReplicas)
@@ -603,6 +614,27 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	newStatus.Conditions = append(newStatus.Conditions, configCondition)
 
+	// capacityExhausted condition
+	if unassignedTargets > 0 {
+		newStatus.Conditions = append(newStatus.Conditions, metav1.Condition{
+			Type:               ConditionTypeCapacityExhausted,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "InsufficientCapacity",
+			Message:            fmt.Sprintf("%d target(s) could not be assigned, all pods at capacity", unassignedTargets),
+		})
+	} else if configApplied {
+		newStatus.Conditions = append(newStatus.Conditions, metav1.Condition{
+			Type:               ConditionTypeCapacityExhausted,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "SufficientCapacity",
+			Message:            "All targets assigned",
+		})
+	}
+
 	// preserve LastTransitionTime for unchanged conditions
 	for i := range newStatus.Conditions {
 		for _, oldCond := range cluster.Status.Conditions {
@@ -613,13 +645,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 		}
 	}
-
 	// update status if changed
 	if !clusterStatusEqual(cluster.Status, newStatus) {
 		cluster.Status = newStatus
 		if err := r.Status().Update(ctx, &cluster); err != nil {
 			logger.Error(err, "failed to update cluster status")
-			return ctrl.Result{}, err
 		}
 	}
 
@@ -635,6 +665,7 @@ func clusterStatusEqual(a, b gnmicv1alpha1.ClusterStatus) bool {
 	if a.ReadyReplicas != b.ReadyReplicas ||
 		a.PipelinesCount != b.PipelinesCount ||
 		a.TargetsCount != b.TargetsCount ||
+		a.UnassignedTargets != b.UnassignedTargets ||
 		a.SubscriptionsCount != b.SubscriptionsCount ||
 		a.InputsCount != b.InputsCount ||
 		a.OutputsCount != b.OutputsCount {
@@ -654,8 +685,9 @@ func clusterStatusEqual(a, b gnmicv1alpha1.ClusterStatus) bool {
 	return true
 }
 
-// applyConfigToPods sends the apply plan to all gNMIc pods with distributed targets
-func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan *gnmic.ApplyPlan, numPods int) error {
+// applyConfigToPods sends the apply plan to all gNMIc pods with distributed targets.
+// Returns the number of targets that could not be assigned due to capacity limits.
+func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan *gnmic.ApplyPlan, numPods int) (int32, error) {
 	logger := log.FromContext(ctx)
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
@@ -667,13 +699,16 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 	// create an HTTP client to send the apply plan to the gNMIc pods
 	httpClient, err := r.createHTTPClientForCluster(ctx, cluster)
 	if err != nil {
-		return fmt.Errorf("failed to create HTTP client: %w", err)
+		return 0, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
+	distResult := gnmic.DistributeTargets(plan, numPods, cluster.Spec.TargetDistribution)
 	// apply config to each pod with distributed targets
 	for podIndex := 0; podIndex < numPods; podIndex++ {
 		// distribute targets for this pod
-		distributedPlan := gnmic.DistributeTargets(plan, podIndex, numPods)
-
+		podPlan, ok := distResult.PerPodPlans[podIndex]
+		if !ok {
+			continue
+		}
 		// build the URL for this pod
 		// statefulSet pods have predictable DNS names:
 		//  <statefulset-name>-<ordinal>.<service-name>.<namespace>.svc.cluster.local
@@ -684,14 +719,19 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		}
 		url := fmt.Sprintf("%s://%s:%d/api/v1/config/apply", scheme, podDNS, restPort)
 		logger.Info("sending config to gNMIc pod", "url", url)
-		if err := r.sendApplyRequest(ctx, url, distributedPlan, httpClient); err != nil {
-			return fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
+		if err := r.sendApplyRequest(ctx, url, podPlan, httpClient); err != nil {
+			return 0, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
 		}
 
-		logger.Info("config applied to pod", "pod", podIndex, "targets", len(distributedPlan.Targets))
+		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets))
 	}
 
-	return nil
+	unassigned := int32(len(distResult.UnassignedTargets))
+	if unassigned > 0 {
+		logger.Info("targets unassigned due to capacity limits", "count", unassigned)
+	}
+
+	return unassigned, nil
 }
 
 func (r *ClusterReconciler) createHTTPClientForCluster(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (*http.Client, error) {
@@ -802,12 +842,13 @@ func (r *ClusterReconciler) sendApplyRequest(ctx context.Context, url string, pl
 	// check response status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// TODO: stream read the body to avoid loading it all into memory
+		rspErr := fmt.Errorf("gNMIc pod returned non-success status: %d", resp.StatusCode)
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("failed to read response body: %w", err)
 		}
-		logger.Error(err, "gNMIc pod returned non-success status", "status", resp.StatusCode, "body", string(body))
-		return err
+		logger.Error(rspErr, "", "body", string(body))
+		return rspErr
 	}
 
 	return nil
@@ -1112,7 +1153,7 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 
 	var current appsv1.StatefulSet
 	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		if err := controllerutil.SetControllerReference(cluster, desired, r.Scheme); err != nil {
 			return nil, err
 		}
@@ -1214,7 +1255,7 @@ func (r *ClusterReconciler) reconcileConfigMap(ctx context.Context, cluster *gnm
 
 	var current corev1.ConfigMap
 	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
 	if err != nil {
@@ -1256,7 +1297,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 
 		var current certmanagerv1.Certificate
 		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			logger.Info("creating certificate", "certificate", certName)
 			if err := r.Create(ctx, cert); err != nil {
 				return false, err
@@ -1296,7 +1337,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 		ordinal := r.extractOrdinalFromCertName(cert.Name, stsName)
 		if ordinal >= int(replicas) {
 			logger.Info("deleting certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+			if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 				return false, err
 			}
 		}
@@ -1404,7 +1445,7 @@ func (r *ClusterReconciler) cleanupCertificates(ctx context.Context, cluster *gn
 
 	for _, cert := range certList.Items {
 		logger.Info("deleting certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -1439,7 +1480,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 
 		var current certmanagerv1.Certificate
 		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			logger.Info("creating tunnel certificate", "certificate", certName)
 			if err := r.Create(ctx, cert); err != nil {
 				return false, err
@@ -1480,7 +1521,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 		ordinal := r.extractOrdinalFromTunnelCertName(cert.Name, stsName)
 		if ordinal >= int(replicas) {
 			logger.Info("deleting tunnel certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+			if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 				return false, err
 			}
 		}
@@ -1574,7 +1615,7 @@ func (r *ClusterReconciler) cleanupTunnelCertificates(ctx context.Context, clust
 
 	for _, cert := range certList.Items {
 		logger.Info("deleting tunnel certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -1603,7 +1644,7 @@ func (r *ClusterReconciler) reconcileClientTLSCertificates(ctx context.Context, 
 
 	var current certmanagerv1.Certificate
 	err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		logger.Info("creating client TLS certificate", "certificate", certName)
 		if err := r.Create(ctx, cert); err != nil {
 			return false, err
@@ -1686,7 +1727,7 @@ func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cl
 	}
 
 	logger.Info("deleting client TLS certificate", "certificate", certName)
-	if err := r.Delete(ctx, cert); err != nil && !errors.IsNotFound(err) {
+	if err := r.Delete(ctx, cert); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
@@ -1708,7 +1749,7 @@ func (r *ClusterReconciler) cleanupClientTLSCertificatesLegacy(ctx context.Conte
 
 	for _, cert := range certList.Items {
 		logger.Info("deleting client TLS certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -1777,7 +1818,7 @@ func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster 
 
 	var current corev1.Service
 	err := r.Get(ctx, types.NamespacedName{Name: serviceName, Namespace: cluster.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		logger.Info("creating tunnel service", "service", serviceName)
 		return r.Create(ctx, desired)
 	}
@@ -1811,7 +1852,7 @@ func (r *ClusterReconciler) cleanupTunnelService(ctx context.Context, cluster *g
 	}
 
 	err := r.Delete(ctx, service)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
@@ -1860,7 +1901,7 @@ func (r *ClusterReconciler) reconcileControllerCA(ctx context.Context, cluster *
 
 	var current corev1.ConfigMap
 	err = r.Get(ctx, types.NamespacedName{Name: cmName, Namespace: cluster.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		logger.Info("creating controller CA configmap", "configmap", cmName)
 		return r.Create(ctx, desired)
 	}
@@ -1994,7 +2035,7 @@ func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *
 			}
 			pipeline.Status = newStatus
 			if err := r.Status().Update(ctx, pipeline); err != nil {
-				if errors.IsConflict(err) {
+				if apierrors.IsConflict(err) {
 					continue
 				}
 				return fmt.Errorf("failed to update pipeline status: %w", err)
@@ -2056,7 +2097,7 @@ func (r *ClusterReconciler) updatePipelineStatusWithError(ctx context.Context, p
 		}
 		pipeline.Status = newStatus
 		if err := r.Status().Update(ctx, pipeline); err != nil {
-			if errors.IsConflict(err) {
+			if apierrors.IsConflict(err) {
 				continue
 			}
 			return fmt.Errorf("failed to update pipeline status: %w", err)
@@ -2128,7 +2169,7 @@ func (r *ClusterReconciler) resolveTargets(ctx context.Context, pipeline *gnmicv
 	for _, ref := range pipeline.Spec.TargetRefs {
 		var target gnmicv1alpha1.Target
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &target); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2172,7 +2213,7 @@ func (r *ClusterReconciler) resolveSubscriptions(ctx context.Context, pipeline *
 	for _, ref := range pipeline.Spec.SubscriptionRefs {
 		var sub gnmicv1alpha1.Subscription
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &sub); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2216,7 +2257,7 @@ func (r *ClusterReconciler) resolveOutputs(ctx context.Context, pipeline *gnmicv
 	for _, ref := range pipeline.Spec.Outputs.OutputRefs {
 		var output gnmicv1alpha1.Output
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &output); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2293,6 +2334,11 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 		// use cluster DNS name for the service
 		host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
 		addr := gnmic.FormatServiceAddress(spec, host, port)
+		if spec.ServiceRef.URL != "" {
+			url := strings.TrimPrefix(spec.ServiceRef.URL, "/")
+			addr = strings.TrimSuffix(addr, "/")
+			addr = fmt.Sprintf("%s/%s", addr, url)
+		}
 		resolved = append(resolved, addr)
 	}
 
@@ -2328,6 +2374,11 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 			// use cluster DNS name for the service
 			host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
 			addr := gnmic.FormatServiceAddress(spec, host, port)
+			if spec.ServiceSelector.URL != "" {
+				url := strings.TrimPrefix(spec.ServiceSelector.URL, "/")
+				addr = strings.TrimSuffix(addr, "/")
+				addr = fmt.Sprintf("%s/%s", addr, url)
+			}
 			resolved = append(resolved, addr)
 		}
 	}
@@ -2344,7 +2395,7 @@ func (r *ClusterReconciler) resolveInputs(ctx context.Context, pipeline *gnmicv1
 	for _, ref := range pipeline.Spec.Inputs.InputRefs {
 		var input gnmicv1alpha1.Input
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &input); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2392,7 +2443,7 @@ func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipelin
 	for _, ref := range pipeline.Spec.Outputs.ProcessorRefs {
 		var processor gnmicv1alpha1.Processor
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &processor); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			logger.Info("output processor not found, skipping", "ref", ref)
@@ -2451,7 +2502,7 @@ func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline
 	for _, ref := range pipeline.Spec.Inputs.ProcessorRefs {
 		var processor gnmicv1alpha1.Processor
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &processor); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			logger.Info("input processor not found, skipping", "ref", ref)
@@ -2505,7 +2556,7 @@ func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pip
 	for _, ref := range pipeline.Spec.TunnelTargetPolicyRefs {
 		var policy gnmicv1alpha1.TunnelTargetPolicy
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &policy); err != nil {
-			if !errors.IsNotFound(err) {
+			if !apierrors.IsNotFound(err) {
 				return nil, err
 			}
 			continue
@@ -2598,7 +2649,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 							"csi.cert-manager.io/issuer-name": cluster.Spec.API.TLS.IssuerRef,
 							"csi.cert-manager.io/issuer-kind": "Issuer",
 							"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc.cluster.local",
-							// "csi.cert-manager.io/rebewBefore": "72h", // TODO: make configurable ?
+							// "csi.cert-manager.io/renewBefore": "72h", // TODO: make configurable ?
 						},
 					},
 				},
@@ -2966,7 +3017,7 @@ func (r *ClusterReconciler) reconcileHeadlessService(ctx context.Context, cluste
 
 	var current corev1.Service
 	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
 	if err != nil {
@@ -3028,7 +3079,7 @@ func (r *ClusterReconciler) buildHeadlessService(cluster *gnmicv1alpha1.Cluster)
 func (r *ClusterReconciler) ensureStatefulSetAbsent(ctx context.Context, nn types.NamespacedName) error {
 	var sts appsv1.StatefulSet
 	if err := r.Get(ctx, nn, &sts); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -3039,7 +3090,7 @@ func (r *ClusterReconciler) ensureStatefulSetAbsent(ctx context.Context, nn type
 func (r *ClusterReconciler) ensureServiceAbsent(ctx context.Context, nn types.NamespacedName) error {
 	var service corev1.Service
 	if err := r.Get(ctx, nn, &service); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -3066,7 +3117,7 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	}
 
 	// get existing Prometheus services managed by this cluster
-	existingServices, err := r.listPrometheusServicesForCluster(ctx, cluster)
+	existingServices, err := r.listPrometheusServicesForCluster(ctx, cluster.Namespace, cluster.Name)
 	if err != nil {
 		return err
 	}
@@ -3129,7 +3180,7 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	for _, svc := range existingServices {
 		if _, ok := desiredServiceNames[svc.Name]; !ok {
 			logger.Info("deleting unused Prometheus service", "service", svc.Name)
-			if err := r.Delete(ctx, &svc); err != nil && !errors.IsNotFound(err) {
+			if err := r.Delete(ctx, &svc); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
 		}
@@ -3139,12 +3190,12 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 }
 
 // listPrometheusServicesForCluster lists all Prometheus output services for a cluster
-func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context, cluster *gnmicv1alpha1.Cluster) ([]corev1.Service, error) {
+func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context, clusterNamespace, clusterName string) ([]corev1.Service, error) {
 	var serviceList corev1.ServiceList
 	err := r.List(ctx, &serviceList,
-		client.InNamespace(cluster.Namespace),
+		client.InNamespace(clusterNamespace),
 		client.MatchingLabels{
-			LabelClusterName: cluster.Name,
+			LabelClusterName: clusterName,
 			LabelServiceType: LabelValueServiceTypePrometheusOutput,
 		},
 	)
@@ -3155,13 +3206,13 @@ func (r *ClusterReconciler) listPrometheusServicesForCluster(ctx context.Context
 }
 
 // cleanupPrometheusServices deletes all Prometheus output services for a cluster
-func (r *ClusterReconciler) cleanupPrometheusServices(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
-	services, err := r.listPrometheusServicesForCluster(ctx, cluster)
+func (r *ClusterReconciler) cleanupPrometheusServices(ctx context.Context, clusterNamespace, clusterName string) error {
+	services, err := r.listPrometheusServicesForCluster(ctx, clusterNamespace, clusterName)
 	if err != nil {
 		return err
 	}
 	for _, svc := range services {
-		if err := r.Delete(ctx, &svc); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &svc); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
@@ -3178,7 +3229,7 @@ func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, clus
 
 	var current corev1.Service
 	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &current)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return r.Create(ctx, desired)
 	}
 	if err != nil {

@@ -1,0 +1,9 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  labels:
+    type: metrics
+  name: prom-output1
+spec:
+  type: prometheus
+

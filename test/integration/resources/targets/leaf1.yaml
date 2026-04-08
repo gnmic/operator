@@ -1,0 +1,10 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: leaf1
+  labels:
+    vendor: nokia_srlinux
+    role: leaf
+spec:
+  address: clab-t1-leaf1:57400
+  profile: default

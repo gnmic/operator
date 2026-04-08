@@ -1,0 +1,16 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: sub1
+  labels:
+    vendor: nokia_srlinux
+    group: interface_metrics
+spec:
+  paths:
+    - /interface/statistics
+    - /interface/ethernet/port-speed
+    - /interface/subinterface/statistics
+  mode: STREAM/SAMPLE
+  sampleInterval: 10s
+  encoding: PROTO
+
