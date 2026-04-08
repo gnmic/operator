@@ -9,18 +9,18 @@ spec:
       containers:
       - name: manager
         args:
-        - "--health-probe-bind-address=0"
+        - "--health-probe-bind-address=:8081"
         - "--metrics-bind-address=:8080"
         - "--api-bind-address=:8082"
         - "--leader-elect"
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8082
+            port: 8081
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 8082
+            port: 8081
         ports:
         - containerPort: 8080
           protocol: TCP
