@@ -221,13 +221,20 @@ func main() {
 	}
 
 	if apiAddr != "" {
-		server, r := apiserver.New(apiAddr, clusterReconciler)
-		apiserver.RegisterHandlers(r, server)
+		apiNamespace := os.Getenv("POD_NAMESPACE")
+		apiClusterName := os.Getenv("CLUSTER_NAME")
+		if apiNamespace == "" || apiClusterName == "" {
+			setupLog.Error(errors.New("missing runtime API identity"), "POD_NAMESPACE and CLUSTER_NAME must be set")
+			os.Exit(1)
+		}
 
+		apiBaseURL := "/api/v1/" + apiNamespace + "/" + apiClusterName
+		api, gin := apiserver.New(apiAddr, apiNamespace, apiClusterName, clusterReconciler)
+		apiserver.RegisterHandlersWithOptions(gin, api, apiserver.GinServerOptions{BaseURL: apiBaseURL})
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error, 1)
 			go func() {
-				err := server.Server.ListenAndServe()
+				err := api.Server.ListenAndServe()
 				if err != nil && !errors.Is(err, http.ErrServerClosed) {
 					errCh <- err
 				}
@@ -243,7 +250,7 @@ func main() {
 			case <-ctx.Done():
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				return server.Server.Shutdown(shutdownCtx)
+				return api.Server.Shutdown(shutdownCtx)
 			}
 		}))
 		if err != nil {

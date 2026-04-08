@@ -15,9 +15,11 @@ type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
+	namespace         string
+	clusterName       string
 }
 
-func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServer, *gin.Engine) {
+func New(addr string, namespace string, clusterName string, clusterReconciler *controller.ClusterReconciler) (*APIServer, *gin.Engine) {
 	router := gin.Default()
 	a := &APIServer{
 		Server: &http.Server{
@@ -26,14 +28,15 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServ
 		},
 		router:            router,
 		clusterReconciler: clusterReconciler,
+		namespace:         namespace,
+		clusterName:       clusterName,
 	}
 	return a, router
 }
 
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	log.Printf("received GET request: path=%s method=%s remote=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr)
-	namespace, name := c.Param("namespace"), c.Param("name")
-	plan, err := a.clusterReconciler.GetClusterPlan(namespace, name)
+	plan, err := a.clusterReconciler.GetClusterPlan(a.namespace, a.clusterName)
 	if err != nil {
 		c.String(404, err.Error())
 		return
@@ -45,6 +48,7 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 // curl -X POST http://localhost:8082/clusters/gnmic-system/gnmic-controller-manager/createTarget
 
 func (a *APIServer) CreateTargets(c *gin.Context) {
+	log.Printf("received POST request: path=%s method=%s remote=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr)
 	var payload []Target
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
