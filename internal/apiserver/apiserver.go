@@ -30,11 +30,11 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServ
 	return a, router
 }
 
-func (a *APIServer) getHealthz(c *gin.Context) {
+func (a *APIServer) GetHealthz(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func (a *APIServer) getReadyz(c *gin.Context) {
+func (a *APIServer) GetReadyz(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 

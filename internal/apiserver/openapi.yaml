@@ -3,6 +3,18 @@ info:
   title: "gNMIc Operator REST API"
   version: "0.0.1"
 paths:
+  /readyz:
+    get:
+      operationId: "getReadyz"
+      responses:
+        '200':
+          description: "getReadyz"
+  /healthz:
+    get:
+      operationId: "getHealthz"
+      responses:
+        '200':
+          description: "getHealthz"
   /plan:
     get:
       summary: "Get cluster plan"

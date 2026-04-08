@@ -29,9 +29,15 @@ type ServerInterface interface {
 	// Create targets in the gNMIc Operator
 	// (POST /createTargets)
 	CreateTargets(c *gin.Context)
+
+	// (GET /healthz)
+	GetHealthz(c *gin.Context)
 	// Get cluster plan
 	// (GET /plan)
 	GetClusterPlan(c *gin.Context)
+
+	// (GET /readyz)
+	GetReadyz(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -56,6 +62,19 @@ func (siw *ServerInterfaceWrapper) CreateTargets(c *gin.Context) {
 	siw.Handler.CreateTargets(c)
 }
 
+// GetHealthz operation middleware
+func (siw *ServerInterfaceWrapper) GetHealthz(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetHealthz(c)
+}
+
 // GetClusterPlan operation middleware
 func (siw *ServerInterfaceWrapper) GetClusterPlan(c *gin.Context) {
 
@@ -67,6 +86,19 @@ func (siw *ServerInterfaceWrapper) GetClusterPlan(c *gin.Context) {
 	}
 
 	siw.Handler.GetClusterPlan(c)
+}
+
+// GetReadyz operation middleware
+func (siw *ServerInterfaceWrapper) GetReadyz(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetReadyz(c)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -97,18 +129,21 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	}
 
 	router.POST(options.BaseURL+"/createTargets", wrapper.CreateTargets)
+	router.GET(options.BaseURL+"/healthz", wrapper.GetHealthz)
 	router.GET(options.BaseURL+"/plan", wrapper.GetClusterPlan)
+	router.GET(options.BaseURL+"/readyz", wrapper.GetReadyz)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/2ySwW7bMAyGX0XgdjRsJ7v5NgRDkMO2YMsLqDLtKLAlgaQLBIHevZDsNnWTkwmKP/nz",
-	"o29g/Bi8QycMzQ3YnHHUOTxp6lFSFMgHJLGY87ptCTmHcg0IDbCQdT3EApwe8elDIN/Z4fmb6D53s4Lj",
-	"87ZLQhPpK8R7wr9c0AjElLKu81lsJc2B/s/vg1F/A5IWT+rfr/8n9fN4gAJekdh6Bw3UZV1u0gAf0Olg",
-	"oYEf5basoYCg5ZzNVIZQC840ciZ4zlh87m29O7TQwG5VVgAhB+94ZratN+ljvBN0WaxDGKzJ8urCyc07",
-	"/BWK74QdNPCtup+pWm5ULQd65BMLaJEN2SDznosrNa/SKp6MQeZuGoaZJ0/jqOn6sYaSRWGdkjOqNcws",
-	"qcKgs+vlJ1nT2KPshokF6ZjKHnDU6bM2+aleEcpEDtsv5vYoysxlKo+PMca3AAAA//9/7qb/wwIAAA==",
+	"H4sIAAAAAAAC/4xSwW7UMBD9FWvgGG3ScssNVajsAahKf2BwZhNXiW2NJ0ihyr8jTwxL6KraXGyN35t5",
+	"701ewIYpBk9eErQvkOxAE+r1CbknybfIIRKLI61j1zElvcoSCVpIws73sFbgcaKLD5HDyY2X3wR77eaE",
+	"psttSwGZcYH1XAg/nskKrLnk/Cko2UmeA/3XL0drvkVilMDm8dP3J/Px4QgV/CROLnhooTk0h5s8IETy",
+	"GB208OFwe2iggogyqJjaMqHQloZWYkgaS9DeLvhjBy3c7WAVMKUYfNoyu21u8mGDF/JKxhhHZ5VeP6es",
+	"5k/4uyjeM52ghXf1eU112VFdFvQ6n7WCjpJlF2XzWVSZzUpn0mwtpXSax3HLM83ThLz8tWGkMJw3MpDZ",
+	"h6mUeiAcZfiVVZb/ZB/IPcnnAnmVRpOPvcb+DF/VQh1H9G91vxvnJMQPGXbNhH/whklm9tT95/6exNgN",
+	"ZnS8CmHCbnnT6OOGuNJnQa/6/Q4AAP//KM8oJIIDAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
