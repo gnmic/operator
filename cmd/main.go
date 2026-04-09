@@ -221,16 +221,12 @@ func main() {
 	}
 
 	if apiAddr != "" {
-		apiNamespace := os.Getenv("POD_NAMESPACE")
-		apiClusterName := os.Getenv("CLUSTER_NAME")
-		if apiNamespace == "" || apiClusterName == "" {
-			setupLog.Error(errors.New("missing runtime API identity"), "POD_NAMESPACE and CLUSTER_NAME must be set")
+		api, err := apiserver.New(apiAddr, clusterReconciler)
+				if err != nil {
+			setupLog.Error(err, "unable to intialize gin API server")
 			os.Exit(1)
 		}
 
-		apiBaseURL := "/api/v1/" + apiNamespace + "/" + apiClusterName
-		api, gin := apiserver.New(apiAddr, apiNamespace, apiClusterName, clusterReconciler)
-		apiserver.RegisterHandlersWithOptions(gin, api, apiserver.GinServerOptions{BaseURL: apiBaseURL})
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error, 1)
 			go func() {
