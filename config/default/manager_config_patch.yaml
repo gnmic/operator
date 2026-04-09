@@ -13,14 +13,6 @@ spec:
         - "--metrics-bind-address=:8080"
         - "--api-bind-address=:8082"
         - "--leader-elect"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
         ports:
         - containerPort: 8080
           protocol: TCP
