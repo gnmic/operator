@@ -14,7 +14,11 @@ type Loader interface {
 
 	// Start begins discovery and pushes target snapshots into the out channel.
 	// The loader must stop cleanly when ctx is cancelled.
-	Start(ctx context.Context, out chan<- []DiscoveredTarget) error
+	Start(
+		ctx context.Context,
+		targetsourceName string,
+		out chan<- []DiscoveredTarget,
+	) error
 }
 
 var (

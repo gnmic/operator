@@ -20,7 +20,11 @@ func (l *Loader) Name() string {
 	return "http_pull"
 }
 
-func (l *Loader) Start(ctx context.Context, out chan<- []targetsource.DiscoveredTarget) error {
+func (l *Loader) Start(
+	ctx context.Context,
+	targetsourceName string,
+	out chan<- []targetsource.DiscoveredTarget,
+) error {
 	logger := log.FromContext(ctx).WithValues("loader", l.Name())
 
 	logger.Info("HTTP pull loader started")
@@ -41,12 +45,12 @@ func (l *Loader) Start(ctx context.Context, out chan<- []targetsource.Discovered
 				{
 					Name:    "ceos1",
 					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSourceType": l.Name()},
+					Labels:  map[string]string{"TargetSource": targetsourceName},
 				},
 				{
 					Name:    "leaf1",
 					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSourceType": l.Name()},
+					Labels:  map[string]string{"TargetSource": targetsourceName},
 				},
 			}
 
