@@ -36,12 +36,13 @@ func New(addr string, namespace string, clusterName string, clusterReconciler *c
 
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	log.Printf("received GET request: path=%s method=%s remote=%s", c.Request.URL.Path, c.Request.Method, c.Request.RemoteAddr)
-	plan, err := a.clusterReconciler.GetClusterPlan(a.namespace, a.clusterName)
-	if err != nil {
-		c.String(404, err.Error())
-		return
-	}
-	c.JSON(200, plan)
+	// plan, err := a.clusterReconciler.GetClusterPlan(a.namespace, a.clusterName)
+	// if err != nil {
+	// 	c.String(404, err.Error())
+	// 	return
+	// }
+	// c.JSON(200, plan)
+	c.JSON(http.StatusOK, "GetClusterPlan")
 }
 
 // kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
@@ -54,10 +55,24 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// testing
+	// For testing, to see the payload that is being sent
 	for _, target := range payload {
-		fmt.Printf("name: %s, address: %s, profile: %s, tags: %s\n", *target.Name, *target.Address, *target.Profile, *target.Tags)
+		if target.Name != nil {
+			fmt.Printf("name: %s, ", *target.Name)
+		}
+		if target.Address != nil {
+			fmt.Printf("address: %s, ", *target.Address)
+		}
+		if target.Profile != nil {
+			fmt.Printf("profile: %s, ", *target.Profile)
+		}
+		if target.Tags != nil {
+			fmt.Printf("tags: %s", *target.Tags)
+		}
+		fmt.Printf("\n")
 	}
+
+	// TODO: send target received from interface to autodiscover logic via channel.
 
 	c.JSON(http.StatusOK, payload)
 }
