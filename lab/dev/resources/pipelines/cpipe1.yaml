@@ -1,0 +1,17 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: cpipe1
+spec:
+  clusterRef: c1
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        vendor: arista_ceos
+  subscriptionSelectors:
+    - matchLabels:
+        type: interfaces
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          type: metrics

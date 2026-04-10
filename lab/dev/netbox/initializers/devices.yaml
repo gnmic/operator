@@ -1,0 +1,36 @@
+- name: ceos1
+  role:
+    slug: router
+  manufacturer:
+    name: Arista
+  device_type:
+    slug: arista-ixr-d2l
+  site:
+    name: Lab
+- name: leaf1
+  role:
+    slug: router
+  manufacturer:
+    name: Nokia
+  device_type:
+    slug: nokia-ixr-d2l
+  site:
+    name: Lab
+- name: leaf2
+  role:
+    slug: router
+  manufacturer:
+    name: Nokia
+  device_type:
+    slug: nokia-ixr-d2l-leaf
+  site:
+    name: Lab
+- name: spine1
+  role:
+    slug: router
+  manufacturer:
+    name: Nokia
+  device_type:
+    slug: nokia-ixr-d3l
+  site:
+    name: Lab

@@ -1,0 +1,9 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: ceos1
+  labels:
+    vendor: arista_ceos
+spec:
+  address: clab-3-nodes-ceos1:6030
+  profile: eos

@@ -1,4 +1,5 @@
 include test.mk
+include netbox.mk
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
