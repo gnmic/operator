@@ -1,4 +1,20 @@
 package targetsource
 
-// This file defines the loader interface
-// targets received from loaders are sent via channel to the controller for reconciliation
+import (
+	"context"
+)
+
+// Loader defines a pluggable TargetSource loader interface
+// Loaders observe external Sources of Truth and emit target snapshots through a channel
+type Loader interface {
+	// Name returns the unique loader identifier e.g. "http_pull"
+	Name() string
+
+	// Start begins discovery and pushes target snapshots into the out channel
+	// The loader must stop cleanly when ctx is cancelled
+	Start(
+		ctx context.Context,
+		targetsourceName string,
+		out chan<- []DiscoveredTarget,
+	) error
+}
