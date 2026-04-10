@@ -2,6 +2,8 @@ package targetsource
 
 import (
 	"context"
+	"fmt"
+	"sync"
 )
 
 // Loader defines a pluggable TargetSource loader interface
@@ -17,4 +19,33 @@ type Loader interface {
 		targetsourceName string,
 		out chan<- []DiscoveredTarget,
 	) error
+}
+
+var (
+	registryMu sync.RWMutex
+	registry   = make(map[string]func() Loader)
+)
+
+// Register registers a loader implementation
+// It panics on duplicate registrations to fail fast during startup rather than at runtime
+func Register(name string, factory func() Loader) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+
+	if _, exists := registry[name]; exists {
+		panic(fmt.Sprintf("targetsource loader %q already registered", name))
+	}
+	registry[name] = factory
+}
+
+// NewLoader creates a loader by name
+func NewLoader(name string) (Loader, error) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+
+	factory, ok := registry[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown targetsource loader: %q", name)
+	}
+	return factory(), nil
 }
