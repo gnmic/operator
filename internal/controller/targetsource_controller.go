@@ -20,6 +20,7 @@ import (
 	"context"
 	"sync"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -35,6 +36,7 @@ type runningSource struct {
 // TargetSourceReconciler reconciles a TargetSource object
 type TargetSourceReconciler struct {
 	client.Client
+	Scheme *runtime.Scheme
 
 	mu      sync.Mutex
 	running map[client.ObjectKey]runningSource
