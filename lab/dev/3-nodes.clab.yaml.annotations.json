@@ -1,0 +1,35 @@
+{
+  "freeTextAnnotations": [],
+  "freeShapeAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "spine1",
+      "interfacePattern": "e1-{n}",
+      "position": {
+        "x": 360,
+        "y": 380
+      }
+    },
+    {
+      "id": "leaf1",
+      "interfacePattern": "e1-{n}",
+      "position": {
+        "x": 480,
+        "y": 260
+      }
+    },
+    {
+      "id": "leaf2",
+      "interfacePattern": "e1-{n}",
+      "position": {
+        "x": 520,
+        "y": 400
+      }
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}

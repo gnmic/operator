@@ -18,7 +18,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
 	"time"
 
@@ -64,7 +66,7 @@ func main() {
 	var probeAddr string
 	var devMode bool
 	var apiAddr string
-	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
+	flag.StringVar(&apiAddr, "api-bind-address", ":8082", "The address the operator API endpoint binds to.")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -219,19 +221,32 @@ func main() {
 	}
 
 	if apiAddr != "" {
-		apiServer := apiserver.New(apiAddr, clusterReconciler)
+		api, err := apiserver.New(apiAddr, clusterReconciler)
+				if err != nil {
+			setupLog.Error(err, "unable to intialize gin API server")
+			os.Exit(1)
+		}
+
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error)
 			go func() {
-				errCh <- apiServer.Server.ListenAndServe()
+				err := api.Server.ListenAndServe()
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					errCh <- err
+				}
+				close(errCh)
 			}()
+
 			select {
-			case err := <-errCh:
+			case err, ok := <-errCh:
+				if !ok {
+					return nil
+				}
 				return err
 			case <-ctx.Done():
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				return apiServer.Server.Shutdown(ctx)
+				return api.Server.Shutdown(ctx)
 			}
 		}))
 		if err != nil {
