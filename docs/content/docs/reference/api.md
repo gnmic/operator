@@ -263,6 +263,7 @@ Used to reference a specific Kubernetes Service for address resolution.
 | `name` | string | Yes | - | Name of the Service |
 | `namespace` | string | No | Output's namespace | Namespace of the Service |
 | `port` | string | No | First port | Port name or number |
+| `url` | string | No | - | Path suffix appended after the resolved `scheme://host:port` (optional leading slash). Used for HTTP(S) outputs such as `prometheus_write` or `influxdb` (for example `api/v1/write`). |
 
 ### ServiceSelector
 
@@ -273,6 +274,7 @@ Used to discover Kubernetes Services by labels.
 | `matchLabels` | map[string]string | Yes | - | Labels to match services |
 | `namespace` | string | No | Output's namespace | Namespace to search |
 | `port` | string | No | First port | Port name or number |
+| `url` | string | No | - | Path suffix appended after each resolved address; same meaning as `serviceRef.url`. |
 
 ### Output Types
 
