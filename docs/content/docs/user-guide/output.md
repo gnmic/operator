@@ -192,7 +192,7 @@ spec:
 
 ### Using Service Reference
 
-Reference a Prometheus or compatible remote write endpoint Service:
+Reference a Prometheus or compatible remote write endpoint Service and set `url` to the path segment (Prometheus: `api/v1/write`; Grafana Mimir distributor: `api/v1/push`):
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -203,20 +203,23 @@ spec:
   type: prometheus_write
   serviceRef:
     name: prometheus-server
+    namespace: monitoring
     port: http  # or "9090"
+    url: api/v1/write
   config:
     timeout: 10s
 ```
 
-The operator resolves the service and constructs the URL as `http://prometheus-server.{namespace}.svc.cluster.local:9090`.
+The operator resolves the Service to `http://prometheus-server.{namespace}.svc.cluster.local:<port>/` and appends `url`, producing a full gNMIc `url` such as `http://prometheus-server.monitoring.svc.cluster.local:9090/api/v1/write`.
 
-To set the HTTP path without duplicating the host in `config`, use `serviceRef.url` (for example Grafana Mimir at `/api/v1/push`):
+Grafana Mimir example (path differs from Prometheus):
 
 ```yaml
 spec:
   type: prometheus_write
   serviceRef:
     name: mimir-distributor
+    namespace: mimir
     port: http
     url: api/v1/push
   config:
@@ -225,7 +228,7 @@ spec:
 
 ### Using Service Selector
 
-Discover multiple Kafka brokers using labels:
+Discover Services by labels (for example multiple distributors or mirrored endpoints). The same `url` path suffix is appended to each resolved address:
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -237,7 +240,9 @@ spec:
   serviceSelector:
     matchLabels:
       app: prometheus-server
+    namespace: monitoring
     port: http
+    url: api/v1/write
   config:
     timeout: 10s
 ```
@@ -256,6 +261,7 @@ spec:
   serviceRef:
     name: prometheus-server
     port: https
+    url: api/v1/write
   config:
     timeout: 10s
     tls:
