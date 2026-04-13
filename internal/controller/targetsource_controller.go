@@ -84,16 +84,17 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	runtimeCtx, cancel := context.WithCancel(context.Background())
-	target_channel := make(chan []targetsource.DiscoveredTarget)
+
+	targetChannel := make(chan []targetsource.DiscoveryMessage, 10)
 
 	// start loader
-	go loader.Start(runtimeCtx, targetSource.Name, target_channel)
+	go loader.Start(runtimeCtx, targetSource.Name, targetChannel)
 
 	// start target manager
 	manager := targetsource.NewTargetManager(
 		r.Client,
 		targetSource.Name,
-		target_channel,
+		targetChannel,
 	)
 	go manager.Run(runtimeCtx)
 

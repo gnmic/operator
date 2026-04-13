@@ -27,5 +27,5 @@ type DiscoveryMessage struct {
 type TargetManager struct {
 	client       client.Client
 	targetsource string
-	in           <-chan []DiscoveredTarget
+	in           <-chan []DiscoveryMessage
 }
