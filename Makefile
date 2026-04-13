@@ -251,10 +251,10 @@ configure-nodes-dev-lab: ## Configure the nodes in the development lab cluster
 	gnmic -a clab-3-nodes-leaf2:57400 -u $(TARGET_USERNAME) -p $(TARGET_PASSWORD) --skip-verify set --request-file lab/dev/configs/leaf2.yaml
 
 .PHONY: apply-resources-dev-lab
-apply-resources-dev-lab: apply-targets-dev-lab apply-subscriptions-dev-lab apply-outputs-dev-lab apply-pipelines-dev-lab apply-clusters-dev-lab ## Apply the resources for the development lab cluster
+apply-resources-dev-lab: apply-targets-dev-lab apply-subscriptions-dev-lab apply-outputs-dev-lab apply-pipelines-dev-lab apply-clusters-dev-lab apply-targetsources-dev-lab ## Apply the resources for the development lab cluster
 
 .PHONY: delete-resources-dev-lab
-delete-resources-dev-lab: delete-clusters-dev-lab delete-targets-dev-lab delete-subscriptions-dev-lab delete-outputs-dev-lab delete-pipelines-dev-lab ## Delete the resources for the development lab cluster
+delete-resources-dev-lab: delete-clusters-dev-lab delete-targets-dev-lab delete-subscriptions-dev-lab delete-outputs-dev-lab delete-pipelines-dev-lab delete-targetsources-dev-lab ## Delete the resources for the development lab cluster
 
 .PHONY: apply-targets-dev-lab
 apply-targets-dev-lab: ## Apply the targets for the development lab cluster
@@ -288,6 +288,7 @@ apply-pipelines-dev-lab: ## Apply the pipelines for the development lab cluster
 .PHONY: delete-pipelines-dev-lab
 delete-pipelines-dev-lab: ## Delete the pipelines for the development lab cluster
 	kubectl delete -f lab/dev/resources/pipelines
+
 .PHONY: apply-clusters-dev-lab
 apply-clusters-dev-lab: ## Apply the clusters for the development lab cluster
 	kubectl apply -f lab/dev/resources/clusters
@@ -295,6 +296,14 @@ apply-clusters-dev-lab: ## Apply the clusters for the development lab cluster
 .PHONY: delete-clusters-dev-lab
 delete-clusters-dev-lab: ## Delete the clusters for the development lab cluster
 	kubectl delete -f lab/dev/resources/clusters
+
+.PHONY: apply-targetsources-dev-lab
+apply-targetsources-dev-lab: ## Apply the target sources for the development lab cluster
+	kubectl apply -f lab/dev/resources/targetsources
+
+.PHONY: delete-targetsources-dev-lab
+delete-targetsources-dev-lab: ## Delete the target sources for the development lab cluster
+	kubectl delete -f lab/dev/resources/targetsources
 
 ##@ Testing Lab
 
