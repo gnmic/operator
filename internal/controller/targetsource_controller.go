@@ -78,7 +78,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	loader, err := targetsource.NewLoader("http_pull") // TODO: determine loader type from TargetSource spec
+	loader, err := targetsource.NewLoader(targetSource.Spec.Type) // TODO: pass configuration to loader based on spec
 	if err != nil {
 		return ctrl.Result{}, err
 	}
