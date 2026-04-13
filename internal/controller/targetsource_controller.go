@@ -27,6 +27,7 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/targetsource"
+	_ "github.com/gnmic/operator/internal/controller/targetsource/loaders/all"
 )
 
 type runningSource struct {
