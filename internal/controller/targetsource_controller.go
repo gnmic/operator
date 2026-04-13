@@ -57,14 +57,6 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// - PodSelector: select Kubernetes pods
 	// - ServiceSelector: select Kubernetes services
 
-	// TODO:
-	// 1. Start go routines for loader of target source
-	// 2. Retrieve list of targets from go channel
-	// 3. Fetch existing Targets from Kubernetes API
-	// 4. Compare and determine which Targets to create/update/delete
-	// 5. Create/update/delete Target CRs accordingly
-	// 6. Update TargetSource status with sync results
-
 	return ctrl.Result{}, nil
 }
 
