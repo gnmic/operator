@@ -19,7 +19,7 @@ type Loader interface {
 	Start(
 		ctx context.Context,
 		targetsourceName string,
-		out chan<- []DiscoveredTarget,
+		out chan<- []DiscoveryMessage,
 	) error
 }
 

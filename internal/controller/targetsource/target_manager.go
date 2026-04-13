@@ -8,7 +8,7 @@ import (
 )
 
 // NewTargetManager wires a TargetManager instance.
-func NewTargetManager(c client.Client, sourceName string, in <-chan []DiscoveredTarget) *TargetManager {
+func NewTargetManager(c client.Client, sourceName string, in <-chan []DiscoveryMessage) *TargetManager {
 	return &TargetManager{
 		client:       c,
 		targetsource: sourceName,
