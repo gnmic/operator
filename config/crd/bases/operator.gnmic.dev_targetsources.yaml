@@ -51,6 +51,11 @@ spec:
                   url:
                     type: string
                 type: object
+              http_pull:
+                properties:
+                  url:
+                    type: string
+                type: object
               labels:
                 additionalProperties:
                   type: string
@@ -153,6 +158,8 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              type:
+                type: string
             type: object
           status:
             description: TargetSourceStatus defines the observed state of TargetSource
