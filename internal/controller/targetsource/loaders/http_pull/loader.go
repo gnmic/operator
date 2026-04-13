@@ -23,7 +23,7 @@ func (l *Loader) Name() string {
 func (l *Loader) Start(
 	ctx context.Context,
 	targetsourceName string,
-	out chan<- []targetsource.DiscoveredTarget,
+	out chan<- []targetsource.DiscoveryMessage,
 ) error {
 	logger := log.FromContext(ctx).WithValues("loader", l.Name())
 
@@ -41,16 +41,22 @@ func (l *Loader) Start(
 
 		case <-ticker.C:
 			// Example snapshot (placeholder)
-			targets := []targetsource.DiscoveredTarget{
+			targets := []targetsource.DiscoveryMessage{
 				{
-					Name:    "ceos1",
-					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSource": targetsourceName},
+					Target: targetsource.DiscoveredTarget{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos1:6030",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+					Event: 1,
 				},
 				{
-					Name:    "leaf1",
-					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSource": targetsourceName},
+					Target: targetsource.DiscoveredTarget{
+						Name:    "leaf1",
+						Address: "clab-3-nodes-leaf1:57400",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+					Event: 1,
 				},
 			}
 
