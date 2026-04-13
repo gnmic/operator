@@ -18,23 +18,29 @@ package controller
 
 import (
 	"context"
-	"fmt"
+	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/targetsource"
+	_ "github.com/gnmic/operator/internal/controller/targetsource/loaders/all"
 )
+
+type runningSource struct {
+	cancel context.CancelFunc
+}
 
 // TargetSourceReconciler reconciles a TargetSource object
 type TargetSourceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	mu      sync.Mutex
+	running map[client.ObjectKey]runningSource
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -55,84 +61,121 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger.Info("reconciling TargetSource", "name", targetSource.Name)
 
 	// TODO:
-	// 1. Start go routines for loader of target source
-	// 2. Retrieve list of targets from go channel
-	// 3. Fetch existing Targets from Kubernetes API
-	// 4. Compare and determine which Targets to create/update/delete
-	// 5. Create/update/delete Target CRs accordingly
-	// 6. Update TargetSource status with sync results
+	// 1. Check if a pipeline is already running for this TargetSource
+	// 2. If not, create and start a new pipeline:
+	//    a. Create a Loader based on TargetSource spec
+	//    b. Start the Loader in a new goroutine, passing a channel for discovered targets
+	//    c. Start a TargetManager in another goroutine to consume discovered targets and manage Target CRs
+	// 3. If yes, check if the spec has changed and restart the pipeline if needed
 
-	// Step 1: Get desired state from discovery source
-	discoveredTargets, err := targetsource.FetchDiscoveryTargets(ctx, targetSource)
+	r.mu.Lock()
+	_, exists := r.running[req.NamespacedName]
+	r.mu.Unlock()
+
+	// If an targetsource loader exists, return immediately without starting
+	// any new loader or target manager
+	if exists {
+		return ctrl.Result{}, nil
+	}
+
+	loader, err := targetsource.NewLoader(targetSource.Spec.Type) // TODO: pass configuration to loader based on spec
 	if err != nil {
-		logger.Error(err, "error getting discovered targets")
 		return ctrl.Result{}, err
 	}
 
-	// Step 2: Get current state from Kubernetes cluster (lookup by label of TargetSource)
-	existingTargets, err := targetsource.FetchExistingTargets(ctx, r.Client, targetSource)
-	if err != nil {
-		logger.Error(err, "error fetching existing targets")
-		return ctrl.Result{}, err
-	}
+	runtimeCtx, cancel := context.WithCancel(context.Background())
+	target_channel := make(chan []targetsource.DiscoveredTarget)
 
-	// Step 3: Compute diff
-	diff := targetsource.BuildDiff(existingTargets, discoveredTargets)
+	// start loader
+	go loader.Start(runtimeCtx, targetSource.Name, target_channel)
 
-	// Step 4: Iterate over each list and do create, update, delete respectively
-	for _, t := range diff.ToCreate {
-		err = controllerutil.SetControllerReference(&targetSource, &t, r.Scheme)
-		if err != nil {
-			logger.Error(err, "error setting the owner reference")
-			return ctrl.Result{}, err
-		}
+	// start target manager
+	manager := targetsource.NewTargetManager(
+		r.Client,
+		targetSource.Name,
+		target_channel,
+	)
+	go manager.Run(runtimeCtx)
 
-		err = r.Client.Create(ctx, &t)
-		if err != nil {
-			logger.Error(err, "error creating target object")
-			return ctrl.Result{}, err
-		}
-		logger.Info(fmt.Sprintf("created new target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	}
+	r.mu.Lock()
+	r.running[req.NamespacedName] = runningSource{cancel: cancel}
+	r.mu.Unlock()
 
-	for _, t := range diff.ToUpdate {
-		existing := &gnmicv1alpha1.Target{}
+	logger.Info("TargetSource pipeline started", "name", targetSource.Name)
 
-		err := r.Get(ctx, types.NamespacedName{
-			Name:      t.ObjectMeta.Name,
-			Namespace: t.ObjectMeta.Namespace,
-		}, existing)
+	// // Step 1: Get desired state from discovery source
+	// discoveredTargets, err := targetsource.FetchDiscoveryTargets(ctx, targetSource)
+	// if err != nil {
+	// 	logger.Error(err, "error getting discovered targets")
+	// 	return ctrl.Result{}, err
+	// }
 
-		if err != nil {
-			logger.Error(err, "error fetching existing target object")
-			return ctrl.Result{}, err
-		}
+	// // Step 2: Get current state from Kubernetes cluster (lookup by label of TargetSource)
+	// existingTargets, err := targetsource.FetchExistingTargets(ctx, r.Client, targetSource)
+	// if err != nil {
+	// 	logger.Error(err, "error fetching existing targets")
+	// 	return ctrl.Result{}, err
+	// }
 
-		existing.Spec = t.Spec
+	// // Step 3: Compute diff
+	// diff := targetsource.BuildDiff(existingTargets, discoveredTargets)
 
-		err = r.Update(ctx, existing)
-		if err != nil {
-			logger.Error(err, "error updating object")
-			return ctrl.Result{}, err
-		}
-		logger.Info(fmt.Sprintf("updated existing target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	}
+	// // Step 4: Iterate over each list and do create, update, delete respectively
+	// for _, t := range diff.ToCreate {
+	// 	err = controllerutil.SetControllerReference(&targetSource, &t, r.Scheme)
+	// 	if err != nil {
+	// 		logger.Error(err, "error setting the owner reference")
+	// 		return ctrl.Result{}, err
+	// 	}
 
-	for _, t := range diff.ToDelete {
-		err = r.Client.Delete(ctx, &t)
-		logger.Info(fmt.Sprintf("resource name to be deleted: %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-		if err != nil {
-			logger.Error(err, "error deleting the object")
-			return ctrl.Result{}, err
-		}
-		logger.Info(fmt.Sprintf("deleted target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	}
+	// 	err = r.Client.Create(ctx, &t)
+	// 	if err != nil {
+	// 		logger.Error(err, "error creating target object")
+	// 		return ctrl.Result{}, err
+	// 	}
+	// 	logger.Info(fmt.Sprintf("created new target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
+	// }
+
+	// for _, t := range diff.ToUpdate {
+	// 	existing := &gnmicv1alpha1.Target{}
+
+	// 	err := r.Get(ctx, types.NamespacedName{
+	// 		Name:      t.ObjectMeta.Name,
+	// 		Namespace: t.ObjectMeta.Namespace,
+	// 	}, existing)
+
+	// 	if err != nil {
+	// 		logger.Error(err, "error fetching existing target object")
+	// 		return ctrl.Result{}, err
+	// 	}
+
+	// 	existing.Spec = t.Spec
+
+	// 	err = r.Update(ctx, existing)
+	// 	if err != nil {
+	// 		logger.Error(err, "error updating object")
+	// 		return ctrl.Result{}, err
+	// 	}
+	// 	logger.Info(fmt.Sprintf("updated existing target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
+	// }
+
+	// for _, t := range diff.ToDelete {
+	// 	err = r.Client.Delete(ctx, &t)
+	// 	logger.Info(fmt.Sprintf("resource name to be deleted: %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
+	// 	if err != nil {
+	// 		logger.Error(err, "error deleting the object")
+	// 		return ctrl.Result{}, err
+	// 	}
+	// 	logger.Info(fmt.Sprintf("deleted target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
+	// }
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.running = make(map[client.ObjectKey]runningSource)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.TargetSource{}).
 		Named("targetsource").

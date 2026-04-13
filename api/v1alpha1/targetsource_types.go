@@ -22,6 +22,7 @@ import (
 
 // TargetSourceSpec defines the desired state of TargetSource
 type TargetSourceSpec struct {
+	HTTPPull        *HTTPConfig          `json:"http_pull,omitempty"`
 	HTTP            *HTTPConfig          `json:"http,omitempty"`
 	Consul          *ConsulConfig        `json:"consul,omitempty"`
 	ConfigMap       string               `json:"configMap,omitempty"`
@@ -29,6 +30,7 @@ type TargetSourceSpec struct {
 	ServiceSelector metav1.LabelSelector `json:"serviceSelector,omitempty"`
 	Manual          []ManualTarget       `json:"manual,omitempty"`
 	//
+	Type   string            `json:"type,omitempty"`
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
