@@ -5,8 +5,6 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
 // NewTargetManager wires a TargetManager instance.
@@ -39,16 +37,16 @@ func (m *TargetManager) Run(ctx context.Context) error {
 			)
 
 			// List existing Target CRs owned by this TargetSource
-			var existing gnmicv1alpha1.TargetList
-			if err := m.client.List(
-				ctx,
-				&existing,
-				client.MatchingLabels{
-					"gnmic.dev/targetsource": m.targetsource,
-				},
-			); err != nil {
-				return err
-			}
+			// var existing gnmicv1alpha1.TargetList
+			// if err := m.client.List(
+			// 	ctx,
+			// 	&existing,
+			// 	client.MatchingLabels{
+			// 		"gnmic.dev/targetsource": m.targetsource,
+			// 	},
+			// ); err != nil {
+			// 	return err
+			// }
 
 			// TODO: Target Lifecycle Management
 			// 1. Compare and determine which Targets to create/update/delete
