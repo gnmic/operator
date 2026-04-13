@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" role="img" aria-label="HPA threshold vs podCapacity: targets, pods, and total capacity over time">
+
+  <!-- Background -->
+  <rect width="960" height="420" fill="#1f2020"/>
+
+  <!-- Chart area: x=80..900, y=40..340 -->
+
+  <!-- Y axis -->
+  <line x1="80" y1="40" x2="80" y2="340" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+  <!-- X axis -->
+  <line x1="80" y1="340" x2="900" y2="340" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+  <!-- Y axis label -->
+  <text x="22" y="190" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" transform="rotate(-90,22,190)">TARGETS / CAPACITY</text>
+
+  <!-- X axis label -->
+  <text x="490" y="375" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1">TIME</text>
+
+  <!-- Y gridlines and labels (0, 75, 100, 150, 200, 225, 300) -->
+  <!-- Scale: 0=y340, 300=y40  => 1 unit = 1px -->
+  <!-- y = 340 - value -->
+
+  <!-- 0 -->
+  <text x="70" y="344" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">0</text>
+
+  <!-- 75 -->
+  <line x1="80" y1="265" x2="900" y2="265" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="70" y="269" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">75</text>
+
+  <!-- 100 -->
+  <line x1="80" y1="240" x2="900" y2="240" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="70" y="244" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">100</text>
+
+  <!-- 150 -->
+  <line x1="80" y1="190" x2="900" y2="190" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="70" y="194" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">150</text>
+
+  <!-- 200 -->
+  <line x1="80" y1="140" x2="900" y2="140" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="70" y="144" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">200</text>
+
+  <!-- 225 -->
+  <line x1="80" y1="115" x2="900" y2="115" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="70" y="119" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">225</text>
+
+  <!-- 300 -->
+  <line x1="80" y1="40" x2="900" y2="40" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="70" y="44" fill="#888" font-family="arial,sans-serif" font-size="10" text-anchor="end">300</text>
+
+  <!--
+    Scenario (podCapacity=100, HPA threshold=75):
+    Phase 1 (x=80..300):  1 pod.   Capacity=100.  HPA threshold line=75.   Targets grow 0->75.
+    Phase 2 (x=300..400): 1 pod.   Targets cross 75, HPA triggers. Targets reach ~90.
+    Phase 3 (x=400..560): 2 pods.  Capacity=200.  HPA threshold=150. Targets grow 90->150.
+    Phase 4 (x=560..660): 2 pods.  Targets cross 150, HPA triggers. Targets reach ~170.
+    Phase 5 (x=660..900): 3 pods.  Capacity=300.  HPA threshold=225. Targets grow 170->210.
+  -->
+
+  <!-- === Total capacity (stepped, green) === -->
+  <!-- 1 pod: capacity 100, x=80..400 -->
+  <line x1="80" y1="240" x2="400" y2="240" stroke="#66BB6A" stroke-width="2"/>
+  <!-- step up to 2 pods: capacity 200, x=400..660 -->
+  <line x1="400" y1="240" x2="400" y2="140" stroke="#66BB6A" stroke-width="2" stroke-dasharray="3 3"/>
+  <line x1="400" y1="140" x2="660" y2="140" stroke="#66BB6A" stroke-width="2"/>
+  <!-- step up to 3 pods: capacity 300, x=660..900 -->
+  <line x1="660" y1="140" x2="660" y2="40" stroke="#66BB6A" stroke-width="2" stroke-dasharray="3 3"/>
+  <line x1="660" y1="40" x2="900" y2="40" stroke="#66BB6A" stroke-width="2"/>
+
+  <!-- === HPA threshold (stepped, orange dashed) === -->
+  <!-- 1 pod: threshold 75, x=80..400 -->
+  <line x1="80" y1="265" x2="400" y2="265" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <!-- 2 pods: threshold 150, x=400..660 -->
+  <line x1="400" y1="265" x2="400" y2="190" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <line x1="400" y1="190" x2="660" y2="190" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <!-- 3 pods: threshold 225, x=660..900 -->
+  <line x1="660" y1="190" x2="660" y2="115" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <line x1="660" y1="115" x2="900" y2="115" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="6 4"/>
+
+  <!-- === Targets (growing line, blue) === -->
+  <polyline points="
+    80,340
+    300,265
+    400,250
+    420,250
+    560,190
+    660,170
+    680,170
+    900,130
+  " stroke="#5C9BD6" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+
+  <!-- === Pod count annotations === -->
+  <!-- 1 pod -->
+  <text x="240" y="355" fill="#999" font-family="arial,sans-serif" font-size="10" text-anchor="middle">1 pod</text>
+  <!-- HPA triggers -->
+  <line x1="300" y1="265" x2="300" y2="350" stroke="rgba(255,255,255,0.15)" stroke-width="1" stroke-dasharray="2 2"/>
+  <text x="350" y="365" fill="#E07B39" font-family="arial,sans-serif" font-size="9" text-anchor="middle">HPA scales</text>
+  <!-- 2 pods -->
+  <text x="530" y="355" fill="#999" font-family="arial,sans-serif" font-size="10" text-anchor="middle">2 pods</text>
+  <!-- HPA triggers -->
+  <line x1="560" y1="190" x2="560" y2="350" stroke="rgba(255,255,255,0.15)" stroke-width="1" stroke-dasharray="2 2"/>
+  <text x="610" y="365" fill="#E07B39" font-family="arial,sans-serif" font-size="9" text-anchor="middle">HPA scales</text>
+  <!-- 3 pods -->
+  <text x="780" y="355" fill="#999" font-family="arial,sans-serif" font-size="10" text-anchor="middle">3 pods</text>
+
+  <!-- === Legend === -->
+  <line x1="100" y1="400" x2="130" y2="400" stroke="#5C9BD6" stroke-width="2.5"/>
+  <text x="138" y="404" fill="#ccc" font-family="arial,sans-serif" font-size="11">Targets</text>
+
+  <line x1="260" y1="400" x2="290" y2="400" stroke="#66BB6A" stroke-width="2"/>
+  <text x="298" y="404" fill="#ccc" font-family="arial,sans-serif" font-size="11">Total capacity (pods x podCapacity)</text>
+
+  <line x1="600" y1="400" x2="630" y2="400" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="638" y="404" fill="#ccc" font-family="arial,sans-serif" font-size="11">HPA threshold (pods x 75)</text>
+</svg>
