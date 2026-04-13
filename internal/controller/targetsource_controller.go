@@ -72,13 +72,13 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_, exists := r.running[req.NamespacedName]
 	r.mu.Unlock()
 
-	// If an targetsource loader exists, return immediately without starting
+	// If a targetsource loader exists, return immediately without starting
 	// any new loader or target manager
 	if exists {
 		return ctrl.Result{}, nil
 	}
 
-	loader, err := targetsource.NewLoader(targetSource.Spec.Type) // TODO: pass configuration to loader based on spec
+	loader, err := targetsource.NewLoader(targetSource.ObjectMeta.Name, targetSource.ObjectMeta.Namespace, targetSource.Spec) // TODO: pass configuration to loader based on spec
 	if err != nil {
 		return ctrl.Result{}, err
 	}
