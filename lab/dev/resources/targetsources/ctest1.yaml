@@ -1,0 +1,10 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: http-discovery
+spec:
+  http:
+    url: http://inventory-service:8080/targets
+  labels:
+    source: inventory
+  type: http_pull
