@@ -46,7 +46,7 @@ func NewLoader(name string, namespace string, spec gnmicv1alpha1.TargetSourceSpe
 	defer registryMu.RUnlock()
 
 	loaderName := namespace + "/" + name
-	factory, ok := registry[loaderName]
+	factory, ok := registry[spec.Type]
 	if !ok {
 		return nil, fmt.Errorf("unknown targetsource loader: %q", loaderName)
 	}

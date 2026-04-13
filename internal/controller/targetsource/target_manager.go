@@ -2,16 +2,22 @@ package targetsource
 
 import (
 	"context"
+	"fmt"
 
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // NewTargetManager wires a TargetManager instance.
-func NewTargetManager(c client.Client, sourceName string, in <-chan []DiscoveryMessage) *TargetManager {
+func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []DiscoveryMessage) *TargetManager {
 	return &TargetManager{
 		client:       c,
-		targetsource: sourceName,
+		scheme:       s,
+		targetSource: ts,
 		in:           in,
 	}
 }
@@ -20,7 +26,7 @@ func NewTargetManager(c client.Client, sourceName string, in <-chan []DiscoveryM
 // and reconciles Target CRs accordingly
 func (m *TargetManager) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
-		WithValues("targetSource", m.targetsource)
+		WithValues("targetSource", m.targetSource)
 
 	logger.Info("target manager started")
 
@@ -30,11 +36,39 @@ func (m *TargetManager) Run(ctx context.Context) error {
 			logger.Info("target manager stopped")
 			return nil
 
-		case targets := <-m.in:
+		case messages := <-m.in:
 			logger.Info(
 				"received discovered targets",
-				"count", len(targets),
+				"count", len(messages),
 			)
+
+			for _, msg := range messages {
+				if msg.Event == CREATE {
+					target := &gnmicv1alpha1.Target{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      msg.Target.Name,
+							Namespace: m.targetSource.ObjectMeta.Namespace,
+							Labels: map[string]string{
+								"gnmic.io/source": m.targetSource.ObjectMeta.Name,
+							},
+						},
+						Spec: gnmicv1alpha1.TargetSpec{
+							Address: msg.Target.Address,
+							Profile: "default",
+						},
+					}
+					err := controllerutil.SetControllerReference(m.targetSource, target, m.scheme)
+					if err != nil {
+						logger.Error(err, "error setting the owner reference")
+					}
+
+					err = m.client.Create(ctx, target)
+					if err != nil {
+						logger.Error(err, "error creating target object")
+					}
+					logger.Info(fmt.Sprintf("created new target object %s/%s", target.ObjectMeta.Namespace, target.ObjectMeta.Name))
+				}
+			}
 
 			// List existing Target CRs owned by this TargetSource
 			// var existing gnmicv1alpha1.TargetList

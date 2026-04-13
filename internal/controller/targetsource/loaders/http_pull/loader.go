@@ -48,7 +48,7 @@ func (l *Loader) Start(
 						Address: "clab-3-nodes-ceos1:6030",
 						Labels:  map[string]string{"TargetSource": targetsourceName},
 					},
-					Event: 1,
+					Event: targetsource.CREATE,
 				},
 				{
 					Target: targetsource.DiscoveredTarget{
@@ -56,7 +56,7 @@ func (l *Loader) Start(
 						Address: "clab-3-nodes-leaf1:57400",
 						Labels:  map[string]string{"TargetSource": targetsourceName},
 					},
-					Event: 1,
+					Event: targetsource.CREATE,
 				},
 			}
 

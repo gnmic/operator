@@ -93,7 +93,8 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// start target manager
 	manager := targetsource.NewTargetManager(
 		r.Client,
-		targetSource.Name,
+		r.Scheme,
+		&targetSource,
 		targetChannel,
 	)
 	go manager.Run(runtimeCtx)
