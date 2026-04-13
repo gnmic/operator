@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
 // Loader defines a pluggable TargetSource loader interface
@@ -39,13 +41,14 @@ func Register(name string, factory func() Loader) {
 }
 
 // NewLoader creates a loader by name
-func NewLoader(name string) (Loader, error) {
+func NewLoader(name string, namespace string, spec gnmicv1alpha1.TargetSourceSpec) (Loader, error) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 
-	factory, ok := registry[name]
+	loaderName := namespace + "/" + name
+	factory, ok := registry[loaderName]
 	if !ok {
-		return nil, fmt.Errorf("unknown targetsource loader: %q", name)
+		return nil, fmt.Errorf("unknown targetsource loader: %q", loaderName)
 	}
 	return factory(), nil
 }
