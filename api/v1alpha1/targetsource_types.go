@@ -28,16 +28,9 @@ type TargetSourceSpec struct {
 	ConfigMap       string               `json:"configMap,omitempty"`
 	PodSelector     metav1.LabelSelector `json:"podSelector,omitempty"`
 	ServiceSelector metav1.LabelSelector `json:"serviceSelector,omitempty"`
-	Manual          []ManualTarget       `json:"manual,omitempty"`
 	//
 	Type   string            `json:"type,omitempty"`
 	Labels map[string]string `json:"labels,omitempty"`
-}
-
-type ManualTarget struct {
-	Name          string `json:"name,omitempty"`
-	Address       string `json:"address,omitempty"`
-	TargetProfile string `json:"targetProfile,omitempty"`
 }
 
 type HTTPConfig struct {
