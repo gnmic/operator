@@ -60,17 +60,6 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
-              manual:
-                items:
-                  properties:
-                    address:
-                      type: string
-                    name:
-                      type: string
-                    targetProfile:
-                      type: string
-                  type: object
-                type: array
               podSelector:
                 description: |-
                   A label selector is a label query over a set of resources. The result of matchLabels and

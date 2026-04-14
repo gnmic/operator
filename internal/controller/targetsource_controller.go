@@ -74,6 +74,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// If a targetsource loader exists, return immediately without starting
 	// any new loader or target manager
+	// TODO: check for spec changes and handle running process accordingly
 	if exists {
 		return ctrl.Result{}, nil
 	}
@@ -104,72 +105,6 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	r.mu.Unlock()
 
 	logger.Info("TargetSource pipeline started", "name", targetSource.Name)
-
-	// // Step 1: Get desired state from discovery source
-	// discoveredTargets, err := targetsource.FetchDiscoveryTargets(ctx, targetSource)
-	// if err != nil {
-	// 	logger.Error(err, "error getting discovered targets")
-	// 	return ctrl.Result{}, err
-	// }
-
-	// // Step 2: Get current state from Kubernetes cluster (lookup by label of TargetSource)
-	// existingTargets, err := targetsource.FetchExistingTargets(ctx, r.Client, targetSource)
-	// if err != nil {
-	// 	logger.Error(err, "error fetching existing targets")
-	// 	return ctrl.Result{}, err
-	// }
-
-	// // Step 3: Compute diff
-	// diff := targetsource.BuildDiff(existingTargets, discoveredTargets)
-
-	// // Step 4: Iterate over each list and do create, update, delete respectively
-	// for _, t := range diff.ToCreate {
-	// 	err = controllerutil.SetControllerReference(&targetSource, &t, r.Scheme)
-	// 	if err != nil {
-	// 		logger.Error(err, "error setting the owner reference")
-	// 		return ctrl.Result{}, err
-	// 	}
-
-	// 	err = r.Client.Create(ctx, &t)
-	// 	if err != nil {
-	// 		logger.Error(err, "error creating target object")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	logger.Info(fmt.Sprintf("created new target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	// }
-
-	// for _, t := range diff.ToUpdate {
-	// 	existing := &gnmicv1alpha1.Target{}
-
-	// 	err := r.Get(ctx, types.NamespacedName{
-	// 		Name:      t.ObjectMeta.Name,
-	// 		Namespace: t.ObjectMeta.Namespace,
-	// 	}, existing)
-
-	// 	if err != nil {
-	// 		logger.Error(err, "error fetching existing target object")
-	// 		return ctrl.Result{}, err
-	// 	}
-
-	// 	existing.Spec = t.Spec
-
-	// 	err = r.Update(ctx, existing)
-	// 	if err != nil {
-	// 		logger.Error(err, "error updating object")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	logger.Info(fmt.Sprintf("updated existing target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	// }
-
-	// for _, t := range diff.ToDelete {
-	// 	err = r.Client.Delete(ctx, &t)
-	// 	logger.Info(fmt.Sprintf("resource name to be deleted: %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	// 	if err != nil {
-	// 		logger.Error(err, "error deleting the object")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	logger.Info(fmt.Sprintf("deleted target object %s/%s", t.ObjectMeta.Namespace, t.ObjectMeta.Name))
-	// }
 
 	return ctrl.Result{}, nil
 }

@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
 // NewTargetManager wires a TargetManager instance.
@@ -22,7 +24,7 @@ func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.Targ
 	}
 }
 
-// Run is a long‑running loop that receives target snapshots
+// Run is a long‑running loop that receives target event messages
 // and reconciles Target CRs accordingly
 func (m *TargetManager) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
@@ -43,7 +45,24 @@ func (m *TargetManager) Run(ctx context.Context) error {
 			)
 
 			for _, msg := range messages {
-				if msg.Event == CREATE {
+				switch msg.Event {
+				case DELETE:
+					existing := &gnmicv1alpha1.Target{}
+					err := m.client.Get(ctx, types.NamespacedName{
+						Name:      msg.Target.Name,
+						Namespace: m.targetSource.Namespace,
+					}, existing)
+					if err != nil {
+						logger.Error(err, "error fetching existing target object")
+					}
+
+					err = m.client.Delete(ctx, existing)
+					if err != nil {
+						logger.Error(err, "error deleting the object")
+					}
+					logger.Info(fmt.Sprintf("deleted target object %s/%s", m.targetSource.Namespace, msg.Target.Name))
+
+				case CREATE:
 					target := &gnmicv1alpha1.Target{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      msg.Target.Name,
@@ -67,25 +86,34 @@ func (m *TargetManager) Run(ctx context.Context) error {
 						logger.Error(err, "error creating target object")
 					}
 					logger.Info(fmt.Sprintf("created new target object %s/%s", target.ObjectMeta.Namespace, target.ObjectMeta.Name))
+
+				case UPDATE:
+					existing := &gnmicv1alpha1.Target{}
+					newSpec := gnmicv1alpha1.TargetSpec{
+						Address: msg.Target.Address,
+						Profile: "default",
+					}
+
+					err := m.client.Get(ctx, types.NamespacedName{
+						Name:      msg.Target.Name,
+						Namespace: m.targetSource.Namespace,
+					}, existing)
+					if err != nil {
+						logger.Error(err, "error fetching existing target object")
+					}
+
+					existing.Spec = newSpec
+
+					err = m.client.Update(ctx, existing)
+					if err != nil {
+						logger.Error(err, "error updating object")
+					}
+					logger.Info(fmt.Sprintf("updated existing target object %s/%s", existing.ObjectMeta.Namespace, existing.ObjectMeta.Name))
+
+				default:
+					logger.Error(nil, "unknown discovery event received")
 				}
 			}
-
-			// List existing Target CRs owned by this TargetSource
-			// var existing gnmicv1alpha1.TargetList
-			// if err := m.client.List(
-			// 	ctx,
-			// 	&existing,
-			// 	client.MatchingLabels{
-			// 		"gnmic.dev/targetsource": m.targetsource,
-			// 	},
-			// ); err != nil {
-			// 	return err
-			// }
-
-			// TODO: Target Lifecycle Management
-			// 1. Compare and determine which Targets to create/update/delete
-			// 2. Create/update/delete Target CRs accordingly
-			// 3. Update TargetSource status with sync results
 		}
 	}
 }
