@@ -60,6 +60,8 @@ spec:
                         type: string
                     type: object
                 type: object
+              type:
+                type: string
             required:
             - profile
             - provider

@@ -27,6 +27,7 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/targetsource"
+	"github.com/gnmic/operator/internal/controller/targetsource/core"
 	_ "github.com/gnmic/operator/internal/controller/targetsource/loaders/all"
 )
 
@@ -85,13 +86,13 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 
-	targetChannel := make(chan []targetsource.DiscoveryMessage, 10)
+	targetChannel := make(chan []core.DiscoveryMessage, 10)
 
 	// start loader
 	go loader.Start(runtimeCtx, targetSource.Name, targetChannel)
 
 	// start target manager
-	manager := targetsource.NewTargetManager(
+	manager := core.NewTargetManager(
 		r.Client,
 		targetSource.Name,
 		targetChannel,
