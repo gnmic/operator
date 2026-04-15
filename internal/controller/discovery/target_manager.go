@@ -1,4 +1,4 @@
-package core
+package discovery
 
 import (
 	"context"
@@ -12,10 +12,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
+// TargetManager consumes discovered targets and applies them to Kubernetes.
+type TargetManager struct {
+	client       client.Client
+	scheme       *runtime.Scheme
+	targetSource *gnmicv1alpha1.TargetSource
+	in           <-chan []core.DiscoveryMessage
+}
+
 // NewTargetManager wires a TargetManager instance.
-func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []DiscoveryMessage) *TargetManager {
+func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetManager {
 	return &TargetManager{
 		client:       c,
 		scheme:       s,
@@ -46,7 +55,7 @@ func (m *TargetManager) Run(ctx context.Context) error {
 
 			for _, msg := range messages {
 				switch msg.Event {
-				case DELETE:
+				case core.DELETE:
 					existing := &gnmicv1alpha1.Target{}
 					err := m.client.Get(ctx, types.NamespacedName{
 						Name:      msg.Target.Name,
@@ -62,7 +71,7 @@ func (m *TargetManager) Run(ctx context.Context) error {
 					}
 					logger.Info(fmt.Sprintf("deleted target object %s/%s", m.targetSource.Namespace, msg.Target.Name))
 
-				case CREATE:
+				case core.CREATE:
 					target := &gnmicv1alpha1.Target{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      msg.Target.Name,
@@ -87,7 +96,7 @@ func (m *TargetManager) Run(ctx context.Context) error {
 					}
 					logger.Info(fmt.Sprintf("created new target object %s/%s", target.ObjectMeta.Namespace, target.ObjectMeta.Name))
 
-				case UPDATE:
+				case core.UPDATE:
 					existing := &gnmicv1alpha1.Target{}
 					newSpec := gnmicv1alpha1.TargetSpec{
 						Address: msg.Target.Address,

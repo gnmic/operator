@@ -1,4 +1,6 @@
-package targetsource
+package discovery
+
+// File may become obsolete, depends on how the logic to compare desired vs. existing state will get implemented
 
 import (
 	"context"

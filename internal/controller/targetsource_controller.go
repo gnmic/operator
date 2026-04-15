@@ -26,9 +26,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"github.com/gnmic/operator/internal/controller/targetsource"
-	"github.com/gnmic/operator/internal/controller/targetsource/core"
-	_ "github.com/gnmic/operator/internal/controller/targetsource/loaders/all"
+	"github.com/gnmic/operator/internal/controller/discovery"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
+	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
 )
 
 type runningSource struct {
@@ -80,7 +80,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	loader, err := targetsource.NewLoader(targetSource.ObjectMeta.Name, targetSource.ObjectMeta.Namespace, targetSource.Spec) // TODO: pass configuration to loader based on spec
+	loader, err := discovery.NewLoader(targetSource.ObjectMeta.Name, targetSource.ObjectMeta.Namespace, targetSource.Spec) // TODO: pass configuration to loader based on spec
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -93,7 +93,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	go loader.Start(runtimeCtx, targetSource.Name, targetChannel)
 
 	// start target manager
-	manager := core.NewTargetManager(
+	manager := discovery.NewTargetManager(
 		r.Client,
 		r.Scheme,
 		&targetSource,

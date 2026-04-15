@@ -1,12 +1,5 @@
 package core
 
-import (
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-)
-
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
@@ -26,12 +19,4 @@ type DiscoveryEvent int
 type DiscoveryMessage struct {
 	Target DiscoveredTarget
 	Event  DiscoveryEvent
-}
-
-// TargetManager consumes discovered targets and applies them to Kubernetes.
-type TargetManager struct {
-	client       client.Client
-	scheme       *runtime.Scheme
-	targetSource *gnmicv1alpha1.TargetSource
-	in           <-chan []DiscoveryMessage
 }
