@@ -1,17 +1,30 @@
-package core
+package discovery
 
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
+// TargetManager consumes discovered targets and applies them to Kubernetes.
+type TargetManager struct {
+	client       client.Client
+	scheme       *runtime.Scheme
+	targetSource *gnmicv1alpha1.TargetSource
+	in           <-chan []core.DiscoveryMessage
+}
+
 // NewTargetManager wires a TargetManager instance.
-func NewTargetManager(c client.Client, sourceName string, in <-chan []DiscoveryMessage) *TargetManager {
+func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetManager {
 	return &TargetManager{
 		client:       c,
-		targetsource: sourceName,
+		scheme:       s,
+		targetSource: ts,
 		in:           in,
 	}
 }
@@ -20,7 +33,7 @@ func NewTargetManager(c client.Client, sourceName string, in <-chan []DiscoveryM
 // and reconciles Target CRs accordingly
 func (m *TargetManager) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
-		WithValues("targetSource", m.targetsource)
+		WithValues("targetSource", m.targetSource)
 
 	logger.Info("target manager started")
 

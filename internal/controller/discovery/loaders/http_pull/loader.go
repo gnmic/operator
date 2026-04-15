@@ -6,7 +6,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/gnmic/operator/internal/controller/targetsource/core"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
 type Loader struct{}

@@ -1,11 +1,11 @@
-package targetsource
+package discovery
 
 import (
 	"fmt"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"github.com/gnmic/operator/internal/controller/targetsource/core"
-	"github.com/gnmic/operator/internal/controller/targetsource/loaders/http_pull"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/gnmic/operator/internal/controller/discovery/loaders/http_pull"
 )
 
 // NewLoader creates a loader by name
