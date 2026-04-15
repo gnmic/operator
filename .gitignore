@@ -25,6 +25,7 @@ Dockerfile.cross
 *.swo
 *~
 private/
+lab/dev/**/*.annotations.json
 lab/dev/clab-*
 lab/dev/netbox/secrets
 design/
