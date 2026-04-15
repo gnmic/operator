@@ -1,4 +1,4 @@
-package targetsource
+package core
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"

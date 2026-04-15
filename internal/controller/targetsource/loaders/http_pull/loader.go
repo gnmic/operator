@@ -6,13 +6,13 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/gnmic/operator/internal/controller/targetsource"
+	"github.com/gnmic/operator/internal/controller/targetsource/core"
 )
 
 type Loader struct{}
 
 // New instantiates the http_pull loader
-func New() targetsource.Loader {
+func New() core.Loader {
 	return &Loader{}
 }
 
@@ -23,7 +23,7 @@ func (l *Loader) Name() string {
 func (l *Loader) Start(
 	ctx context.Context,
 	targetsourceName string,
-	out chan<- []targetsource.DiscoveryMessage,
+	out chan<- []core.DiscoveryMessage,
 ) error {
 	logger := log.FromContext(ctx).WithValues("loader", l.Name())
 
@@ -41,22 +41,22 @@ func (l *Loader) Start(
 
 		case <-ticker.C:
 			// Example snapshot (placeholder)
-			targets := []targetsource.DiscoveryMessage{
+			targets := []core.DiscoveryMessage{
 				{
-					Target: targetsource.DiscoveredTarget{
+					Target: core.DiscoveredTarget{
 						Name:    "ceos1",
 						Address: "clab-3-nodes-ceos1:6030",
 						Labels:  map[string]string{"TargetSource": targetsourceName},
 					},
-					Event: targetsource.CREATE,
+					Event: core.CREATE,
 				},
 				{
-					Target: targetsource.DiscoveredTarget{
+					Target: core.DiscoveredTarget{
 						Name:    "leaf1",
 						Address: "clab-3-nodes-leaf1:57400",
 						Labels:  map[string]string{"TargetSource": targetsourceName},
 					},
-					Event: targetsource.CREATE,
+					Event: core.CREATE,
 				},
 			}
 
@@ -73,8 +73,4 @@ func (l *Loader) Start(
 			}
 		}
 	}
-}
-
-func init() {
-	targetsource.Register("http_pull", New)
 }
