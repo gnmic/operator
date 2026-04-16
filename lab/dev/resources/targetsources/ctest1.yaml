@@ -3,8 +3,10 @@ kind: TargetSource
 metadata:
   name: http-discovery
 spec:
-  http:
-    url: http://inventory-service:8080/targets
+  provider:
+    http:
+      url: http://inventory-service:8080/targets
   labels:
     source: inventory
-  type: http_pull
+  type: http
+  profile: eos
