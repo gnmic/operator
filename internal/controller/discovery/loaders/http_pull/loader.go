@@ -89,7 +89,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(ctx context.Context, client *http.
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Token +"+token)
+	req.Header.Set("Authorization", "Token "+token)
 
 	resp, err := client.Do(req)
 	if err != nil {
