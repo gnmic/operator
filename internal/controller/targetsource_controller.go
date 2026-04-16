@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -30,6 +31,8 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
 )
+
+const targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
 
 type runningSource struct {
 	cancel context.CancelFunc
@@ -56,10 +59,39 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	var targetSource gnmicv1alpha1.TargetSource
 	if err := r.Get(ctx, req.NamespacedName, &targetSource); err != nil {
+		// If the TargetSource no longer exists, ensure runtime cleanup
+		if client.IgnoreNotFound(err) == nil {
+			r.stopDiscovery(req.NamespacedName)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	logger.Info("reconciling TargetSource", "name", targetSource.Name)
+
+	// Handle deletion with finalizer
+	if !targetSource.DeletionTimestamp.IsZero() {
+		logger.Info("TargetSource is being deleted, stopping pipeline", "name", targetSource.Name)
+
+		r.stopDiscovery(req.NamespacedName)
+
+		// Remove finalizer if exists
+		if controllerutil.ContainsFinalizer(&targetSource, targetSourceFinalizer) {
+			controllerutil.RemoveFinalizer(&targetSource, targetSourceFinalizer)
+			if err := r.Update(ctx, &targetSource); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	}
+
+	// Ensure finalizer is set
+	if !controllerutil.ContainsFinalizer(&targetSource, targetSourceFinalizer) {
+		controllerutil.AddFinalizer(&targetSource, targetSourceFinalizer)
+		if err := r.Update(ctx, &targetSource); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Requeue to continue with a clean state
+		return ctrl.Result{}, nil
+	}
 
 	// TODO:
 	// 1. Check if a pipeline is already running for this TargetSource
@@ -107,6 +139,18 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	logger.Info("TargetSource pipeline started", "name", targetSource.Name)
 
 	return ctrl.Result{}, nil
+}
+
+// stopDiscovery stops and removes a running discovery pipeline
+// for the given TargetSource key
+func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if running, ok := r.running[key]; ok {
+		running.cancel()
+		delete(r.running, key)
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
