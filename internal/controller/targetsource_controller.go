@@ -79,7 +79,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	loader, err := discovery.NewLoader(targetSource.ObjectMeta.Name, targetSource.ObjectMeta.Namespace, targetSource.Spec) // TODO: pass configuration to loader based on spec
+	loader, err := discovery.NewLoader(targetSource.ObjectMeta.Name, targetSource.ObjectMeta.Namespace, targetSource.Spec)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -89,7 +89,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	targetChannel := make(chan []core.DiscoveryMessage, 10)
 
 	// start loader
-	go loader.Start(runtimeCtx, targetSource.Name, targetChannel)
+	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)
 
 	// start target manager
 	manager := discovery.NewTargetManager(

@@ -6,6 +6,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
@@ -23,6 +24,7 @@ func (l *Loader) Name() string {
 func (l *Loader) Start(
 	ctx context.Context,
 	targetsourceName string,
+	spec gnmicv1alpha1.TargetSourceSpec,
 	out chan<- []core.DiscoveryMessage,
 ) error {
 	logger := log.FromContext(ctx).WithValues("loader", l.Name())
