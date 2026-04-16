@@ -81,6 +81,8 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				return ctrl.Result{}, err
 			}
 		}
+
+		return ctrl.Result{}, nil
 	}
 
 	// Ensure finalizer is set
