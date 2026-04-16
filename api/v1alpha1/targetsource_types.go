@@ -39,7 +39,8 @@ type ProviderSpec struct {
 }
 
 type HTTPConfig struct {
-	URL string `json:"url,omitempty"`
+	URL   string `json:"url,omitempty"`
+	Token string `json:"token,omitempty"`
 }
 
 type ConsulConfig struct {
