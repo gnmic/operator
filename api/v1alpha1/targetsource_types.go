@@ -25,10 +25,10 @@ import (
 type TargetSourceSpec struct {
 	Provider *ProviderSpec `json:"provider"`
 	//
-	Labels map[string]string `json:"labels,omitempty"`
+	TargetLabels map[string]string `json:"labels,omitempty"`
 
 	// +kubebuilder:validation:MinLength=1
-	Profile string `json:"profile"`
+	TargetProfile string `json:"profile"`
 }
 
 // +kubebuilder:validation:MaxProperties=1
