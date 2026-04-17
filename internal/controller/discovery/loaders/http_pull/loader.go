@@ -2,11 +2,18 @@ package http_pull
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/google/uuid"
+)
+
+const (
+	chunkSize = 100
 )
 
 type Loader struct{}
@@ -23,9 +30,14 @@ func (l *Loader) Name() string {
 func (l *Loader) Start(
 	ctx context.Context,
 	targetsourceName string,
+	spec gnmicv1alpha1.TargetSourceSpec,
 	out chan<- []core.DiscoveryMessage,
 ) error {
-	logger := log.FromContext(ctx).WithValues("loader", l.Name())
+	logger := log.FromContext(ctx).WithValues(
+		"component", "loader",
+		"name", l.Name(),
+		"targetsource", targetsourceName,
+	)
 
 	logger.Info("HTTP pull loader started")
 
@@ -41,35 +53,22 @@ func (l *Loader) Start(
 
 		case <-ticker.C:
 			// Example snapshot (placeholder)
-			targets := []core.DiscoveryMessage{
+			snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
+			targets := []core.DiscoveredTarget{
 				{
-					Target: core.DiscoveredTarget{
-						Name:    "ceos1",
-						Address: "clab-3-nodes-ceos1:6030",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
-					},
-					Event: core.CREATE,
+					Name:    "ceos1",
+					Address: "clab-3-nodes-ceos1:6030",
+					Labels:  map[string]string{"TargetSource": targetsourceName},
 				},
 				{
-					Target: core.DiscoveredTarget{
-						Name:    "leaf1",
-						Address: "clab-3-nodes-leaf1:57400",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
-					},
-					Event: core.CREATE,
+					Name:    "leaf1",
+					Address: "clab-3-nodes-leaf1:57400",
+					Labels:  map[string]string{"TargetSource": targetsourceName},
 				},
 			}
 
-			// Non-blocking context-aware send
-			select {
-			case out <- targets:
-				logger.V(1).Info(
-					"emitted target snapshot",
-					"count", len(targets),
-				)
-			case <-ctx.Done():
-				logger.Info("context cancelled while emitting targets")
-				return nil
+			if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+				return err
 			}
 		}
 	}
