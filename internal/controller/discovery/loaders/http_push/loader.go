@@ -44,8 +44,9 @@ func (l *Loader) Start(
 
 	// Receive target updates via HTTP push
 	var targetEvents []core.DiscoveryEvent
+	const chunkSize = 100
 
-	if err := core.SendEvents(ctx, out, targetEvents); err != nil {
+	if err := core.SendEvents(ctx, out, targetEvents, chunkSize); err != nil {
 		logger.Error(err, "failed to send events")
 		return nil
 	}

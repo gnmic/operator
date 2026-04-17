@@ -58,12 +58,29 @@ func SendSnapshot(ctx context.Context, out chan<- []DiscoveryMessage, targets []
 }
 
 // SendEvents sends discovery messages over channel in a context-aware manner
-func SendEvents(ctx context.Context, out chan<- []DiscoveryMessage, events []DiscoveryEvent) error {
-	// Convert DiscoveryEvent slice to DiscoveryMessage slice
-	messages := make([]DiscoveryMessage, len(events))
-	for i, msg := range events {
-		messages[i] = msg
+func SendEvents(ctx context.Context, out chan<- []DiscoveryMessage, events []DiscoveryEvent, chunkSize int) error {
+	if chunkSize <= 0 {
+		chunkSize = 1
 	}
 
-	return sendMessages(ctx, out, messages)
+	totalEvents := len(events)
+	for i := 0; i < totalEvents; i += chunkSize {
+		end := i + chunkSize
+		if end > totalEvents {
+			end = totalEvents
+		}
+
+		chunk := events[i:end]
+		// Convert DiscoveryEvent chunk to DiscoveryMessage slice
+		messages := make([]DiscoveryMessage, len(chunk))
+		for j, event := range chunk {
+			messages[j] = event
+		}
+
+		if err := sendMessages(ctx, out, messages); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
