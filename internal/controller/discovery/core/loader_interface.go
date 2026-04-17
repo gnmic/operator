@@ -12,7 +12,7 @@ type Loader interface {
 	// Name returns the unique loader identifier e.g. "http_pull"
 	Name() string
 
-	// Start begins discovery and pushes target snapshots into the out channel
+	// Start begins discovery and pushes target snapshots or events into the out channel
 	// The loader must stop cleanly when ctx is cancelled
 	Start(
 		ctx context.Context,

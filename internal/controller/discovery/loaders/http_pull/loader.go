@@ -12,9 +12,11 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/google/uuid"
 )
 
 const (
+	chunkSize           = 100
 	defaultPollInterval = 30 * time.Second
 )
 
@@ -37,9 +39,11 @@ func (l *Loader) Start(
 	out chan<- []core.DiscoveryMessage,
 ) error {
 	logger := log.FromContext(ctx).WithValues(
-		"loader", l.Name(),
-		"targetSource", targetsourceName,
+		"component", "loader",
+		"name", l.Name(),
+		"targetsource", targetsourceName,
 	)
+	logger.Info("HTTP pull loader started")
 
 	// Input Validation of spec
 	if spec.Provider == nil || spec.Provider.HTTP == nil {
@@ -69,19 +73,10 @@ func (l *Loader) Start(
 			return
 		}
 
-		messages := make([]core.DiscoveryMessage, 0, len(targets))
-		for _, target := range targets {
-			messages = append(messages, core.DiscoveryMessage{
-				Target: target,
-				Event:  core.CREATE,
-			})
-		}
-
-		select {
-		case out <- messages:
-			logger.Info("emitted target snapshot", "count", len(messages))
-		case <-ctx.Done():
-			logger.Info("context cancelled while emitting targets")
+		snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
+		if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+			logger.Error(err, "failed to send discovery snapshot")
+			return
 		}
 	}
 
