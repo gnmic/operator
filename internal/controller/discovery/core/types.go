@@ -10,8 +10,7 @@ type DiscoveredTarget struct {
 
 const (
 	DELETE EventAction = 0
-	CREATE EventAction = 1
-	UPDATE EventAction = 2
+	APPLY  EventAction = 1
 )
 
 type EventAction int
@@ -23,7 +22,6 @@ type DiscoveryEvent struct {
 
 type DiscoverySnapshot struct {
 	Targets     []DiscoveredTarget
-	Event       EventAction
 	SnapshotID  string
 	IsLastChunk bool
 }

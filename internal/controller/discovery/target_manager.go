@@ -3,7 +3,9 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"maps"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -73,77 +75,20 @@ func (m *TargetManager) Run(ctx context.Context) error {
 
 				case core.DiscoveryEvent:
 					// Process individual event-driven update
-					logger.Info(
-						"received discovery event",
-						"target", msg.Target.Name,
-					)
+					logger.Info(fmt.Sprintf("received discovery event for target %s", msg.Target.Name))
+
 					switch msg.Event {
-					case core.CREATE:
-						logger.Info("Would create target", "name", msg.Target.Name, "address", msg.Target.Address, "labels", msg.Target.Labels)
-						target := &gnmicv1alpha1.Target{
-							ObjectMeta: metav1.ObjectMeta{
-								Name:      msg.Target.Name,
-								Namespace: m.targetSource.ObjectMeta.Namespace,
-								Labels: map[string]string{
-									"gnmic.io/source": m.targetSource.ObjectMeta.Name,
-								},
-							},
-							Spec: gnmicv1alpha1.TargetSpec{
-								Address: msg.Target.Address,
-								Profile: "default",
-							},
-						}
-						err := controllerutil.SetControllerReference(m.targetSource, target, m.scheme)
-						if err != nil {
-							logger.Error(err, "error setting the owner reference")
-						}
-
-						err = m.client.Create(ctx, target)
-						if err != nil {
-							logger.Error(err, "error creating target object")
-						}
-						logger.Info(fmt.Sprintf("created new target object %s/%s", target.ObjectMeta.Namespace, target.ObjectMeta.Name))
-
-					case core.UPDATE:
-						logger.Info("Would update target", "name", msg.Target.Name, "address", msg.Target.Address, "labels", msg.Target.Labels)
-						existing := &gnmicv1alpha1.Target{}
-						newSpec := gnmicv1alpha1.TargetSpec{
-							Address: msg.Target.Address,
-							Profile: "default",
-						}
-
-						err := m.client.Get(ctx, types.NamespacedName{
-							Name:      msg.Target.Name,
-							Namespace: m.targetSource.Namespace,
-						}, existing)
-						if err != nil {
-							logger.Error(err, "error fetching existing target object")
-						}
-
-						existing.Spec = newSpec
-
-						err = m.client.Update(ctx, existing)
-						if err != nil {
-							logger.Error(err, "error updating object")
-						}
-						logger.Info(fmt.Sprintf("updated existing target object %s/%s", existing.ObjectMeta.Namespace, existing.ObjectMeta.Name))
-
 					case core.DELETE:
-						logger.Info("Would delete target", "name", msg.Target.Name)
-						existing := &gnmicv1alpha1.Target{}
-						err := m.client.Get(ctx, types.NamespacedName{
-							Name:      msg.Target.Name,
-							Namespace: m.targetSource.Namespace,
-						}, existing)
+						err := m.deleteTarget(ctx, msg.Target.Name)
 						if err != nil {
-							logger.Error(err, "error fetching existing target object")
+							logger.Error(err, fmt.Sprintf("error deleting target object %s/%s", m.targetSource.ObjectMeta.Namespace, msg.Target.Name))
 						}
-
-						err = m.client.Delete(ctx, existing)
+						logger.Info(fmt.Sprintf("deleted target object %s/%s", m.targetSource.ObjectMeta.Namespace, msg.Target.Name))
+					case core.APPLY:
+						err := m.applyTarget(ctx, logger, msg.Target.Name, msg.Target.Address)
 						if err != nil {
-							logger.Error(err, "error deleting the object")
+							logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, msg.Target.Name))
 						}
-						logger.Info(fmt.Sprintf("deleted target object %s/%s", m.targetSource.Namespace, msg.Target.Name))
 					}
 				}
 			}
@@ -156,13 +101,62 @@ func (m *TargetManager) processSnapshot(snapshotID string, logger logr.Logger) {
 	targets := m.collected[snapshotID]
 	delete(m.collected, snapshotID)
 
-	logger.Info("Processing full snapshot", "snapshotID", snapshotID, "totalTargets", len(targets))
-
-	if m.targetSource.Spec.Provider.HTTP != nil {
-		logger.Info("Would delete all existing targets for targetsource", "targetsource", m.targetSource.Name)
-	}
+	logger.Info(fmt.Sprintf("Processing full snapshot ID: %s, targets: %d", snapshotID, len(targets)))
 
 	for _, target := range targets {
-		logger.Info("Would create target", "name", target.Name, "address", target.Address, "labels", target.Labels)
+		err := m.applyTarget(context.Background(), logger, target.Name, target.Address)
+		if err != nil {
+			logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, target.Name))
+		}
 	}
+}
+
+func (m *TargetManager) applyTarget(ctx context.Context, logger logr.Logger, name string, address string) error {
+	target := &gnmicv1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: m.targetSource.Namespace,
+		},
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, m.client, target, func() error {
+		labels := map[string]string{
+			"gnmic.io/source": m.targetSource.Name,
+		}
+
+		maps.Copy(labels, m.targetSource.Spec.TargetLabels)
+
+		target.Labels = labels
+
+		target.Spec = gnmicv1alpha1.TargetSpec{
+			Address: address,
+			Profile: m.targetSource.Spec.TargetProfile,
+		}
+
+		return controllerutil.SetControllerReference(m.targetSource, target, m.scheme)
+	})
+
+	logger.Info(fmt.Sprintf("applied target object %s/%s", m.targetSource.ObjectMeta.Namespace, name))
+
+	return err
+}
+
+func (m *TargetManager) deleteTarget(ctx context.Context, name string) error {
+	existing := &gnmicv1alpha1.Target{}
+	err := m.client.Get(ctx, types.NamespacedName{
+		Name:      name,
+		Namespace: m.targetSource.Namespace,
+	}, existing)
+	if apierrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	err = m.client.Delete(ctx, existing)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+
+	return err
 }
