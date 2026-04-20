@@ -49,9 +49,10 @@ type ConsulConfig struct {
 
 // TargetSourceStatus defines the observed state of TargetSource
 type TargetSourceStatus struct {
-	Status       string      `json:"status"`
-	TargetsCount int32       `json:"targetsCount"`
-	LastSync     metav1.Time `json:"lastSync"`
+	Status             string      `json:"status"`
+	ObservedGeneration int64       `json:"observedGeneration"`
+	TargetsCount       int32       `json:"targetsCount"`
+	LastSync           metav1.Time `json:"lastSync"`
 }
 
 //+kubebuilder:object:root=true
