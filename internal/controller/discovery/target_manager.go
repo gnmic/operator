@@ -91,6 +91,18 @@ func (m *TargetManager) Run(ctx context.Context) error {
 						}
 					}
 				}
+
+				existing, err := FetchExistingTargets(ctx, m.client, *m.targetSource)
+				if err != nil {
+					logger.Error(err, "error fetching existing targets")
+				}
+
+				m.targetSource.Status.TargetsCount = int32(len(existing))
+				m.targetSource.Status.LastSync = metav1.Now()
+
+				if err := m.client.Status().Update(ctx, m.targetSource); err != nil {
+					logger.Error(err, "error updating targetSource status")
+				}
 			}
 		}
 	}
