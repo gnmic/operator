@@ -35,11 +35,16 @@ type TargetSourceSpec struct {
 // +kubebuilder:validation:MaxProperties=1
 type ProviderSpec struct {
 	HTTP   *HTTPConfig   `json:"http,omitempty"`
+	PULL   *PULLConfig   `json:"pull,omitempty"`
 	Consul *ConsulConfig `json:"consul,omitempty"`
 }
 
+type PULLConfig struct {
+	URL string `json:"url,omitempty"` // Placeholder for future settings, URL is not actually needed for this interface
+}
+
 type HTTPConfig struct {
-	URL string `json:"url,omitempty"`
+	URL string `json:"url,omitempty"` 
 }
 
 type ConsulConfig struct {

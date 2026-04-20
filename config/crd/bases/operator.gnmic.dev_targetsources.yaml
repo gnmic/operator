@@ -59,6 +59,11 @@ spec:
                       url:
                         type: string
                     type: object
+                  pull:
+                    properties:
+                      url:
+                        type: string
+                    type: object
                 type: object
               type:
                 type: string
