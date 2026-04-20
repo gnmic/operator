@@ -1,10 +1,10 @@
 ---
 title: "Kafka"
 linkTitle: "Kafka"
-weight: 6
-draft: true
+weight: 1
+# draft: true
 description: >
-  Kafka integration examples
+  Publish telemetry data to Apache Kafka
 ---
 
 This guide shows how to configure gNMIc Operator to send telemetry data to Apache Kafka.
@@ -213,24 +213,4 @@ kubectl -n kafka run kafka-consumer -ti --rm=true --restart=Never \
   --bootstrap-server my-cluster-kafka-bootstrap:9092 \
   --topic network-telemetry \
   --from-beginning
-```
-
-## Cross-Namespace Kafka
-
-If Kafka is in a different namespace than your outputs:
-
-```yaml
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: Output
-metadata:
-  name: kafka-output
-  namespace: telemetry
-spec:
-  type: kafka
-  serviceRef:
-    name: my-cluster-kafka-bootstrap
-    namespace: kafka  # The Kafka cluster is in 'kafka' namespace
-    port: "9092"
-  config:
-    topic: telemetry
 ```

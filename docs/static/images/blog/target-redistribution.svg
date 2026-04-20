@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" role="img" aria-label="Target redistribution when scaling from 3 to 4 pods">
+  <defs>
+    <marker id="ah-move" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#E07B39"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="520" fill="#1f2020"/>
+
+  <!-- ==================== BEFORE (3 pods) ==================== -->
+  <text x="480" y="32" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">BEFORE (3 PODS)</text>
+
+  <!-- Pod 0 -->
+  <rect x="46" y="50" width="270" height="170" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="66" y="74" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 0</text>
+  <text x="260" y="74" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">4 targets</text>
+  <rect x="66" y="88" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="181" y="104" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router1</text>
+  <rect x="66" y="120" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="181" y="136" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router5</text>
+  <rect x="66" y="152" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="181" y="168" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router7</text>
+  <rect x="66" y="184" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="181" y="200" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router9</text>
+
+  <!-- Pod 1 -->
+  <rect x="346" y="50" width="270" height="170" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="366" y="74" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 1</text>
+  <text x="560" y="74" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">2 targets</text>
+  <rect x="366" y="88" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="481" y="104" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router2</text>
+  <rect x="366" y="120" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="481" y="136" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router3</text>
+
+  <!-- Pod 2 -->
+  <rect x="646" y="50" width="270" height="170" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="666" y="74" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 2</text>
+  <text x="860" y="74" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">4 targets</text>
+  <rect x="666" y="88" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="781" y="104" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router4</text>
+  <rect x="666" y="120" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="781" y="136" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router6</text>
+  <rect x="666" y="152" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="781" y="168" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router8</text>
+  <rect x="666" y="184" width="230" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="781" y="200" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router10</text>
+
+  <!-- Divider -->
+  <line x1="46" y1="248" x2="916" y2="248" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 3"/>
+
+  <!-- ==================== AFTER (4 pods) ==================== -->
+  <text x="480" y="276" fill="rgba(255,255,255,0.35)" font-family="arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">AFTER (4 PODS)</text>
+
+  <!-- Pod 0 -->
+  <rect x="16" y="292" width="218" height="150" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="36" y="316" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 0</text>
+  <text x="178" y="316" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">3 targets</text>
+  <rect x="36" y="330" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="125" y="346" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router1</text>
+  <rect x="36" y="362" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="125" y="378" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router7</text>
+  <rect x="36" y="394" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="125" y="410" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router9</text>
+
+  <!-- Pod 1 -->
+  <rect x="254" y="292" width="218" height="150" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="274" y="316" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 1</text>
+  <text x="416" y="316" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">2 targets</text>
+  <rect x="274" y="330" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="363" y="346" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router2</text>
+  <rect x="274" y="362" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="363" y="378" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router3</text>
+
+  <!-- Pod 2 -->
+  <rect x="492" y="292" width="218" height="150" rx="4" fill="#1f2020" stroke="#5C9BD6" stroke-width="1.5"/>
+  <text x="512" y="316" fill="#5C9BD6" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 2</text>
+  <text x="654" y="316" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">3 targets</text>
+  <rect x="512" y="330" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="601" y="346" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router4</text>
+  <rect x="512" y="362" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="601" y="378" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router8</text>
+  <rect x="512" y="394" width="178" height="24" rx="3" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="601" y="410" fill="#ccc" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router10</text>
+
+  <!-- Pod 3 (new) -->
+  <rect x="730" y="292" width="218" height="150" rx="4" fill="#1f2020" stroke="#66BB6A" stroke-width="1.5"/>
+  <text x="750" y="316" fill="#66BB6A" font-family="arial,sans-serif" font-size="14" font-weight="bold">Pod 3</text>
+  <text x="848" y="316" fill="#66BB6A" font-family="arial,sans-serif" font-size="11" text-anchor="end">new</text>
+  <text x="892" y="316" fill="#888" font-family="arial,sans-serif" font-size="11" text-anchor="end">2 targets</text>
+  <rect x="750" y="330" width="178" height="24" rx="3" fill="#282929" stroke="#E07B39" stroke-width="1"/>
+  <text x="839" y="346" fill="#E07B39" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router5</text>
+  <rect x="750" y="362" width="178" height="24" rx="3" fill="#282929" stroke="#E07B39" stroke-width="1"/>
+  <text x="839" y="378" fill="#E07B39" font-family="arial,sans-serif" font-size="11" text-anchor="middle">router6</text>
+
+  <!-- Move arrows from before-pods to Pod 3 -->
+  <!-- router5: Pod 0 -> Pod 3 -->
+  <path d="M 181 232 C 181 260, 839 260, 839 328" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="5 3" fill="none" marker-end="url(#ah-move)"/>
+  <!-- router6: Pod 2 -> Pod 3 -->
+  <path d="M 781 232 C 781 258, 829 258, 829 360" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="5 3" fill="none" marker-end="url(#ah-move)"/>
+
+  <!-- Legend -->
+  <line x1="46" y1="482" x2="76" y2="482" stroke="#E07B39" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="84" y="486" fill="#999" font-family="arial,sans-serif" font-size="11">moved (2 out of 10 targets)</text>
+  <rect x="300" y="474" width="14" height="14" rx="2" fill="#282929" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
+  <text x="322" y="486" fill="#999" font-family="arial,sans-serif" font-size="11">unchanged</text>
+  <rect x="430" y="474" width="14" height="14" rx="2" fill="#282929" stroke="#E07B39" stroke-width="1"/>
+  <text x="452" y="486" fill="#999" font-family="arial,sans-serif" font-size="11">redistributed to new pod</text>
+</svg>
