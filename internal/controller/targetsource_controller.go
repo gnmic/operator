@@ -20,7 +20,9 @@ import (
 	"context"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -79,7 +81,8 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if targetSource.Generation != targetSource.Status.ObservedGeneration {
 			r.stopDiscovery(req.NamespacedName)
 		} else {
-			return ctrl.Result{}, nil
+			err := r.updateStatus(ctx, targetSource)
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -88,9 +91,12 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	// Update TargetSource ObservedGeneration Status field
 	targetSource.Status.ObservedGeneration = targetSource.Generation
 	if err := r.Status().Update(ctx, targetSource); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := r.updateStatus(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -197,12 +203,42 @@ func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
 	}
 }
 
+func (r *TargetSourceReconciler) updateStatus(ctx context.Context, ts *gnmicv1alpha1.TargetSource) error {
+	// Update TargetSource Status field
+	var targetList gnmicv1alpha1.TargetList
+
+	err := r.Client.List(ctx, &targetList,
+		client.InNamespace(ts.Namespace),
+		client.MatchingLabels{
+			"gnmic.io/source": ts.Name,
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &gnmicv1alpha1.TargetSource{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(ts), latest); err != nil {
+			return err
+		}
+
+		latest.Status.TargetsCount = int32(len(targetList.Items))
+		latest.Status.LastSync = metav1.Now()
+
+		return r.Status().Update(ctx, latest)
+	})
+
+	return err
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.running = make(map[client.ObjectKey]runningSource)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.TargetSource{}).
+		Owns(&gnmicv1alpha1.Target{}).
 		Named("targetsource").
 		Complete(r)
 }

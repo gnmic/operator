@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"context"
-	"fmt"
 	"maps"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -42,7 +41,10 @@ func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.Targ
 // and reconciles Target CRs accordingly
 func (m *TargetManager) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
-		WithValues("targetSource", m.targetSource)
+		WithValues(
+			"targetSource", m.targetSource.ObjectMeta.Name,
+			"namespace", m.targetSource.ObjectMeta.Namespace,
+		)
 
 	logger.Info("target manager started")
 
@@ -70,38 +72,45 @@ func (m *TargetManager) Run(ctx context.Context) error {
 					)
 					m.collected[msg.SnapshotID] = append(m.collected[msg.SnapshotID], msg.Targets...)
 					if msg.IsLastChunk {
-						m.processSnapshot(msg.SnapshotID, logger)
+						m.processSnapshot(ctx, msg.SnapshotID, logger)
 					}
 
 				case core.DiscoveryEvent:
 					// Process individual event-driven update
-					logger.Info(fmt.Sprintf("received discovery event for target %s", msg.Target.Name))
+					logger.Info("received discovery event",
+						"name", msg.Target.Name,
+					)
 
 					switch msg.Event {
 					case core.DELETE:
 						err := m.deleteTarget(ctx, msg.Target.Name)
 						if err != nil {
-							logger.Error(err, fmt.Sprintf("error deleting target object %s/%s", m.targetSource.ObjectMeta.Namespace, msg.Target.Name))
+							logger.Error(err, "error deleting target object",
+								"namespace", m.targetSource.ObjectMeta.Namespace,
+								"name", msg.Target.Name,
+							)
+						} else {
+							logger.Info("deleted target object",
+								"namespace", m.targetSource.ObjectMeta.Namespace,
+								"name", msg.Target.Name,
+							)
 						}
-						logger.Info(fmt.Sprintf("deleted target object %s/%s", m.targetSource.ObjectMeta.Namespace, msg.Target.Name))
+
 					case core.APPLY:
-						err := m.applyTarget(ctx, logger, msg.Target.Name, msg.Target.Address)
+						err := m.applyTarget(ctx, msg.Target.Name, msg.Target.Address)
 						if err != nil {
-							logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, msg.Target.Name))
+							logger.Error(err, "error applying target object",
+								"namespace", m.targetSource.ObjectMeta.Namespace,
+								"name", msg.Target.Name,
+							)
+
+						} else {
+							logger.Info("applied target object",
+								"namespace", m.targetSource.ObjectMeta.Namespace,
+								"name", msg.Target.Name,
+							)
 						}
 					}
-				}
-
-				existing, err := FetchExistingTargets(ctx, m.client, *m.targetSource)
-				if err != nil {
-					logger.Error(err, "error fetching existing targets")
-				}
-
-				m.targetSource.Status.TargetsCount = int32(len(existing))
-				m.targetSource.Status.LastSync = metav1.Now()
-
-				if err := m.client.Status().Update(ctx, m.targetSource); err != nil {
-					logger.Error(err, "error updating targetSource status")
 				}
 			}
 		}
@@ -109,41 +118,66 @@ func (m *TargetManager) Run(ctx context.Context) error {
 }
 
 // processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
-func (m *TargetManager) processSnapshot(snapshotID string, logger logr.Logger) {
+func (m *TargetManager) processSnapshot(ctx context.Context, snapshotID string, logger logr.Logger) {
 	targets := m.collected[snapshotID]
 	delete(m.collected, snapshotID)
 
-	logger.Info(fmt.Sprintf("Processing full snapshot ID: %s, targets: %d", snapshotID, len(targets)))
+	logger.Info("processing full snapshot",
+		"id", snapshotID,
+		"numOfTargets", len(targets),
+	)
 
-	existing, err := FetchExistingTargets(context.Background(), m.client, *m.targetSource)
+	existing, err := FetchExistingTargets(ctx, m.client, *m.targetSource)
 	if err != nil {
 		logger.Error(err, "error fetching existing targets")
+	} else {
+		logger.Info("fetched existing targets",
+			"numOfTargets", len(existing),
+		)
 	}
-
-	logger.Info("fetched targets")
 
 	diff := BuildDiff(existing, targets)
 
-	logger.Info(fmt.Sprintf("apply targets: %d, delete targets: %d", len(diff.ToApply), len(diff.ToDelete)))
+	logger.Info("built diff",
+		"numOfTargetsToApply", len(diff.ToApply),
+		"numOfTargetsToDelete", len(diff.ToDelete),
+	)
 
 	for _, t := range diff.ToDelete {
-		err := m.deleteTarget(context.Background(), t.Name)
+		err := m.deleteTarget(ctx, t.Name)
 		if err != nil {
-			logger.Error(err, fmt.Sprintf("error deleting target object %s/%s", m.targetSource.ObjectMeta.Namespace, t.Name))
+			logger.Error(err, "error deleting target object",
+				"namespace", m.targetSource.ObjectMeta.Namespace,
+				"name", t.Name,
+			)
+		} else {
+			logger.Info("deleted target object",
+				"namespace", m.targetSource.ObjectMeta.Namespace,
+				"name", t.Name,
+			)
 		}
 	}
 
 	for _, t := range diff.ToApply {
-		err := m.applyTarget(context.Background(), logger, t.Name, t.Address)
+		err := m.applyTarget(ctx, t.Name, t.Address)
 		if err != nil {
-			logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, t.Name))
+			logger.Error(err, "error applying target object",
+				"namespace", m.targetSource.ObjectMeta.Namespace,
+				"name", t.Name,
+			)
+		} else {
+			logger.Info("applied target object",
+				"namespace", m.targetSource.ObjectMeta.Namespace,
+				"name", t.Name,
+			)
 		}
+
 	}
 
 	logger.Info("end of snapshot processing")
 }
 
-func (m *TargetManager) applyTarget(ctx context.Context, logger logr.Logger, name string, address string) error {
+func (m *TargetManager) applyTarget(ctx context.Context, name string, address string) error {
 	target := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -167,8 +201,6 @@ func (m *TargetManager) applyTarget(ctx context.Context, logger logr.Logger, nam
 
 		return controllerutil.SetControllerReference(m.targetSource, target, m.scheme)
 	})
-
-	logger.Info(fmt.Sprintf("applied target object %s/%s", m.targetSource.ObjectMeta.Namespace, name))
 
 	return err
 }
