@@ -86,10 +86,7 @@ spec:
                 format: int32
                 type: integer
             required:
-            - lastSync
             - observedGeneration
-            - status
-            - targetsCount
             type: object
         type: object
     served: true

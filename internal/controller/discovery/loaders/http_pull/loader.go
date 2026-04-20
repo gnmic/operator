@@ -54,7 +54,8 @@ func (l *Loader) Start(
 			return nil
 
 		case <-ticker.C:
-			if i == 1 {
+			switch i {
+			case 1:
 				// Example snapshot (placeholder)
 				snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
 				targets := []core.DiscoveredTarget{
@@ -73,7 +74,7 @@ func (l *Loader) Start(
 				if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
 					return err
 				}
-			} else if i == 2 {
+			case 2:
 				// Example snapshot (placeholder)
 				snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
 				targets := []core.DiscoveredTarget{
@@ -85,6 +86,20 @@ func (l *Loader) Start(
 					{
 						Name:    "leaf2",
 						Address: "clab-3-nodes-leaf2:57400",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+				}
+
+				if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+					return err
+				}
+
+			default:
+				snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
+				targets := []core.DiscoveredTarget{
+					{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos2:6030",
 						Labels:  map[string]string{"TargetSource": targetsourceName},
 					},
 				}

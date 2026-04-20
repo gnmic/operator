@@ -76,11 +76,21 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// Check if pipeline is already running
 	if r.isPipelineRunning(req.NamespacedName) {
-		return ctrl.Result{}, nil
+		if targetSource.Generation != targetSource.Status.ObservedGeneration {
+			r.stopDiscovery(req.NamespacedName)
+		} else {
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Start discovery pipeline
 	if err := r.startDiscoveryPipeline(req.NamespacedName, targetSource); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Update TargetSource ObservedGeneration Status field
+	targetSource.Status.ObservedGeneration = targetSource.Generation
+	if err := r.Status().Update(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
 
