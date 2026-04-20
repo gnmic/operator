@@ -1,0 +1,30 @@
+postgresql:
+  enabled: true
+  auth:
+    username: netbox
+    password: netbox
+    database: netbox
+
+redis:
+  enabled: true
+
+superuser:
+  enabled: true
+  existingSecret: netbox-superuser
+
+service:
+  type: LoadBalancer
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+extraVolumes:
+  - name: peppers
+    configMap:
+      name: netbox-peppers
+
+extraVolumeMounts:
+  - name: peppers
+    mountPath: /run/config/extra/peppers
+    readOnly: true

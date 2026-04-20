@@ -1,0 +1,16 @@
+- model: ixr-d2l
+  slug: arista-ixr-d2l
+  manufacturer:
+    name: Arista
+- model: ixr-d2l
+  slug: nokia-ixr-d2l
+  manufacturer:
+    name: Nokia
+- model: ixr-d2l-leaf
+  slug: nokia-ixr-d2l-leaf
+  manufacturer:
+    name: Nokia
+- model: ixr-d3l
+  slug: nokia-ixr-d3l
+  manufacturer:
+    name: Nokia
