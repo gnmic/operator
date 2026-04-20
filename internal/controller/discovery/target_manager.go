@@ -108,7 +108,11 @@ func (m *TargetManager) processSnapshot(snapshotID string, logger logr.Logger) {
 		logger.Error(err, "error fetching existing targets")
 	}
 
+	logger.Info("fetched targets")
+
 	diff := BuildDiff(existing, targets)
+
+	logger.Info(fmt.Sprintf("apply targets: %d, delete targets: %d", len(diff.ToApply), len(diff.ToDelete)))
 
 	for _, t := range diff.ToDelete {
 		err := m.deleteTarget(context.Background(), t.Name)
@@ -123,6 +127,8 @@ func (m *TargetManager) processSnapshot(snapshotID string, logger logr.Logger) {
 			logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, t.Name))
 		}
 	}
+
+	logger.Info("end of snapshot processing")
 }
 
 func (m *TargetManager) applyTarget(ctx context.Context, logger logr.Logger, name string, address string) error {

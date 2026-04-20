@@ -45,6 +45,8 @@ func (l *Loader) Start(
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	i := 1
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -52,24 +54,47 @@ func (l *Loader) Start(
 			return nil
 
 		case <-ticker.C:
-			// Example snapshot (placeholder)
-			snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
-			targets := []core.DiscoveredTarget{
-				{
-					Name:    "ceos1",
-					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSource": targetsourceName},
-				},
-				{
-					Name:    "leaf1",
-					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSource": targetsourceName},
-				},
+			if i == 1 {
+				// Example snapshot (placeholder)
+				snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
+				targets := []core.DiscoveredTarget{
+					{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos1:6030",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+					{
+						Name:    "leaf1",
+						Address: "clab-3-nodes-leaf1:57400",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+				}
+
+				if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+					return err
+				}
+			} else if i == 2 {
+				// Example snapshot (placeholder)
+				snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
+				targets := []core.DiscoveredTarget{
+					{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos1:6030",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+					{
+						Name:    "leaf2",
+						Address: "clab-3-nodes-leaf2:57400",
+						Labels:  map[string]string{"TargetSource": targetsourceName},
+					},
+				}
+
+				if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+					return err
+				}
 			}
 
-			if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
-				return err
-			}
+			i++
 		}
 	}
 }
