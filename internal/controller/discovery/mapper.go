@@ -5,51 +5,30 @@ package discovery
 
 import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/equality"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
 type Diff struct {
-	ToCreate []gnmicv1alpha1.Target
-	ToUpdate []gnmicv1alpha1.Target
-	ToDelete []gnmicv1alpha1.Target
+	ToApply  []core.DiscoveredTarget
+	ToDelete []core.DiscoveredTarget
 }
 
-func BuildDiff(existing, discovered []gnmicv1alpha1.Target) Diff {
+func BuildDiff(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) Diff {
 	var diff Diff
 
-	existingMap := make(map[string]gnmicv1alpha1.Target)
-	for _, e := range existing {
-		key := e.Namespace + "/" + e.Name
-		existingMap[key] = e
-	}
-
-	discoveredMap := make(map[string]gnmicv1alpha1.Target)
+	discoveredMap := make(map[string]core.DiscoveredTarget)
 	for _, e := range discovered {
-		key := e.Namespace + "/" + e.Name
-		discoveredMap[key] = e
+		discoveredMap[e.Name] = e
 	}
 
-	// Loop for targets to create + update
-	for _, t := range discovered {
-		key := t.Namespace + "/" + t.Name
-
-		// Check if target already exists
-		if e, found := existingMap[key]; found {
-			// Check if the spec of the target changed
-			if !equality.Semantic.DeepEqual(e.Spec, t.Spec) {
-				diff.ToUpdate = append(diff.ToUpdate, t)
-			}
-		} else { // Target is new
-			diff.ToCreate = append(diff.ToCreate, t)
-		}
-	}
-
-	// Loop for targets to delete
+	// Loop for targets to delete, else they get applied
 	for _, e := range existing {
-		key := e.Namespace + "/" + e.Name
-
-		if _, found := discoveredMap[key]; !found {
-			diff.ToDelete = append(diff.ToDelete, e)
+		if t, found := discoveredMap[e.ObjectMeta.Name]; !found {
+			diff.ToDelete = append(diff.ToDelete, core.DiscoveredTarget{
+				Name: e.ObjectMeta.Name,
+			})
+		} else {
+			diff.ToApply = append(diff.ToApply, t)
 		}
 	}
 

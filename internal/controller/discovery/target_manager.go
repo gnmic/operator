@@ -103,10 +103,24 @@ func (m *TargetManager) processSnapshot(snapshotID string, logger logr.Logger) {
 
 	logger.Info(fmt.Sprintf("Processing full snapshot ID: %s, targets: %d", snapshotID, len(targets)))
 
-	for _, target := range targets {
-		err := m.applyTarget(context.Background(), logger, target.Name, target.Address)
+	existing, err := FetchExistingTargets(context.Background(), m.client, *m.targetSource)
+	if err != nil {
+		logger.Error(err, "error fetching existing targets")
+	}
+
+	diff := BuildDiff(existing, targets)
+
+	for _, t := range diff.ToDelete {
+		err := m.deleteTarget(context.Background(), t.Name)
 		if err != nil {
-			logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, target.Name))
+			logger.Error(err, fmt.Sprintf("error deleting target object %s/%s", m.targetSource.ObjectMeta.Namespace, t.Name))
+		}
+	}
+
+	for _, t := range diff.ToApply {
+		err := m.applyTarget(context.Background(), logger, t.Name, t.Address)
+		if err != nil {
+			logger.Error(err, fmt.Sprintf("error applying target object %s/%s", m.targetSource.ObjectMeta.Namespace, t.Name))
 		}
 	}
 }
