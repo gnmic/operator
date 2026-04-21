@@ -108,7 +108,7 @@ func (m *TargetManager) processSnapshot(ctx context.Context, snapshotID string, 
 		)
 	}
 
-	events := BuildDiff(existing, targets)
+	events := GenerateEvents(existing, targets)
 
 	for _, e := range events {
 		m.processEvent(ctx, e, logger)
@@ -130,7 +130,7 @@ func (m *TargetManager) processEvent(ctx context.Context, event core.DiscoveryEv
 			)
 		}
 	case core.APPLY:
-		if err := m.deleteTarget(ctx, event.Target.Name); err != nil {
+		if err := m.applyTarget(ctx, event.Target.Name, event.Target.Address); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)

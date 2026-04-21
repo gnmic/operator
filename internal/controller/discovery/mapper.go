@@ -8,12 +8,7 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
-type Diff struct {
-	ToApply  []core.DiscoveredTarget
-	ToDelete []core.DiscoveredTarget
-}
-
-func BuildDiff(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
+func GenerateEvents(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
 	var events []core.DiscoveryEvent
 
 	existingMap := make(map[string]gnmicv1alpha1.Target)
