@@ -79,38 +79,10 @@ func (m *TargetManager) Run(ctx context.Context) error {
 					// Process individual event-driven update
 					logger.Info("received discovery event",
 						"name", msg.Target.Name,
+						"eventAction", msg.Event.ToString(),
 					)
 
-					switch msg.Event {
-					case core.DELETE:
-						err := m.deleteTarget(ctx, msg.Target.Name)
-						if err != nil {
-							logger.Error(err, "error deleting target object",
-								"namespace", m.targetSource.ObjectMeta.Namespace,
-								"name", msg.Target.Name,
-							)
-						} else {
-							logger.Info("deleted target object",
-								"namespace", m.targetSource.ObjectMeta.Namespace,
-								"name", msg.Target.Name,
-							)
-						}
-
-					case core.APPLY:
-						err := m.applyTarget(ctx, msg.Target.Name, msg.Target.Address)
-						if err != nil {
-							logger.Error(err, "error applying target object",
-								"namespace", m.targetSource.ObjectMeta.Namespace,
-								"name", msg.Target.Name,
-							)
-
-						} else {
-							logger.Info("applied target object",
-								"namespace", m.targetSource.ObjectMeta.Namespace,
-								"name", msg.Target.Name,
-							)
-						}
-					}
+					m.processEvent(ctx, msg, logger)
 				}
 			}
 		}
@@ -136,45 +108,38 @@ func (m *TargetManager) processSnapshot(ctx context.Context, snapshotID string, 
 		)
 	}
 
-	diff := BuildDiff(existing, targets)
+	events := BuildDiff(existing, targets)
 
-	logger.Info("built diff",
-		"numOfTargetsToApply", len(diff.ToApply),
-		"numOfTargetsToDelete", len(diff.ToDelete),
-	)
-
-	for _, t := range diff.ToDelete {
-		err := m.deleteTarget(ctx, t.Name)
-		if err != nil {
-			logger.Error(err, "error deleting target object",
-				"namespace", m.targetSource.ObjectMeta.Namespace,
-				"name", t.Name,
-			)
-		} else {
-			logger.Info("deleted target object",
-				"namespace", m.targetSource.ObjectMeta.Namespace,
-				"name", t.Name,
-			)
-		}
-	}
-
-	for _, t := range diff.ToApply {
-		err := m.applyTarget(ctx, t.Name, t.Address)
-		if err != nil {
-			logger.Error(err, "error applying target object",
-				"namespace", m.targetSource.ObjectMeta.Namespace,
-				"name", t.Name,
-			)
-		} else {
-			logger.Info("applied target object",
-				"namespace", m.targetSource.ObjectMeta.Namespace,
-				"name", t.Name,
-			)
-		}
-
+	for _, e := range events {
+		m.processEvent(ctx, e, logger)
 	}
 
 	logger.Info("end of snapshot processing")
+}
+
+func (m *TargetManager) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) {
+	switch event.Event {
+	case core.DELETE:
+		if err := m.deleteTarget(ctx, event.Target.Name); err != nil {
+			logger.Error(err, "error deleting target",
+				"targetName", event.Target.Name,
+			)
+		} else {
+			logger.Info("deleted target object",
+				"name", event.Target.Name,
+			)
+		}
+	case core.APPLY:
+		if err := m.deleteTarget(ctx, event.Target.Name); err != nil {
+			logger.Error(err, "error applying target",
+				"targetName", event.Target.Name,
+			)
+		} else {
+			logger.Info("applied target object",
+				"name", event.Target.Name,
+			)
+		}
+	}
 }
 
 func (m *TargetManager) applyTarget(ctx context.Context, name string, address string) error {

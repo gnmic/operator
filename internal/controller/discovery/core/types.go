@@ -20,6 +20,17 @@ type DiscoveryEvent struct {
 	Event  EventAction
 }
 
+func (e EventAction) ToString() string {
+	switch e {
+	case DELETE:
+		return "DELETE"
+	case APPLY:
+		return "APPLY"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 type DiscoverySnapshot struct {
 	Targets     []DiscoveredTarget
 	SnapshotID  string

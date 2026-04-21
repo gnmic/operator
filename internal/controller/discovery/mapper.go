@@ -13,8 +13,8 @@ type Diff struct {
 	ToDelete []core.DiscoveredTarget
 }
 
-func BuildDiff(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) Diff {
-	var diff Diff
+func BuildDiff(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
+	var events []core.DiscoveryEvent
 
 	existingMap := make(map[string]gnmicv1alpha1.Target)
 	for _, e := range existing {
@@ -27,20 +27,22 @@ func BuildDiff(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarg
 	}
 
 	for name, e := range existingMap {
-		if d, found := discoveredMap[name]; !found {
-			diff.ToDelete = append(diff.ToDelete, core.DiscoveredTarget{
-				Name: e.ObjectMeta.Name,
+		if _, found := discoveredMap[name]; !found {
+			events = append(events, core.DiscoveryEvent{
+				Target: core.DiscoveredTarget{
+					Name: e.Name,
+				},
+				Event: core.DELETE,
 			})
-		} else {
-			diff.ToApply = append(diff.ToApply, d)
 		}
 	}
 
-	for name, d := range discoveredMap {
-		if _, found := existingMap[name]; !found {
-			diff.ToApply = append(diff.ToApply, d)
-		}
+	for _, d := range discoveredMap {
+		events = append(events, core.DiscoveryEvent{
+			Target: d,
+			Event:  core.APPLY,
+		})
 	}
 
-	return diff
+	return events
 }
