@@ -13,7 +13,7 @@ import (
 // REST API defined internal/apiserver
 
 // Loader implements the HTTP pull discovery mechanism
-type Loader struct{
+type Loader struct {
 	cfg core.LoaderConfig
 }
 
