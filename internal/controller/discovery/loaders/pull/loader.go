@@ -1,4 +1,4 @@
-package http_pull
+package pull
 
 import (
 	"context"
@@ -16,13 +16,13 @@ type Loader struct {
 	cfg core.LoaderConfig
 }
 
-// New instantiates the http_pull loader with the provided config
+// New instantiates the pull loader with the provided config
 func New(cfg core.LoaderConfig) core.Loader {
 	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {
-	return "http_pull"
+	return "pull"
 }
 
 func (l *Loader) Start(
