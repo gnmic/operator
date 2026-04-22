@@ -70,6 +70,11 @@ func (m *TargetManager) Run(ctx context.Context) error {
 						"snapshotID", msg.SnapshotID,
 						"targetCount", len(msg.Targets),
 					)
+
+					for i := range msg.Targets {
+						msg.Targets[i] = m.normalizeTarget(msg.Targets[i])
+					}
+
 					m.collected[msg.SnapshotID] = append(m.collected[msg.SnapshotID], msg.Targets...)
 					if msg.IsLastChunk {
 						m.processSnapshot(ctx, msg.SnapshotID, logger)
@@ -82,6 +87,7 @@ func (m *TargetManager) Run(ctx context.Context) error {
 						"eventAction", msg.Event.ToString(),
 					)
 
+					msg.Target = m.normalizeTarget(msg.Target)
 					m.processEvent(ctx, msg, logger)
 				}
 			}
@@ -109,6 +115,23 @@ func (m *TargetManager) processSnapshot(ctx context.Context, snapshotID string, 
 	}
 
 	events := GenerateEvents(existing, targets)
+
+	nApply := 0
+	nDelete := 0
+
+	for _, e := range events {
+		switch e.Event {
+		case core.APPLY:
+			nApply++
+		case core.DELETE:
+			nDelete++
+		}
+	}
+
+	logger.Info("generated events",
+		"numOfApply", nApply,
+		"numOfDelete", nDelete,
+	)
 
 	for _, e := range events {
 		m.processEvent(ctx, e, logger)
@@ -188,4 +211,9 @@ func (m *TargetManager) deleteTarget(ctx context.Context, name string) error {
 	}
 
 	return err
+}
+
+func (m *TargetManager) normalizeTarget(t core.DiscoveredTarget) core.DiscoveredTarget {
+	t.Name = m.targetSource.Name + "-" + t.Name
+	return t
 }
