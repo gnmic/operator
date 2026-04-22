@@ -1,4 +1,4 @@
-package http_push
+package push
 
 import (
 	"context"
