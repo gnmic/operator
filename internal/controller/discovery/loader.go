@@ -9,12 +9,12 @@ import (
 )
 
 // NewLoader creates a loader by name
-func NewLoader(name string, namespace string, spec gnmicv1alpha1.TargetSourceSpec) (core.Loader, error) {
+func NewLoader(name string, namespace string, spec gnmicv1alpha1.TargetSourceSpec, cfg core.LoaderConfig) (core.Loader, error) {
 	loaderName := namespace + "/" + name
 
 	switch {
 	case spec.Provider.HTTP != nil:
-		return http_pull.New(), nil
+		return http_pull.New(cfg), nil
 	case spec.Provider.Consul != nil:
 		return nil, fmt.Errorf("unknown targetsource loader, check TargetSource CRD for %s", loaderName)
 	default:

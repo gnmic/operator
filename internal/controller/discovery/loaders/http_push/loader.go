@@ -9,15 +9,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+import (
+	"context"
+	"errors"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
 // this file implements the logic receive target updates via HTTP push
 // REST API defined internal/apiserver
 
 // Loader implements the HTTP pull discovery mechanism
-type Loader struct{}
+type Loader struct{
+	cfg core.LoaderConfig
+}
 
-// New returns a new http_pull loader instance
-func New() core.Loader {
-	return &Loader{}
+// New returns a new http_push loader instance configured with cfg
+func New(cfg core.LoaderConfig) core.Loader {
+	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {
@@ -45,7 +56,7 @@ func (l *Loader) Start(
 	// Receive target updates via HTTP push
 	var targetEvents []core.DiscoveryEvent
 
-	if err := core.SendEvents(ctx, out, targetEvents); err != nil {
+	if err := core.SendEvents(ctx, out, targetEvents, l.cfg.ChunkSize); err != nil {
 		logger.Error(err, "failed to send events")
 		return nil
 	}

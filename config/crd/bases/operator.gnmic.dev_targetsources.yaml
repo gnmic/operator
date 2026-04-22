@@ -39,19 +39,12 @@ spec:
           spec:
             description: TargetSourceSpec defines the desired state of TargetSource
             properties:
-              labels:
-                additionalProperties:
-                  type: string
-                type: object
-              profile:
-                minLength: 1
-                type: string
               provider:
-                maxProperties: 1
                 properties:
                   consul:
                     properties:
                       url:
+                        minLength: 1
                         type: string
                     type: object
                   http:
@@ -59,14 +52,26 @@ spec:
                       token:
                         type: string
                       url:
+                        minLength: 1
                         type: string
+                    required:
+                    - url
                     type: object
                 type: object
-              type:
+                x-kubernetes-validations:
+                - message: exactly one of the fields in [http consul] must be set
+                  rule: '[has(self.http),has(self.consul)].filter(x,x==true).size()
+                    == 1'
+              targetLabels:
+                additionalProperties:
+                  type: string
+                type: object
+              targetProfile:
+                minLength: 1
                 type: string
             required:
-            - profile
             - provider
+            - targetProfile
             type: object
           status:
             description: TargetSourceStatus defines the observed state of TargetSource

@@ -55,9 +55,9 @@ func (m *TargetManager) Run(ctx context.Context) error {
 					logger.Info(
 						"received snapshot chunk",
 						"snapshotID", msg.SnapshotID,
-						"targetCount", len(msg.Target),
+						"targetCount", len(msg.Targets),
 					)
-					m.collected[msg.SnapshotID] = append(m.collected[msg.SnapshotID], msg.Target...)
+					m.collected[msg.SnapshotID] = append(m.collected[msg.SnapshotID], msg.Targets...)
 					if msg.IsLastChunk {
 						m.processSnapshot(msg.SnapshotID, logger)
 					}

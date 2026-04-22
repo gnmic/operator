@@ -1,5 +1,9 @@
 package core
 
+type LoaderConfig struct {
+	ChunkSize int
+}
+
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
@@ -22,7 +26,7 @@ type DiscoveryEvent struct {
 }
 
 type DiscoverySnapshot struct {
-	Target      []DiscoveredTarget
+	Targets     []DiscoveredTarget
 	Event       EventAction
 	SnapshotID  string
 	IsLastChunk bool

@@ -21,11 +21,13 @@ const (
 )
 
 // Loader implements the HTTP pull discovery mechanism
-type Loader struct{}
+type Loader struct {
+	cfg core.LoaderConfig
+}
 
-// New returns a new http_pull loader instance
-func New() core.Loader {
-	return &Loader{}
+// New instantiates the http_pull loader with the provided config
+func New(cfg core.LoaderConfig) core.Loader {
+	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {
