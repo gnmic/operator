@@ -5,12 +5,13 @@ package apiserver
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/gnmic/operator/internal/controller/discovery/loaders/http_push"
 )
 
 type APIServer struct {
@@ -61,24 +62,16 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// For testing, to see the payload that is being sent
-	for _, target := range payload {
-		if target.Name != nil {
-			fmt.Printf("name: %s, ", *target.Name)
-		}
-		if target.Address != nil {
-			fmt.Printf("address: %s, ", *target.Address)
-		}
-		if target.Profile != nil {
-			fmt.Printf("profile: %s, ", *target.Profile)
-		}
-		if target.Tags != nil {
-			fmt.Printf("tags: %s", *target.Tags)
-		}
-		fmt.Printf("\n")
+	targets := []core.DiscoveryMessage{
+		{
+			Target: core.DiscoveredTarget{
+				Name:    *payload[0].Name,
+				Address: *payload[0].Address + ":6030",
+				Labels:  map[string]string{"TargetSource": "targetsourceName"},
+			},
+			Event: core.CREATE,
+		},
 	}
-
-	// TODO: send target received from interface to autodiscover logic via channel.
-
+	http_push.SendTargetToLoader(targets)
 	c.JSON(http.StatusOK, payload)
 }
