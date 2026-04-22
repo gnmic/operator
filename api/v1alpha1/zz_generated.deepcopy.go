@@ -21,7 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -1292,8 +1292,8 @@ func (in *TargetSourceSpec) DeepCopyInto(out *TargetSourceSpec) {
 		*out = new(ProviderSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.Labels != nil {
-		in, out := &in.Labels, &out.Labels
+	if in.TargetLabels != nil {
+		in, out := &in.TargetLabels, &out.TargetLabels
 		*out = make(map[string]string, len(*in))
 		for key, val := range *in {
 			(*out)[key] = val

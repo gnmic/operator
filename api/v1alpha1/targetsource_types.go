@@ -25,24 +25,25 @@ import (
 type TargetSourceSpec struct {
 	Provider *ProviderSpec `json:"provider"`
 	//
-	Type   string            `json:"type,omitempty"`
-	Labels map[string]string `json:"labels,omitempty"`
+	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
 	// +kubebuilder:validation:MinLength=1
-	Profile string `json:"profile"`
+	TargetProfile string `json:"targetProfile"`
 }
 
-// +kubebuilder:validation:MaxProperties=1
+// +kubebuilder:validation:ExactlyOneOf=http;consul
 type ProviderSpec struct {
 	HTTP   *HTTPConfig   `json:"http,omitempty"`
 	Consul *ConsulConfig `json:"consul,omitempty"`
 }
 
 type HTTPConfig struct {
-	URL string `json:"url,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url"`
 }
 
 type ConsulConfig struct {
+	// +kubebuilder:validation:MinLength=1
 	URL string `json:"url,omitempty"`
 }
 
