@@ -1,4 +1,4 @@
-package http_pull
+package pull
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 
 type Loader struct{}
 
-// New instantiates the http_pull loader
+// New instantiates the pull loader
 func New() core.Loader {
 	return &Loader{}
 }
 
 func (l *Loader) Name() string {
-	return "http_pull"
+	return "pull"
 }
 
 func (l *Loader) Start(

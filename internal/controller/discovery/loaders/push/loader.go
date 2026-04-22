@@ -1,4 +1,4 @@
-package http_push
+package push
 
 // this file implements the logic receive target updates via HTTP push
 // REST API defined internal/apiserver
