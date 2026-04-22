@@ -11,18 +11,13 @@ import (
 func GenerateEvents(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
 	var events []core.DiscoveryEvent
 
-	existingMap := make(map[string]gnmicv1alpha1.Target)
-	for _, e := range existing {
-		existingMap[e.ObjectMeta.Name] = e
-	}
-
 	discoveredMap := make(map[string]core.DiscoveredTarget)
 	for _, d := range discovered {
 		discoveredMap[d.Name] = d
 	}
 
-	for name, e := range existingMap {
-		if _, found := discoveredMap[name]; !found {
+	for _, e := range existing {
+		if _, found := discoveredMap[e.Name]; !found {
 			events = append(events, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name: e.Name,
@@ -32,7 +27,7 @@ func GenerateEvents(existing []gnmicv1alpha1.Target, discovered []core.Discovere
 		}
 	}
 
-	for _, d := range discoveredMap {
+	for _, d := range discovered {
 		events = append(events, core.DiscoveryEvent{
 			Target: d,
 			Event:  core.APPLY,
