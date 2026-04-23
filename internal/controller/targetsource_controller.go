@@ -30,6 +30,7 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
+	"github.com/gnmic/operator/internal/controller/discovery/registry"
 )
 
 const targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
@@ -48,6 +49,8 @@ type TargetSourceReconciler struct {
 
 	BufferSize int
 	ChunkSize  int
+
+	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -164,6 +167,12 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, ta
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
 
+	registryKey := key.Namespace + "/" + key.Name
+	if err := r.DiscoveryRegistry.Register(registryKey, targetChannel); err != nil {
+		cancel()
+		return err
+	}
+
 	// Start loader
 	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)
 
@@ -187,11 +196,16 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, ta
 // for the given TargetSource key
 func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if running, ok := r.running[key]; ok {
+	running, ok := r.running[key]
+	if ok {
 		running.cancel()
 		delete(r.running, key)
+	}
+	r.mu.Unlock()
+
+	if ok {
+		registryKey := key.Namespace + "/" + key.Name
+		r.DiscoveryRegistry.Unregister(registryKey)
 	}
 }
 

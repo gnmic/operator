@@ -4,21 +4,20 @@ package apiserver
 // or use go generate ./internal/apiserver in the console (install from https://github.com/oapi-codegen/oapi-codegen)
 
 import (
-	"errors"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/gnmic/operator/internal/controller/discovery/registry"
 )
 
 type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
-	namespace         string
-	clusterName       string
+
+	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage]
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServer, error) {
@@ -30,14 +29,9 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServ
 		},
 		router:            router,
 		clusterReconciler: clusterReconciler,
-		namespace:         os.Getenv("POD_NAMESPACE"),
-		clusterName:       os.Getenv("CLUSTER_NAME"),
 	}
 
-	if a.namespace == "" || a.clusterName == "" {
-		return nil, errors.New("POD_NAMESPACE and CLUSTER_NAME must be set")
-	}
-	apiBaseURL := "/api/v1/" + a.namespace + "/" + a.clusterName
+	apiBaseURL := "/api/v1/namespaceCluster/namegNMIcCluster"
 	RegisterHandlersWithOptions(router, a, GinServerOptions{BaseURL: apiBaseURL})
 	return a, nil
 }
@@ -46,7 +40,7 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServ
 
 // GetClusterPlan returns cluster plan
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
-	plan, err := a.clusterReconciler.GetClusterPlan(a.namespace, a.clusterName)
+	plan, err := a.clusterReconciler.GetClusterPlan("temp", "temp")
 	if err != nil {
 		c.String(404, err.Error())
 		return
@@ -69,7 +63,7 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 			Labels:  map[string]string{"key": "Is this a tag?"},
 		})
 	}
-	
+
 	// discovery / core / helpers / sendEvents to send received udpates to TagetManager
 	// loader push not needed
 	c.JSON(http.StatusOK, payload)
