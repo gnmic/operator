@@ -62,15 +62,16 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	targets := []core.DiscoveryMessage{
-		{
+	targets := make([]core.DiscoveryMessage, 0, len(payload))
+	for _, target := range payload {
+		targets = append(targets, core.DiscoveryMessage{
 			Target: core.DiscoveredTarget{
-				Name:    *payload[0].Name,
-				Address: *payload[0].Address + ":6030",
-				Labels:  map[string]string{"TargetSource": "targetsourceName"},
+				Name:    *target.Name,
+				Address: *target.Address,
+				Labels:  map[string]string{"TargetSource": "*target.Tags to be"},
 			},
 			Event: core.CREATE,
-		},
+		})
 	}
 	http_push.SendTargetToLoader(targets)
 	c.JSON(http.StatusOK, payload)
