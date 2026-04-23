@@ -1,4 +1,4 @@
-package pull
+package http
 
 import (
 	"context"
@@ -16,13 +16,13 @@ type Loader struct {
 	cfg core.LoaderConfig
 }
 
-// New instantiates the pull loader with the provided config
+// New instantiates the http loader with the provided config
 func New(cfg core.LoaderConfig) core.Loader {
 	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {
-	return "pull"
+	return "http"
 }
 
 func (l *Loader) Start(
@@ -37,7 +37,7 @@ func (l *Loader) Start(
 		"targetsource", targetsourceName,
 	)
 
-	logger.Info("HTTP pull loader started")
+	logger.Info("HTTP loader started")
 
 	// Only for debugging: emit a static snapshot every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)
@@ -46,7 +46,7 @@ func (l *Loader) Start(
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("HTTP pull loader stopped")
+			logger.Info("HTTP loader stopped")
 			return nil
 
 		case <-ticker.C:
