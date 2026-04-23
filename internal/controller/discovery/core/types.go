@@ -27,7 +27,6 @@ type DiscoveryEvent struct {
 
 type DiscoverySnapshot struct {
 	Targets     []DiscoveredTarget
-	Event       EventAction
 	SnapshotID  string
 	IsLastChunk bool
 }
