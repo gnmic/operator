@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/registry"
@@ -53,19 +54,23 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 // CreateTargets binds payload to Target struct defined in openapi.yaml and sends it to pull loader
 func (a *APIServer) CreateTargets(c *gin.Context) {
 	// logger.Info("Create Targets called")
+
 	var payloadTarget []Target
 	var payloadTargetSource TargetSource
 	fmt.Println("Binding Target to PayloadTarget")
-	if err := c.ShouldBindJSON(&payloadTarget); err != nil {
+	// https://gin-gonic.com/en/docs/binding/bind-body-into-different-structs/
+	if err := c.ShouldBindBodyWithJSON(&payloadTarget); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		fmt.Printf("err: %s", err.Error)
 		return
 	}
 	fmt.Printf("payloadTarget: %s", payloadTarget)
-	if err := c.ShouldBindJSON(&payloadTargetSource); err != nil {
+	if err := c.ShouldBindBodyWithJSON(&payloadTargetSource); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// error {"error":"json: cannot unmarshal object into Go   value of type []apiserver.Target"}
 
 	targets := []core.DiscoveryEvent{}
 	for _, target := range payloadTarget {
