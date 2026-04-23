@@ -16,10 +16,6 @@ func sendMessages(ctx context.Context, out chan<- []DiscoveryMessage, messages [
 
 // forEachChunk iterates over ranges [start,end) for a total count using the provided chunkSize
 func forEachChunk(total, chunkSize int, fn func(start, end int) error) error {
-	if chunkSize <= 0 {
-		chunkSize = 1
-	}
-
 	for i := 0; i < total; i += chunkSize {
 		end := i + chunkSize
 		if end > total {
@@ -34,10 +30,6 @@ func forEachChunk(total, chunkSize int, fn func(start, end int) error) error {
 
 // createDiscoverySnapshots takes a list of discovered targets and returns chunked DiscoverySnapshots
 func createDiscoverySnapshots(targets []DiscoveredTarget, snapshotID string, chunkSize int) []DiscoverySnapshot {
-	if chunkSize <= 0 {
-		chunkSize = 1
-	}
-
 	var snapshots []DiscoverySnapshot
 	totalTargets := len(targets)
 
@@ -81,9 +73,6 @@ func eventsToMessages(events []DiscoveryEvent) []DiscoveryMessage {
 
 // SendEvents sends discovery messages over channel in a context-aware manner
 func SendEvents(ctx context.Context, out chan<- []DiscoveryMessage, events []DiscoveryEvent, chunkSize int) error {
-	if chunkSize <= 0 {
-		chunkSize = 1
-	}
 	messages := eventsToMessages(events)
 	total := len(messages)
 

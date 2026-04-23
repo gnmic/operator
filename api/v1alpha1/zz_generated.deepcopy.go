@@ -1292,8 +1292,8 @@ func (in *TargetSourceSpec) DeepCopyInto(out *TargetSourceSpec) {
 		*out = new(ProviderSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.Labels != nil {
-		in, out := &in.Labels, &out.Labels
+	if in.TargetLabels != nil {
+		in, out := &in.TargetLabels, &out.TargetLabels
 		*out = make(map[string]string, len(*in))
 		for key, val := range *in {
 			(*out)[key] = val

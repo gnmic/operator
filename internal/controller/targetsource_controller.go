@@ -45,6 +45,9 @@ type TargetSourceReconciler struct {
 
 	mu      sync.Mutex
 	running map[client.ObjectKey]runningSource
+
+	BufferSize int
+	ChunkSize  int
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -144,17 +147,22 @@ func (r *TargetSourceReconciler) isPipelineRunning(key client.ObjectKey) bool {
 
 // startDiscoveryPipeline creates and starts the loader and target manager
 func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, targetSource *gnmicv1alpha1.TargetSource) error {
+	cfg := core.LoaderConfig{
+		ChunkSize: r.ChunkSize,
+	}
+
 	loader, err := discovery.NewLoader(
 		targetSource.ObjectMeta.Name,
 		targetSource.ObjectMeta.Namespace,
 		targetSource.Spec,
+		cfg,
 	)
 	if err != nil {
 		return err
 	}
 
 	runtimeCtx, cancel := context.WithCancel(context.Background())
-	targetChannel := make(chan []core.DiscoveryMessage, 10)
+	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
 
 	// Start loader
 	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)

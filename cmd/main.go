@@ -66,13 +66,17 @@ func main() {
 	var probeAddr string
 	var devMode bool
 	var apiAddr string
-	flag.StringVar(&apiAddr, "api-bind-address", ":8082", "The address the operator API endpoint binds to.")
+	var discoveryChunkSize int
+	var discoveryBufferSize int
+	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.IntVar(&discoveryChunkSize, "discovery-chunk-size", 100, "Maximum number of targets/events sent in a single discovery message.")
+	flag.IntVar(&discoveryBufferSize, "discovery-buffer-size", 10, "Amount of discovery messages that can be queued in the channel buffer.")
 	opts := zap.Options{
 		Development: devMode,
 	}
@@ -119,8 +123,10 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.TargetSourceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		BufferSize: discoveryBufferSize,
+		ChunkSize:  discoveryChunkSize,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetSource")
 		os.Exit(1)

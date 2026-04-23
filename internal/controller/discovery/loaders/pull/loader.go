@@ -1,4 +1,4 @@
-package http_pull
+package pull
 
 import (
 	"context"
@@ -12,19 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	chunkSize = 100
-)
+type Loader struct {
+	cfg core.LoaderConfig
+}
 
-type Loader struct{}
-
-// New instantiates the http_pull loader
-func New() core.Loader {
-	return &Loader{}
+// New instantiates the pull loader with the provided config
+func New(cfg core.LoaderConfig) core.Loader {
+	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {
-	return "http_pull"
+	return "pull"
 }
 
 func (l *Loader) Start(
@@ -67,7 +65,7 @@ func (l *Loader) Start(
 				},
 			}
 
-			if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+			if err := core.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
 				return err
 			}
 		}

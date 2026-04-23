@@ -1,4 +1,4 @@
-package http_push
+package push
 
 import (
 	"context"
@@ -17,11 +17,13 @@ import (
 // REST API defined internal/apiserver
 
 // Loader implements the HTTP pull discovery mechanism
-type Loader struct{}
+type Loader struct {
+	cfg core.LoaderConfig
+}
 
-// New returns a new http_pull loader instance
-func New() core.Loader {
-	return &Loader{}
+// New returns a new http_push loader instance configured with cfg
+func New(cfg core.LoaderConfig) core.Loader {
+	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {

@@ -1,7 +1,7 @@
 package all
 
 import (
-	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/http_pull"
-	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/http_push"
+	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/pull"
+	// _ "github.com/gnmic/operator/internal/controller/targetsource/loaders/push"
 )
 
