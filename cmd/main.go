@@ -233,10 +233,11 @@ func main() {
 
 	if apiAddr != "" {
 		api, err := apiserver.New(apiAddr, clusterReconciler)
-				if err != nil {
+		if err != nil {
 			setupLog.Error(err, "unable to intialize gin API server")
 			os.Exit(1)
 		}
+		api.ChunkSize = discoveryChunkSize
 		api.DiscoveryRegistry = discoveryRegistry
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error)

@@ -20,12 +20,24 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Target'
-
+                type: object
+                required: [TargetSource, Target]
+                properties:
+                  TargetSource:
+                    $ref: '#/components/schemas/TargetSource'
+                  Target:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Target'
 components:
   schemas:
+    TargetSource:
+      type: object
+      properties:
+        namespace:
+          type: string
+        name:
+          type: string
     Target:
       type: object
       properties:
@@ -39,7 +51,8 @@ components:
           type: array
           items:
             type: string
-        # username:
-          # type: string
-        # password: # not sure if the password is needed
-          # type: string
+        operation:
+          type: string
+          enum:
+            - create
+            - delete

@@ -4,6 +4,8 @@ package apiserver
 // or use go generate ./internal/apiserver in the console (install from https://github.com/oapi-codegen/oapi-codegen)
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,8 +18,8 @@ type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
-
-	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage]
+	ChunkSize         int
+	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage] // change to lowercase?
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServer, error) {
@@ -50,21 +52,47 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 
 // CreateTargets binds payload to Target struct defined in openapi.yaml and sends it to pull loader
 func (a *APIServer) CreateTargets(c *gin.Context) {
-	var payload []Target
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	// logger.Info("Create Targets called")
+	var payloadTarget []Target
+	var payloadTargetSource TargetSource
+	fmt.Println("Binding Target to PayloadTarget")
+	if err := c.ShouldBindJSON(&payloadTarget); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		fmt.Printf("err: %s", err.Error)
+		return
+	}
+	fmt.Printf("payloadTarget: %s", payloadTarget)
+	if err := c.ShouldBindJSON(&payloadTargetSource); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	targets := []core.DiscoveredTarget{}
-	for _, target := range payload {
-		targets = append(targets, core.DiscoveredTarget{
-			Name:    *target.Name,
-			Address: *target.Address,
-			Labels:  map[string]string{"key": "Is this a tag?"},
+
+	targets := []core.DiscoveryEvent{}
+	for _, target := range payloadTarget {
+		event := core.CREATE
+		switch *target.Operation {
+		case Create:
+			event = core.CREATE
+		case Delete:
+			event = core.DELETE
+		}
+		targets = append(targets, core.DiscoveryEvent{
+			Target: core.DiscoveredTarget{
+				Name:    *target.Name,
+				Address: *target.Address,
+				Labels:  map[string]string{"key": "Is this a tag?"},
+			},
+			Event: event,
 		})
 	}
 
-	// discovery / core / helpers / sendEvents to send received udpates to TagetManager
-	// loader push not needed
-	c.JSON(http.StatusOK, payload)
+	ch, ok := a.DiscoveryRegistry.Get(*payloadTargetSource.Namespace + "/" + *payloadTargetSource.Name)
+	if !ok {
+		// Error message to be udpated!!
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Target Source doesn't exist"})
+		return
+	}
+
+	core.SendEvents(context.Background(), ch, targets, a.ChunkSize)
+	c.JSON(http.StatusOK, payloadTarget)
 }

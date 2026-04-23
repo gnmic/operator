@@ -16,12 +16,40 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Defines values for TargetOperation.
+const (
+	Create TargetOperation = "create"
+	Delete TargetOperation = "delete"
+)
+
+// Valid indicates whether the value is a known member of the TargetOperation enum.
+func (e TargetOperation) Valid() bool {
+	switch e {
+	case Create:
+		return true
+	case Delete:
+		return true
+	default:
+		return false
+	}
+}
+
 // Target defines model for Target.
 type Target struct {
-	Address *string   `json:"address,omitempty"`
-	Name    *string   `json:"name,omitempty"`
-	Profile *string   `json:"profile,omitempty"`
-	Tags    *[]string `json:"tags,omitempty"`
+	Address   *string          `json:"address,omitempty"`
+	Name      *string          `json:"name,omitempty"`
+	Operation *TargetOperation `json:"operation,omitempty"`
+	Profile   *string          `json:"profile,omitempty"`
+	Tags      *[]string        `json:"tags,omitempty"`
+}
+
+// TargetOperation defines model for Target.Operation.
+type TargetOperation string
+
+// TargetSource defines model for TargetSource.
+type TargetSource struct {
+	Name      *string `json:"name,omitempty"`
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 // ServerInterface represents all server handlers.
@@ -103,12 +131,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/2ySwW7bMAyGX0XgdjRsJ7v5NgRDkMO2YMsLqDLtKLAlgaQLBIHevZDsNnWTkwmKP/nz",
-	"o29g/Bi8QycMzQ3YnHHUOTxp6lFSFMgHJLGY87ptCTmHcg0IDbCQdT3EApwe8elDIN/Z4fmb6D53s4Lj",
-	"87ZLQhPpK8R7wr9c0AjElLKu81lsJc2B/s/vg1F/A5IWT+rfr/8n9fN4gAJekdh6Bw3UZV1u0gAf0Olg",
-	"oYEf5basoYCg5ZzNVIZQC840ciZ4zlh87m29O7TQwG5VVgAhB+94ZratN+ljvBN0WaxDGKzJ8urCyc07",
-	"/BWK74QdNPCtup+pWm5ULQd65BMLaJEN2SDznosrNa/SKp6MQeZuGoaZJ0/jqOn6sYaSRWGdkjOqNcws",
-	"qcKgs+vlJ1nT2KPshokF6ZjKHnDU6bM2+aleEcpEDtsv5vYoysxlKo+PMca3AAAA//9/7qb/wwIAAA==",
+	"H4sIAAAAAAAC/4RSTW/bMAz9KwK3oxG73c23oRiKHLYVa2/DDprMJCpsSSOpAUHg/z7oY0k8Z+hJBPlI",
+	"ke+9Exg/Be/QCUN/AjYHnHQOXzTtUVIUyAcksZjzehgIOYdyDAg9sJB1e5gbcHrCm4U0QIv1LlXRxQn6",
+	"72AItSA0MOCIgvCjWTcG8js73h4qep/XsILT7X1qQhPpI8yXhP/5ikYSolz57CMZXN/633tSgYM2t6rr",
+	"b1LKup3PYCvpHNh/+bw16mvmxZP69un5RX182kIDv5E4MwXdptvcVfqcDhZ6+LC533TQQNByyCu2hcVy",
+	"R84Ez1m2M+fbAXp4WMAaIOTgHZc777u79BjvBF1u1iGM1uT29pWLbsUca5YuTjkr8Z5wBz28ay/2aqu3",
+	"2gpfybMW4+0pFZsIJvwVLeGQnLUo/p175a9rYQZkQzYUc1Yoq8LqoDgag8y7OI7FQRynSdPxzKiS2mGd",
+	"kgOqpa65pQ2jzgRWlpbCPKI8jJEF6SnBVsp06VkueYVXhBLJ4fDPco8oyhSYyt/P8zz/CQAA//+Shfmd",
+	"7gMAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
