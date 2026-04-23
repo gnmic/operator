@@ -68,7 +68,7 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 			Target: core.DiscoveredTarget{
 				Name:    *target.Name,
 				Address: *target.Address,
-				Labels:  map[string]string{"TargetSource": "*target.Tags to be"},
+				Labels:  map[string]string{"TargetSource": "*target.Tags to be done"},
 			},
 			Event: core.CREATE,
 		})

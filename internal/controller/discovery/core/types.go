@@ -9,14 +9,21 @@ type DiscoveredTarget struct {
 }
 
 const (
-	DELETE DiscoveryEvent = 0
-	CREATE DiscoveryEvent = 1
-	UPDATE DiscoveryEvent = 2
+	DELETE EventAction = 0
+	CREATE EventAction = 1
+	UPDATE EventAction = 2
 )
 
-type DiscoveryEvent int
+type EventAction int
 
-type DiscoveryMessage struct {
+type DiscoveryEvent struct {
 	Target DiscoveredTarget
-	Event  DiscoveryEvent
+	Event  EventAction
+}
+
+type DiscoverySnapshot struct {
+	Targets     []DiscoveredTarget
+	Event       EventAction
+	SnapshotID  string
+	IsLastChunk bool
 }
