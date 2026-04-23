@@ -5,11 +5,15 @@ import (
 	"net/http"
 
 	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/gnmic/operator/internal/controller/discovery/registry"
 )
 
 type APIServer struct {
 	Server            *http.Server
 	clusterReconciler *controller.ClusterReconciler
+
+	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage]
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler) *APIServer {
