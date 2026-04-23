@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/gnmic/operator/internal/controller/discovery/loaders/http_push"
 )
 
 type APIServer struct {
@@ -55,24 +54,23 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	c.JSON(200, plan)
 }
 
-// CreateTargets binds payload to Target struct defined in openapi.yaml and TBD...
+// CreateTargets binds payload to Target struct defined in openapi.yaml and sends it to pull loader
 func (a *APIServer) CreateTargets(c *gin.Context) {
 	var payload []Target
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	targets := make([]core.DiscoveryMessage, 0, len(payload))
+	targets := []core.DiscoveredTarget{}
 	for _, target := range payload {
-		targets = append(targets, core.DiscoveryMessage{
-			Target: core.DiscoveredTarget{
-				Name:    *target.Name,
-				Address: *target.Address,
-				Labels:  map[string]string{"TargetSource": "*target.Tags to be done"},
-			},
-			Event: core.CREATE,
+		targets = append(targets, core.DiscoveredTarget{
+			Name:    *target.Name,
+			Address: *target.Address,
+			Labels:  map[string]string{"key": "Is this a tag?"},
 		})
 	}
-	http_push.SendTargetToLoader(targets)
+	
+	// discovery / core / helpers / sendEvents to send received udpates to TagetManager
+	// loader push not needed
 	c.JSON(http.StatusOK, payload)
 }
