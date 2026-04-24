@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -172,17 +173,45 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		return err
 	}
 
+	// goroutines use done channel to report termination (nil or error) back to supervisor
+	// Buffer size = supervised goroutines = 2 (loader + applier)
+	done := make(chan error, 2)
+
 	// Start loader
-	go loader.Start(runtimeCtx, key, targetSource.Spec, targetChannel)
+	go runWithRecovery(
+		runtimeCtx,
+		"loader",
+		func(ctx context.Context) error {
+			return loader.Start(ctx, key, targetSource.Spec, targetChannel)
+		},
+		done,
+	)
 
 	// Start target applier
-	manager := discovery.NewTargetApplier(
+	applier := discovery.NewTargetApplier(
 		r.Client,
 		r.Scheme,
 		targetSource,
 		targetChannel,
 	)
-	go manager.Run(runtimeCtx)
+	go runWithRecovery(
+		runtimeCtx,
+		"target-applier",
+		applier.Run,
+		done,
+	)
+
+	// Supervision goroutine to handle pipeline termination
+	go func() {
+		err := <-done
+		logger := log.FromContext(context.Background()).WithValues("targetSource", key)
+		if err != nil {
+			logger.Error(err, "Discovery pipeline terminated with error")
+		}
+
+		// Ensure cleanup on termination
+		r.stopDiscovery(key)
+	}()
 
 	r.mu.Lock()
 	r.running[key] = runningSource{cancel: cancel}
@@ -205,6 +234,25 @@ func (r *TargetSourceReconciler) stopDiscovery(key types.NamespacedName) {
 	if ok {
 		r.DiscoveryRegistry.Unregister(key)
 	}
+}
+
+// runWithRecovery executes a worker function under panic protection
+// and reports termination (nil or error) through done.
+func runWithRecovery(
+	ctx context.Context,
+	name string,
+	run func(context.Context) error,
+	done chan<- error,
+) {
+	defer func() {
+		if r := recover(); r != nil {
+			done <- fmt.Errorf("panic in %s: %v", name, r)
+		}
+	}()
+
+	// Normal exit path
+	err := run(ctx)
+	done <- err
 }
 
 // SetupWithManager sets up the controller with the Manager.
