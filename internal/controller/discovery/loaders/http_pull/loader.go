@@ -62,7 +62,7 @@ func (l *Loader) Start(
 					{
 						Name:    "ceos1",
 						Address: "clab-3-nodes-ceos1:6030",
-						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+						Labels:  map[string]string{},
 					},
 					{
 						Name:    "leaf1",
