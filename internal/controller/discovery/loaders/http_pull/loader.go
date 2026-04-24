@@ -62,12 +62,12 @@ func (l *Loader) Start(
 					{
 						Name:    "ceos1",
 						Address: "clab-3-nodes-ceos1:6030",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
 					},
 					{
 						Name:    "leaf1",
 						Address: "clab-3-nodes-leaf1:57400",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
 					},
 				}
 
@@ -81,12 +81,12 @@ func (l *Loader) Start(
 					{
 						Name:    "ceos1",
 						Address: "clab-3-nodes-ceos1:6030",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
 					},
 					{
 						Name:    "leaf2",
 						Address: "clab-3-nodes-leaf2:57400",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
 					},
 				}
 
@@ -100,7 +100,7 @@ func (l *Loader) Start(
 					{
 						Name:    "ceos1",
 						Address: "clab-3-nodes-ceos2:6030",
-						Labels:  map[string]string{"TargetSource": targetsourceName},
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default2"},
 					},
 				}
 

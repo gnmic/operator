@@ -4,11 +4,48 @@ package discovery
 // file decides which targets to create/update/delete
 
 import (
+	"maps"
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
-func GenerateEvents(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
+func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) *gnmicv1alpha1.Target {
+	t := &gnmicv1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      d.Name,
+			Namespace: ts.Namespace,
+			Labels:    make(map[string]string),
+		},
+	}
+
+	t.Spec.Address = d.Address
+	t.Spec.Profile = ts.Spec.TargetProfile
+
+	maps.Copy(t.Labels, ts.Spec.TargetLabels)
+
+	for k, v := range d.Labels {
+		if strings.HasPrefix(k, core.ExternalLabelPrefix) {
+			switch k {
+			case core.ExternalLabelTargetProfile:
+				t.Spec.Profile = v
+			default:
+				// handle unknown label
+			}
+		} else {
+			t.Labels[k] = v
+		}
+	}
+
+	t.Labels[core.LabelTargetSourceName] = ts.Name
+
+	return t
+}
+
+func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
 	var events []core.DiscoveryEvent
 
 	discoveredMap := make(map[string]core.DiscoveredTarget)

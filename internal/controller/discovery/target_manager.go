@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"context"
-	"maps"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -114,7 +113,7 @@ func (m *TargetManager) processSnapshot(ctx context.Context, snapshotID string, 
 		)
 	}
 
-	events := GenerateEvents(existing, targets)
+	events := generateEvents(existing, targets)
 
 	nApply := 0
 	nDelete := 0
@@ -153,7 +152,9 @@ func (m *TargetManager) processEvent(ctx context.Context, event core.DiscoveryEv
 			)
 		}
 	case core.APPLY:
-		if err := m.applyTarget(ctx, event.Target.Name, event.Target.Address); err != nil {
+		target := generateTargetResource(event.Target, m.targetSource)
+
+		if err := m.applyTarget(ctx, target); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)
@@ -165,29 +166,19 @@ func (m *TargetManager) processEvent(ctx context.Context, event core.DiscoveryEv
 	}
 }
 
-func (m *TargetManager) applyTarget(ctx context.Context, name string, address string) error {
-	target := &gnmicv1alpha1.Target{
+func (m *TargetManager) applyTarget(ctx context.Context, desired *gnmicv1alpha1.Target) error {
+	existing := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: m.targetSource.Namespace,
+			Name:      desired.Name,
+			Namespace: desired.Namespace,
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, m.client, target, func() error {
-		labels := map[string]string{
-			core.LabelTargetSourceName: m.targetSource.Name,
-		}
+	_, err := controllerutil.CreateOrUpdate(ctx, m.client, existing, func() error {
+		existing.Spec = desired.Spec
+		existing.Labels = desired.Labels
 
-		maps.Copy(labels, m.targetSource.Spec.TargetLabels)
-
-		target.Labels = labels
-
-		target.Spec = gnmicv1alpha1.TargetSpec{
-			Address: address,
-			Profile: m.targetSource.Spec.TargetProfile,
-		}
-
-		return controllerutil.SetControllerReference(m.targetSource, target, m.scheme)
+		return controllerutil.SetControllerReference(m.targetSource, existing, m.scheme)
 	})
 
 	return err
@@ -195,6 +186,7 @@ func (m *TargetManager) applyTarget(ctx context.Context, name string, address st
 
 func (m *TargetManager) deleteTarget(ctx context.Context, name string) error {
 	existing := &gnmicv1alpha1.Target{}
+
 	err := m.client.Get(ctx, types.NamespacedName{
 		Name:      name,
 		Namespace: m.targetSource.Namespace,
