@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -27,14 +28,14 @@ func (l *Loader) Name() string {
 
 func (l *Loader) Start(
 	ctx context.Context,
-	targetsourceName string,
+	targetsourceNN types.NamespacedName,
 	spec gnmicv1alpha1.TargetSourceSpec,
 	out chan<- []core.DiscoveryMessage,
 ) error {
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", targetsourceName,
+		"targetsource", targetsourceNN,
 	)
 
 	logger.Info("HTTP loader started")
@@ -51,17 +52,17 @@ func (l *Loader) Start(
 
 		case <-ticker.C:
 			// Example snapshot (placeholder)
-			snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
+			snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceNN, uuid.NewString())
 			targets := []core.DiscoveredTarget{
 				{
 					Name:    "ceos1",
 					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSource": targetsourceName},
+					Labels:  map[string]string{"TargetSource": targetsourceNN.String()},
 				},
 				{
 					Name:    "leaf1",
 					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSource": targetsourceName},
+					Labels:  map[string]string{"TargetSource": targetsourceNN.String()},
 				},
 			}
 

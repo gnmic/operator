@@ -4,6 +4,7 @@ import (
 	"context"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Loader defines a pluggable TargetSource loader interface
@@ -16,7 +17,7 @@ type Loader interface {
 	// The loader must stop cleanly when ctx is cancelled
 	Start(
 		ctx context.Context,
-		targetsourceName string,
+		targetsourceName types.NamespacedName,
 		spec gnmicv1alpha1.TargetSourceSpec,
 		out chan<- []DiscoveryMessage,
 	) error

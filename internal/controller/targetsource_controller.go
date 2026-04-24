@@ -46,7 +46,7 @@ type TargetSourceReconciler struct {
 	Scheme *runtime.Scheme
 
 	mu      sync.Mutex
-	running map[client.ObjectKey]runningSource
+	running map[types.NamespacedName]runningSource
 
 	BufferSize int
 	ChunkSize  int
@@ -96,7 +96,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 }
 
 // getTargetSource retrieves a TargetSource by name, handling cleanup if not found
-func (r *TargetSourceReconciler) getTargetSource(ctx context.Context, key client.ObjectKey) (*gnmicv1alpha1.TargetSource, error) {
+func (r *TargetSourceReconciler) getTargetSource(ctx context.Context, key types.NamespacedName) (*gnmicv1alpha1.TargetSource, error) {
 	var targetSource gnmicv1alpha1.TargetSource
 	if err := r.Get(ctx, key, &targetSource); err != nil {
 		// If the TargetSource no longer exists, ensure runtime cleanup
@@ -109,9 +109,9 @@ func (r *TargetSourceReconciler) getTargetSource(ctx context.Context, key client
 }
 
 // handleTargetSourceDeletion stops the discovery pipeline and removes the finalizer
-func (r *TargetSourceReconciler) handleTargetSourceDeletion(ctx context.Context, key client.ObjectKey, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
+func (r *TargetSourceReconciler) handleTargetSourceDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("TargetSource is being deleted, stopping pipeline", "name", targetSource.Name)
+	logger.Info("TargetSource is being deleted, stopping pipeline", "name", key)
 
 	r.stopDiscovery(key)
 
@@ -141,7 +141,7 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 }
 
 // isPipelineRunning checks if a discovery pipeline is already running for the given key
-func (r *TargetSourceReconciler) isPipelineRunning(key client.ObjectKey) bool {
+func (r *TargetSourceReconciler) isPipelineRunning(key types.NamespacedName) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -156,8 +156,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}
 
 	loader, err := discovery.NewLoader(
-		targetSource.ObjectMeta.Name,
-		targetSource.ObjectMeta.Namespace,
+		key,
 		targetSource.Spec,
 		cfg,
 	)
@@ -174,7 +173,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}
 
 	// Start loader
-	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)
+	go loader.Start(runtimeCtx, key, targetSource.Spec, targetChannel)
 
 	// Start target applier
 	manager := discovery.NewTargetApplier(
@@ -210,7 +209,7 @@ func (r *TargetSourceReconciler) stopDiscovery(key types.NamespacedName) {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.running = make(map[client.ObjectKey]runningSource)
+	r.running = make(map[types.NamespacedName]runningSource)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.TargetSource{}).
