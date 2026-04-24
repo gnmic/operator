@@ -161,8 +161,8 @@ func (r *TargetSourceReconciler) isPipelineRunning(key client.ObjectKey) bool {
 // startDiscoveryPipeline creates and starts the loader and target manager
 func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, targetSource *gnmicv1alpha1.TargetSource) error {
 	loader, err := discovery.NewLoader(
-		targetSource.ObjectMeta.Name,
-		targetSource.ObjectMeta.Namespace,
+		targetSource.Name,
+		targetSource.Namespace,
 		targetSource.Spec,
 	)
 	if err != nil {

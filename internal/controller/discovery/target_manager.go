@@ -42,8 +42,8 @@ func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.Targ
 func (m *TargetManager) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
 		WithValues(
-			"targetSource", m.targetSource.ObjectMeta.Name,
-			"namespace", m.targetSource.ObjectMeta.Namespace,
+			"targetSource", m.targetSource.Name,
+			"namespace", m.targetSource.Namespace,
 		)
 
 	logger.Info("target manager started")
