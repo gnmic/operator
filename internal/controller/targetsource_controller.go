@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -50,7 +51,7 @@ type TargetSourceReconciler struct {
 	BufferSize int
 	ChunkSize  int
 
-	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage]
+	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -149,7 +150,7 @@ func (r *TargetSourceReconciler) isPipelineRunning(key client.ObjectKey) bool {
 }
 
 // startDiscoveryPipeline creates and starts the loader and target manager
-func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, targetSource *gnmicv1alpha1.TargetSource) error {
+func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) error {
 	cfg := core.LoaderConfig{
 		ChunkSize: r.ChunkSize,
 	}
@@ -167,8 +168,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, ta
 	runtimeCtx, cancel := context.WithCancel(context.Background())
 	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
 
-	registryKey := key.Namespace + "/" + key.Name
-	if err := r.DiscoveryRegistry.Register(registryKey, targetChannel); err != nil {
+	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
 		cancel()
 		return err
 	}
@@ -194,7 +194,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, ta
 
 // stopDiscovery stops and removes a running discovery pipeline
 // for the given TargetSource key
-func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
+func (r *TargetSourceReconciler) stopDiscovery(key types.NamespacedName) {
 	r.mu.Lock()
 	running, ok := r.running[key]
 	if ok {
@@ -204,8 +204,7 @@ func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
 	r.mu.Unlock()
 
 	if ok {
-		registryKey := key.Namespace + "/" + key.Name
-		r.DiscoveryRegistry.Unregister(registryKey)
+		r.DiscoveryRegistry.Unregister(key)
 	}
 }
 

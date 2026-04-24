@@ -5,39 +5,18 @@ import (
 	"sync"
 )
 
-/* USAGE
-
-// create registry once in main.go
-discoveryReg := discovery.NewRegistry[[]core.DiscoveryMessage]()
-
-// inside targetsource controller, when starting discovery pipeline:
-key := fmt.Sprintf("%s/%s", spec.Namespace, targetsourceName)
-if err := discoveryReg.Register(key, out); err != nil {
-  logger.Error(err, "could not register loader")
-  return err
-}
-defer discoveryReg.Unregister(key)
-
-// CHECK REGISTRY
-ch, ok := discoveryReg.Get(ns + "/" + ts)
-if !ok {
-  http.Error(w, "no loader for targetsource", http.StatusNotFound)
-  return
-}
-// then deliver payload to ch
-*/
-
-// Registry is a thread-safe map: key -> channel of T.
-type Registry[T any] struct {
+// Registry is a thread-safe key -> channel registry
+// K must be comparable so it can be used as a map key
+type Registry[K comparable, V any] struct {
 	mu sync.RWMutex
-	m  map[string]chan<- T
+	m  map[K]chan<- V
 }
 
-func NewRegistry[T any]() *Registry[T] {
-	return &Registry[T]{m: make(map[string]chan<- T)}
+func NewRegistry[K comparable, V any]() *Registry[K, V] {
+	return &Registry[K, V]{m: make(map[K]chan<- V)}
 }
 
-func (r *Registry[T]) Register(key string, ch chan<- T) error {
+func (r *Registry[K, V]) Register(key K, ch chan<- V) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.m[key]; exists {
@@ -47,13 +26,13 @@ func (r *Registry[T]) Register(key string, ch chan<- T) error {
 	return nil
 }
 
-func (r *Registry[T]) Unregister(key string) {
+func (r *Registry[K, V]) Unregister(key K) {
 	r.mu.Lock()
 	delete(r.m, key)
 	r.mu.Unlock()
 }
 
-func (r *Registry[T]) Get(key string) (chan<- T, bool) {
+func (r *Registry[K, V]) Get(key K) (chan<- V, bool) {
 	r.mu.RLock()
 	ch, ok := r.m[key]
 	r.mu.RUnlock()
