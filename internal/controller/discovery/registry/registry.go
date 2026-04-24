@@ -7,6 +7,7 @@ import (
 
 // Registry is a thread-safe key -> channel registry
 // K must be comparable so it can be used as a map key
+// DO NOT USE a pointer type as K
 type Registry[K comparable, V any] struct {
 	mu sync.RWMutex
 	m  map[K]chan<- V
@@ -20,7 +21,7 @@ func (r *Registry[K, V]) Register(key K, ch chan<- V) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.m[key]; exists {
-		return fmt.Errorf("already registered: %s", key)
+		return fmt.Errorf("already registered: %v", key)
 	}
 	r.m[key] = ch
 	return nil
