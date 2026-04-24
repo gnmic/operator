@@ -18,8 +18,8 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -33,9 +33,14 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
 	"github.com/gnmic/operator/internal/controller/discovery/registry"
+	"github.com/go-logr/logr"
 )
 
-const targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
+const (
+	targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
+	pipelineMaxRestarts   = 5
+	pipelineBackoff       = 3 * time.Second
+)
 
 type runningSource struct {
 	cancel context.CancelFunc
@@ -63,8 +68,8 @@ type TargetSourceReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues(
-		"Name", req.NamespacedName,
+	logger := log.FromContext(ctx).WithName("targetsource controller").WithValues(
+		"targetsource", req.NamespacedName,
 	)
 
 	targetSource, err := r.getTargetSource(ctx, req.NamespacedName)
@@ -88,7 +93,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	// Start discovery pipeline
-	if err := r.startDiscoveryPipeline(req.NamespacedName, targetSource); err != nil {
+	if err := r.startDiscoveryPipeline(req.NamespacedName, targetSource, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -151,70 +156,63 @@ func (r *TargetSourceReconciler) isPipelineRunning(key types.NamespacedName) boo
 }
 
 // startDiscoveryPipeline creates and starts the loader and target manager
-func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) error {
-	cfg := core.LoaderConfig{
-		ChunkSize: r.ChunkSize,
-	}
-
-	loader, err := discovery.NewLoader(
-		key,
-		targetSource.Spec,
-		cfg,
-	)
-	if err != nil {
-		return err
-	}
-
-	runtimeCtx, cancel := context.WithCancel(context.Background())
-	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
-
-	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
-		cancel()
-		return err
-	}
-
-	// goroutines use done channel to report termination (nil or error) back to supervisor
-	// Buffer size = supervised goroutines = 2 (loader + applier)
-	done := make(chan error, 2)
-
-	// Start loader
-	go runWithRecovery(
-		runtimeCtx,
-		"loader",
-		func(ctx context.Context) error {
-			return loader.Start(ctx, key, targetSource.Spec, targetChannel)
+func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource, logger logr.Logger) error {
+	supervisor := discovery.NewSupervisor(
+		context.Background(),
+		discovery.RestartPolicy{
+			MaxRestarts: pipelineMaxRestarts,
+			Backoff:     pipelineBackoff,
 		},
-		done,
 	)
 
-	// Start target applier
-	applier := discovery.NewTargetApplier(
-		r.Client,
-		r.Scheme,
-		targetSource,
-		targetChannel,
-	)
-	go runWithRecovery(
-		runtimeCtx,
-		"target-applier",
-		applier.Run,
-		done,
-	)
+	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
+	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
+		return err
+	}
 
-	// Supervision goroutine to handle pipeline termination
-	go func() {
-		err := <-done
-		logger := log.FromContext(context.Background()).WithValues("targetSource", key)
+	start := func(ctx context.Context, exits chan<- discovery.ComponentExit) {
+		// Create loader instance
+		loader, err := discovery.NewLoader(
+			key,
+			targetSource.Spec,
+			core.LoaderConfig{
+				ChunkSize: r.ChunkSize,
+			},
+		)
 		if err != nil {
-			logger.Error(err, "Discovery pipeline terminated with error")
+			return
 		}
 
-		// Ensure cleanup on termination
+		// Create target applier instance
+		applier := discovery.NewTargetApplier(
+			r.Client,
+			r.Scheme,
+			targetSource,
+			targetChannel,
+		)
+
+		// Start loader
+		supervisor.Go("loader", func(ctx context.Context) error {
+			return loader.Start(ctx, key, targetSource.Spec, targetChannel)
+		})
+		// Start target applier
+		supervisor.Go("target-applier", applier.Run)
+
+	}
+
+	go func() {
+		err := supervisor.Run(start)
+		if err != nil {
+			logger.Error(err, "Discovery pipeline stopped permanently")
+		}
+
+		close(targetChannel)
+		r.DiscoveryRegistry.Unregister(key)
 		r.stopDiscovery(key)
 	}()
 
 	r.mu.Lock()
-	r.running[key] = runningSource{cancel: cancel}
+	r.running[key] = runningSource{cancel: supervisor.Stop}
 	r.mu.Unlock()
 
 	return nil
@@ -234,25 +232,6 @@ func (r *TargetSourceReconciler) stopDiscovery(key types.NamespacedName) {
 	if ok {
 		r.DiscoveryRegistry.Unregister(key)
 	}
-}
-
-// runWithRecovery executes a worker function under panic protection
-// and reports termination (nil or error) through done.
-func runWithRecovery(
-	ctx context.Context,
-	name string,
-	run func(context.Context) error,
-	done chan<- error,
-) {
-	defer func() {
-		if r := recover(); r != nil {
-			done <- fmt.Errorf("panic in %s: %v", name, r)
-		}
-	}()
-
-	// Normal exit path
-	err := run(ctx)
-	done <- err
 }
 
 // SetupWithManager sets up the controller with the Manager.
