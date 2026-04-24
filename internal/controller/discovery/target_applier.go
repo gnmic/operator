@@ -12,8 +12,8 @@ import (
 	"github.com/go-logr/logr"
 )
 
-// TargetManager consumes discovered targets and applies them to Kubernetes
-type TargetManager struct {
+// TargetApplier consumes discovered targets and applies them to Kubernetes
+type TargetApplier struct {
 	client       client.Client
 	scheme       *runtime.Scheme
 	targetSource *gnmicv1alpha1.TargetSource
@@ -21,9 +21,9 @@ type TargetManager struct {
 	collected    map[string][]core.DiscoveredTarget
 }
 
-// NewTargetManager wires a TargetManager instance
-func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetManager {
-	return &TargetManager{
+// NewTargetApplier wires a TargetApplier instance
+func NewTargetApplier(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetApplier {
+	return &TargetApplier{
 		client:       c,
 		scheme:       s,
 		targetSource: ts,
@@ -34,16 +34,16 @@ func NewTargetManager(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.Targ
 
 // Run is a long‑running loop that receives target snapshots
 // and reconciles Target CRs accordingly
-func (m *TargetManager) Run(ctx context.Context) error {
+func (m *TargetApplier) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
 		WithValues("targetSource", m.targetSource)
 
-	logger.Info("target manager started")
+	logger.Info("target applier started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("target manager stopped")
+			logger.Info("target applier stopped")
 			return nil
 
 		case messages := <-m.in:
@@ -83,7 +83,7 @@ func (m *TargetManager) Run(ctx context.Context) error {
 }
 
 // processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
-func (m *TargetManager) processSnapshot(snapshotID string, logger logr.Logger) {
+func (m *TargetApplier) processSnapshot(snapshotID string, logger logr.Logger) {
 	targets := m.collected[snapshotID]
 	delete(m.collected, snapshotID)
 

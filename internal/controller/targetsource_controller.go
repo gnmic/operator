@@ -176,8 +176,8 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, ta
 	// Start loader
 	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)
 
-	// Start target manager
-	manager := discovery.NewTargetManager(
+	// Start target applier
+	manager := discovery.NewTargetApplier(
 		r.Client,
 		r.Scheme,
 		targetSource,
