@@ -175,7 +175,7 @@ func (m *TargetManager) applyTarget(ctx context.Context, name string, address st
 
 	_, err := controllerutil.CreateOrUpdate(ctx, m.client, target, func() error {
 		labels := map[string]string{
-			"gnmic.io/source": m.targetSource.Name,
+			core.LabelTargetSourceName: m.targetSource.Name,
 		}
 
 		maps.Copy(labels, m.targetSource.Spec.TargetLabels)
