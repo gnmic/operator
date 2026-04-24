@@ -38,8 +38,9 @@ import (
 
 const (
 	targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
-	pipelineMaxRestarts   = 5
-	pipelineBackoff       = 3 * time.Second
+
+	pipelineMaxRestarts = 5
+	pipelineBackoff     = 3 * time.Second
 )
 
 type runningSource struct {
