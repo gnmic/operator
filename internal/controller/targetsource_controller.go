@@ -160,54 +160,57 @@ func (r *TargetSourceReconciler) isPipelineRunning(key types.NamespacedName) boo
 
 // startDiscoveryPipeline creates and starts the loader and target manager
 func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource, logger logr.Logger) error {
-	supervisor := discovery.NewSupervisor(
-		context.Background(),
-		discovery.RestartPolicy{
-			MaxRestarts: pipelineMaxRestarts,
-			Backoff:     pipelineBackoff,
-		},
-	)
+	supervisor := discovery.NewSupervisor(context.Background())
 
 	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
 	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
 		return err
 	}
 
-	start := func(ctx context.Context, exits chan<- discovery.ComponentExit) {
-		// Create loader instance
-		loader, err := discovery.NewLoader(
-			key,
-			targetSource.Spec,
-			core.LoaderConfig{
-				ChunkSize: r.ChunkSize,
-			},
-		)
-		if err != nil {
-			return
-		}
-
-		// Create target applier instance
-		applier := discovery.NewTargetApplier(
-			r.Client,
-			r.Scheme,
-			targetSource,
-			targetChannel,
-		)
-
-		// Start loader
-		supervisor.Go("loader", func(ctx context.Context) error {
-			return loader.Start(ctx, key, targetSource.Spec, targetChannel)
-		})
-		// Start target applier
-		supervisor.Go("target-applier", applier.Run)
-
+	// Create loader instance
+	loader, err := discovery.NewLoader(
+		key,
+		targetSource.Spec,
+		core.LoaderConfig{ChunkSize: r.ChunkSize},
+	)
+	if err != nil {
+		return err
 	}
 
+	// Create target applier instance
+	applier := discovery.NewTargetApplier(
+		r.Client,
+		r.Scheme,
+		targetSource,
+		targetChannel,
+	)
+
+	supervisor.AddComponent(discovery.Component{
+		Name: "loader",
+		Run: func(ctx context.Context) error {
+			return loader.Start(ctx, key, targetSource.Spec, targetChannel)
+		},
+		Policy: discovery.RestartPolicy{
+			MaxRestarts: pipelineMaxRestarts,
+			Backoff:     pipelineBackoff,
+		},
+	})
+
+	supervisor.AddComponent(discovery.Component{
+		Name: "target-applier",
+		Run:  applier.Run,
+		Policy: discovery.RestartPolicy{
+			MaxRestarts: pipelineMaxRestarts,
+			Backoff:     pipelineBackoff,
+		},
+	})
+
+	supervisor.Run()
+
 	go func() {
-		err := supervisor.Run(start)
-		if err != nil {
-			logger.Error(err, "Discovery pipeline stopped permanently")
-		}
+		<-supervisor.Done()
+
+		logger.Info("Pipeline stopped; performing final cleanup")
 
 		close(targetChannel)
 		r.DiscoveryRegistry.Unregister(key)
@@ -215,25 +218,27 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}()
 
 	r.mu.Lock()
-	r.running[key] = runningSource{cancel: supervisor.Stop}
+	r.running[key] = runningSource{
+		cancel: func() {
+			supervisor.Stop()
+		},
+	}
 	r.mu.Unlock()
 
 	return nil
 }
 
 // stopDiscovery stops and removes a running discovery pipeline
-// for the given TargetSource key
 func (r *TargetSourceReconciler) stopDiscovery(key types.NamespacedName) {
 	r.mu.Lock()
 	running, ok := r.running[key]
 	if ok {
-		running.cancel()
 		delete(r.running, key)
 	}
 	r.mu.Unlock()
 
 	if ok {
-		r.DiscoveryRegistry.Unregister(key)
+		running.cancel()
 	}
 }
 
