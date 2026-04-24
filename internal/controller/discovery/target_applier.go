@@ -36,10 +36,14 @@ func NewTargetApplier(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.Targ
 // and reconciles Target CRs accordingly
 func (m *TargetApplier) Run(ctx context.Context) error {
 	logger := log.FromContext(ctx).
-		WithValues("targetSource", m.targetSource)
+		WithValues(
+			"name", m.targetSource.Name,
+			"namespace", m.targetSource.Namespace,
+		)
+
 	logger.Info("target applier started")
 
-	queue := make([]core.DiscoveryMessage, 0, 265)
+	queue := []core.DiscoveryMessage{}
 
 	for ctx.Err() == nil {
 		select {
@@ -58,7 +62,7 @@ func (m *TargetApplier) Run(ctx context.Context) error {
 
 		for len(queue) > 0 {
 			if ctx.Err() != nil {
-				break
+				return ctx.Err()
 			}
 
 			msg := queue[0]
