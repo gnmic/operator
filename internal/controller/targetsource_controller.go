@@ -75,6 +75,12 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	targetSource, err := r.getTargetSource(ctx, req.NamespacedName)
 	if err != nil {
+		// If the TargetSource no longer exists, ensure runtime cleanup
+		if client.IgnoreNotFound(err) == nil {
+			logger.Info("TargetSource not found, ensuring cleanup")
+			r.stopDiscovery(req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
@@ -106,11 +112,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 func (r *TargetSourceReconciler) getTargetSource(ctx context.Context, key types.NamespacedName) (*gnmicv1alpha1.TargetSource, error) {
 	var targetSource gnmicv1alpha1.TargetSource
 	if err := r.Get(ctx, key, &targetSource); err != nil {
-		// If the TargetSource no longer exists, ensure runtime cleanup
-		if client.IgnoreNotFound(err) == nil {
-			r.stopDiscovery(key)
-		}
-		return nil, client.IgnoreNotFound(err)
+		return nil, err
 	}
 	return &targetSource, nil
 }
