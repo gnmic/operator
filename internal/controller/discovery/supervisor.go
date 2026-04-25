@@ -8,18 +8,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type RestartPolicy struct {
-	MaxRestarts int
-	Backoff     time.Duration
-}
-
-type Component struct {
-	Name             string
-	Run              func(ctx context.Context) error
-	Policy           RestartPolicy
-	DegradeOnFailure bool
-}
-
+// Supervisor coordinates the runtime lifecycle of pipeline components
+//
+// Guarantees:
+// - Each component is restarted independently
+// - Permanent failure escalates according to policy
+// - Stop() cancels all components
+// - Wait() blocks until all goroutines exit
 type Supervisor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -30,14 +25,30 @@ type Supervisor struct {
 	stopped bool
 }
 
-func NewSupervisor(parent context.Context) *Supervisor {
-	ctx, cancel := context.WithCancel(parent)
+// RestartPolicy defines the restart behavior for a component
+type RestartPolicy struct {
+	MaxRestarts int
+	Backoff     time.Duration
+}
+
+type ComponentSpec struct {
+	Name   string
+	Run    func(ctx context.Context) error
+	Policy RestartPolicy
+	// EscalatesOnFailure indicates whether a permanent failure of this component should shut down the entire pipeline
+	EscalatesOnFailure bool
+}
+
+// NewSupervisor creates a new Supervisor with a cancellable context
+func NewSupervisor(parentCtx context.Context) *Supervisor {
+	ctx, cancel := context.WithCancel(parentCtx)
 	return &Supervisor{
 		ctx:    ctx,
 		cancel: cancel,
 	}
 }
 
+// Stop signals all supervised components to stop by canceling the context
 func (s *Supervisor) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -49,15 +60,14 @@ func (s *Supervisor) Stop() {
 	s.cancel()
 }
 
-func (s *Supervisor) Done() <-chan struct{} {
-	return s.ctx.Done()
-}
+// Done returns a channel that is closed when the pipeline is stopped
+func (s *Supervisor) Done() <-chan struct{} { return s.ctx.Done() }
 
-func (s *Supervisor) Wait() {
-	s.wg.Wait()
-}
+// Wait blocks until all supervised components have exited
+func (s *Supervisor) Wait() { s.wg.Wait() }
 
-func (s *Supervisor) RunComponent(component Component) {
+// StartSupervisedComponent starts and supervises a component
+func (s *Supervisor) StartSupervisedComponent(component ComponentSpec) {
 	s.wg.Add(1)
 
 	go func() {
@@ -83,7 +93,7 @@ func (s *Supervisor) RunComponent(component Component) {
 			)
 
 			if failures >= component.Policy.MaxRestarts {
-				if component.DegradeOnFailure {
+				if component.EscalatesOnFailure {
 					logger.Error(err,
 						"component permanently failed; shutting down pipeline",
 					)
