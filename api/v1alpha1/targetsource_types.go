@@ -24,6 +24,8 @@ import (
 // +kubebuilder:validation:Required
 type TargetSourceSpec struct {
 	Provider *ProviderSpec `json:"provider"`
+	// +kubebuilder:validation:Optional
+	Webhook WebhookSpec `json:"webhook,omitempty"`
 	//
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
@@ -35,6 +37,11 @@ type TargetSourceSpec struct {
 type ProviderSpec struct {
 	HTTP   *HTTPConfig   `json:"http,omitempty"`
 	Consul *ConsulConfig `json:"consul,omitempty"`
+}
+
+type WebhookSpec struct {
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type HTTPConfig struct {

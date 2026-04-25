@@ -14,19 +14,20 @@ type RestartPolicy struct {
 }
 
 type Component struct {
-	Name   string
-	Run    func(ctx context.Context) error
-	Policy RestartPolicy
+	Name             string
+	Run              func(ctx context.Context) error
+	Policy           RestartPolicy
+	DegradeOnFailure bool
 }
 
 type Supervisor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	stopped bool
-	mu      sync.Mutex
+	wg sync.WaitGroup
 
-	components []Component
+	mu      sync.Mutex
+	stopped bool
 }
 
 func NewSupervisor(parent context.Context) *Supervisor {
@@ -34,53 +35,6 @@ func NewSupervisor(parent context.Context) *Supervisor {
 	return &Supervisor{
 		ctx:    ctx,
 		cancel: cancel,
-	}
-}
-
-func (s *Supervisor) AddComponent(c Component) {
-	s.components = append(s.components, c)
-}
-
-func (s *Supervisor) runComponent(c Component) {
-	logger := log.FromContext(s.ctx).WithValues(
-		"component", c.Name,
-	)
-
-	failures := 0
-
-	for {
-		err := c.Run(s.ctx)
-		if s.ctx.Err() != nil {
-			return
-		}
-
-		failures++
-		logger.Error(err,
-			"Component failed",
-			"attempt", failures,
-		)
-
-		if failures >= c.Policy.MaxRestarts {
-			logger.Error(err,
-				"Component exceeded restart limit; stopping discovery pipeline",
-				"restarts", failures,
-			)
-			s.Stop()
-			return
-		}
-
-		select {
-		case <-time.After(c.Policy.Backoff):
-		case <-s.ctx.Done():
-			return
-		}
-	}
-}
-
-func (s *Supervisor) Run() {
-	for _, c := range s.components {
-		component := c
-		go s.runComponent(component)
 	}
 }
 
@@ -97,4 +51,56 @@ func (s *Supervisor) Stop() {
 
 func (s *Supervisor) Done() <-chan struct{} {
 	return s.ctx.Done()
+}
+
+func (s *Supervisor) Wait() {
+	s.wg.Wait()
+}
+
+func (s *Supervisor) RunComponent(component Component) {
+	s.wg.Add(1)
+
+	go func() {
+		defer s.wg.Done()
+
+		logger := log.FromContext(s.ctx).WithValues("component", component.Name)
+		failures := 0
+
+		for {
+			logger.Info("starting component")
+			err := component.Run(s.ctx)
+
+			if s.ctx.Err() != nil {
+				logger.Info("component stopped due to pipeline shutdown")
+				return
+			}
+
+			failures++
+			logger.Error(err,
+				"component failed to run",
+				"attempt", failures,
+				"max", component.Policy.MaxRestarts,
+			)
+
+			if failures >= component.Policy.MaxRestarts {
+				if component.DegradeOnFailure {
+					logger.Error(err,
+						"component permanently failed; shutting down pipeline",
+					)
+					s.Stop()
+				} else {
+					logger.Info(
+						"optional component permanently failed; continuing without it",
+					)
+				}
+				return
+			}
+
+			select {
+			case <-time.After(component.Policy.Backoff):
+			case <-s.ctx.Done():
+				return
+			}
+		}
+	}()
 }

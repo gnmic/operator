@@ -167,16 +167,6 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		return err
 	}
 
-	// Create loader instance
-	loader, err := discovery.NewLoader(
-		key,
-		targetSource.Spec,
-		core.LoaderConfig{ChunkSize: r.ChunkSize},
-	)
-	if err != nil {
-		return err
-	}
-
 	// Create target applier instance
 	applier := discovery.NewTargetApplier(
 		r.Client,
@@ -184,34 +174,59 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		targetSource,
 		targetChannel,
 	)
-
-	supervisor.AddComponent(discovery.Component{
-		Name: "loader",
-		Run: func(ctx context.Context) error {
-			return loader.Start(ctx, key, targetSource.Spec, targetChannel)
-		},
-		Policy: discovery.RestartPolicy{
-			MaxRestarts: pipelineMaxRestarts,
-			Backoff:     pipelineBackoff,
-		},
-	})
-
-	supervisor.AddComponent(discovery.Component{
+	// Start target applier
+	applierReady := make(chan struct{})
+	supervisor.RunComponent(discovery.Component{
 		Name: "target-applier",
-		Run:  applier.Run,
 		Policy: discovery.RestartPolicy{
 			MaxRestarts: pipelineMaxRestarts,
 			Backoff:     pipelineBackoff,
 		},
+		DegradeOnFailure: true,
+		Run: func(ctx context.Context) error {
+			close(applierReady)
+			return applier.Run(ctx)
+		},
 	})
+	// Wait for applier to be ready before starting loader
+	select {
+	case <-applierReady:
+	case <-supervisor.Done():
+		return nil
+	}
 
-	supervisor.Run()
+	// Create loader instance
+	loaderConfigured := targetSource.Spec.Provider != nil
+	webhookConfigured := targetSource.Spec.Webhook.Enabled != nil
+	if loaderConfigured {
+		loader, err := discovery.NewLoader(
+			key,
+			targetSource.Spec,
+			core.LoaderConfig{ChunkSize: r.ChunkSize},
+		)
+		if err != nil {
+			supervisor.Stop()
+			return err
+		}
+
+		supervisor.RunComponent(discovery.Component{
+			Name: "loader",
+			Policy: discovery.RestartPolicy{
+				MaxRestarts: pipelineMaxRestarts,
+				Backoff:     pipelineBackoff,
+			},
+			DegradeOnFailure: !webhookConfigured,
+			Run: func(ctx context.Context) error {
+				return loader.Start(ctx, key, targetSource.Spec, targetChannel)
+			},
+		})
+	}
 
 	go func() {
 		<-supervisor.Done()
+		supervisor.Wait() // Wait for components to exit
 
 		logger.Info("Pipeline stopped; performing final cleanup")
-
 		close(targetChannel)
 		r.DiscoveryRegistry.Unregister(key)
 		r.stopDiscovery(key)
