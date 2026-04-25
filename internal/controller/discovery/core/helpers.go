@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 )
 
 // sendMessages sends discovery messages over a channel in a context-aware manner
@@ -32,13 +33,15 @@ func forEachChunk(total, chunkSize int, fn func(start, end int) error) error {
 func createDiscoverySnapshots(targets []DiscoveredTarget, snapshotID string, chunkSize int) []DiscoverySnapshot {
 	var snapshots []DiscoverySnapshot
 	totalTargets := len(targets)
+	totalChunks := (totalTargets + chunkSize - 1) / chunkSize
 
 	_ = forEachChunk(totalTargets, chunkSize, func(i, end int) error {
 		chunk := targets[i:end]
 		snapshots = append(snapshots, DiscoverySnapshot{
 			Targets:     chunk,
 			SnapshotID:  snapshotID,
-			IsLastChunk: (end == totalTargets),
+			ChunkIndex:  i / chunkSize,
+			TotalChunks: totalChunks,
 		})
 		return nil
 	})
@@ -48,8 +51,11 @@ func createDiscoverySnapshots(targets []DiscoveredTarget, snapshotID string, chu
 
 // SendSnapshot sends discovered targets as a snapshot over a channel in chunks
 func SendSnapshot(ctx context.Context, out chan<- []DiscoveryMessage, targets []DiscoveredTarget, snapshotID string, chunkSize int) error {
-	snapshots := createDiscoverySnapshots(targets, snapshotID, chunkSize)
+	if len(targets) == 0 {
+		return fmt.Errorf("no targets in Snapshot")
+	}
 
+	snapshots := createDiscoverySnapshots(targets, snapshotID, chunkSize)
 	for _, snapshot := range snapshots {
 		// Convert DiscoverySnapshot to DiscoveryMessage
 		messages := make([]DiscoveryMessage, 1)
@@ -73,6 +79,10 @@ func eventsToMessages(events []DiscoveryEvent) []DiscoveryMessage {
 
 // SendEvents sends discovery messages over channel in a context-aware manner
 func SendEvents(ctx context.Context, out chan<- []DiscoveryMessage, events []DiscoveryEvent, chunkSize int) error {
+	if len(events) == 0 {
+		return fmt.Errorf("no events to process")
+	}
+
 	messages := eventsToMessages(events)
 	total := len(messages)
 

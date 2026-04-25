@@ -26,7 +26,8 @@ type DiscoveryEvent struct {
 }
 
 type DiscoverySnapshot struct {
-	Targets     []DiscoveredTarget
 	SnapshotID  string
-	IsLastChunk bool
+	ChunkIndex  int
+	TotalChunks int
+	Targets     []DiscoveredTarget
 }
