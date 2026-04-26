@@ -72,6 +72,11 @@ spec:
               targetProfile:
                 minLength: 1
                 type: string
+              webhook:
+                properties:
+                  enabled:
+                    type: boolean
+                type: object
             required:
             - provider
             - targetProfile

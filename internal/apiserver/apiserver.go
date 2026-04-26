@@ -12,14 +12,14 @@ import (
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/registry"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
-	ChunkSize         int
-	DiscoveryRegistry *registry.Registry[[]core.DiscoveryMessage] // change to lowercase?
+	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler) (*APIServer, error) {
@@ -90,13 +90,17 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		})
 	}
 
-	ch, ok := a.DiscoveryRegistry.Get(*payloadTargetSource.Namespace + "/" + *payloadTargetSource.Name)
+	key := types.NamespacedName{
+		Namespace: *payloadTargetSource.Namespace,
+		Name:      *payloadTargetSource.Name,
+	}
+	ch, ok := a.DiscoveryRegistry.Get(key)
 	if !ok {
 		// Error message to be udpated!!
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Target Source doesn't exist"})
 		return
 	}
 
-	core.SendEvents(context.Background(), ch, targets, a.ChunkSize)
+	core.SendEvents(context.Background(), ch, targets, 10) // make number constant
 	c.JSON(http.StatusOK, payloadTarget)
 }
