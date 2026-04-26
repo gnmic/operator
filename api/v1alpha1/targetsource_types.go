@@ -21,21 +21,29 @@ import (
 )
 
 // TargetSourceSpec defines the desired state of TargetSource
+// +kubebuilder:validation:Required
 type TargetSourceSpec struct {
-	HTTP            *HTTPConfig          `json:"http,omitempty"`
-	Consul          *ConsulConfig        `json:"consul,omitempty"`
-	ConfigMap       string               `json:"configMap,omitempty"`
-	PodSelector     metav1.LabelSelector `json:"podSelector,omitempty"`
-	ServiceSelector metav1.LabelSelector `json:"serviceSelector,omitempty"`
+	Provider *ProviderSpec `json:"provider"`
 	//
-	Labels map[string]string `json:"labels,omitempty"`
+	TargetLabels map[string]string `json:"targetLabels,omitempty"`
+
+	// +kubebuilder:validation:MinLength=1
+	TargetProfile string `json:"targetProfile"`
+}
+
+// +kubebuilder:validation:ExactlyOneOf=http;consul
+type ProviderSpec struct {
+	HTTP   *HTTPConfig   `json:"http,omitempty"`
+	Consul *ConsulConfig `json:"consul,omitempty"`
 }
 
 type HTTPConfig struct {
-	URL string `json:"url,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	URL string `json:"url"`
 }
 
 type ConsulConfig struct {
+	// +kubebuilder:validation:MinLength=1
 	URL string `json:"url,omitempty"`
 }
 
