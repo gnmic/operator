@@ -21,23 +21,22 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [TargetSource, Target]
                 properties:
-                  TargetSource:
-                    $ref: '#/components/schemas/TargetSource'
-                  Target:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Target'
+                  Targets:
+                    $ref: '#/components/schemas/Targets'
 components:
   schemas:
-    TargetSource:
+    Targets:
       type: object
       properties:
-        namespace:
+        targetSourceNameSpace:
           type: string
-        name:
+        TargetSourceName:
           type: string
+        TargetList:
+          type: array
+          items:
+            $ref: '#/components/schemas/Target'
     Target:
       type: object
       properties:

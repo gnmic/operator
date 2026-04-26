@@ -57,8 +57,8 @@ spec:
                     type: object
                   pull:
                     properties:
-                      url:
-                        type: string
+                      enabled:
+                        type: boolean
                     type: object
                 type: object
                 x-kubernetes-validations:

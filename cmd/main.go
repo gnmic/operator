@@ -238,7 +238,7 @@ func main() {
 			setupLog.Error(err, "unable to intialize gin API server")
 			os.Exit(1)
 		}
-		api.ChunkSize = discoveryChunkSize
+		// api.ChunkSize = discoveryChunkSize
 		api.DiscoveryRegistry = discoveryRegistry
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error)
