@@ -46,10 +46,11 @@ type Target struct {
 // TargetOperation defines model for Target.Operation.
 type TargetOperation string
 
-// TargetSource defines model for TargetSource.
-type TargetSource struct {
-	Name      *string `json:"name,omitempty"`
-	Namespace *string `json:"namespace,omitempty"`
+// Targets defines model for Targets.
+type Targets struct {
+	TargetList            *[]Target `json:"TargetList,omitempty"`
+	TargetSourceName      *string   `json:"TargetSourceName,omitempty"`
+	TargetSourceNameSpace *string   `json:"targetSourceNameSpace,omitempty"`
 }
 
 // ServerInterface represents all server handlers.
@@ -131,14 +132,13 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/4RSTW/bMAz9KwK3oxG73c23oRiKHLYVa2/DDprMJCpsSSOpAUHg/z7oY0k8Z+hJBPlI",
-	"ke+9Exg/Be/QCUN/AjYHnHQOXzTtUVIUyAcksZjzehgIOYdyDAg9sJB1e5gbcHrCm4U0QIv1LlXRxQn6",
-	"72AItSA0MOCIgvCjWTcG8js73h4qep/XsILT7X1qQhPpI8yXhP/5ikYSolz57CMZXN/633tSgYM2t6rr",
-	"b1LKup3PYCvpHNh/+bw16mvmxZP69un5RX182kIDv5E4MwXdptvcVfqcDhZ6+LC533TQQNByyCu2hcVy",
-	"R84Ez1m2M+fbAXp4WMAaIOTgHZc777u79BjvBF1u1iGM1uT29pWLbsUca5YuTjkr8Z5wBz28ay/2aqu3",
-	"2gpfybMW4+0pFZsIJvwVLeGQnLUo/p175a9rYQZkQzYUc1Yoq8LqoDgag8y7OI7FQRynSdPxzKiS2mGd",
-	"kgOqpa65pQ2jzgRWlpbCPKI8jJEF6SnBVsp06VkueYVXhBLJ4fDPco8oyhSYyt/P8zz/CQAA//+Shfmd",
-	"7gMAAA==",
+	"H4sIAAAAAAAC/4yTz2vdMAzH/xWj7RiStLvlNsooD7au7PU2dvAcJc8lsY2kDB4l//uwnf5Ikwc9xchf",
+	"Wfp+pDyB8WPwDp0wNE/A5oSjTscHTT1KPAXyAUksprhuW0JORzkHhAZYyLoe5gKcHnH3Ij6gxXoXb9FN",
+	"IzS/wRBqQSigxQEF4U+xTQzkOzvsPyq6T21YwXG/nyWgifQZ5teA//uIRqIiu+StzXzx3bKsSnwm7KCB",
+	"T9Urt2qBVi3ENnWfqxz9RAbvLjGSd6Jj0GZPubURQ9Z1PomtRFzQ3/04GPUzcfekfn07Pqiv9wco4B8S",
+	"p0lAXdbl1TIep4OFBr6U12UNBQQtp2S4ylN6y8lnJi8zPbTQwM1KVgAhB+84w7yur+LHeCfoUrIOYbAm",
+	"pVePnPcic7w0ig/i50uAWmRDNuQlfH5TZXet4skYZO6mYcibwtM4ajq/OFOyZFin5IRqzTelVGHQycjy",
+	"36wB3aLcDBML0n2UbQjV8bNu8o1eEcpEDtt3zd2iKJNlKpWf53n+HwAA////AVrz1gMAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

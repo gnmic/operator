@@ -1,7 +1,8 @@
 package apiserver
 
-// go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
-// or use go generate ./internal/apiserver in the console (install from https://github.com/oapi-codegen/oapi-codegen)
+//go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
+// To generate code, install openapi-codegen from https://github.com/oapi-codegen/oapi-codegen)
+// Then use: go generate ./internal/apiserver
 
 import (
 	"context"
@@ -50,49 +51,41 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	c.JSON(200, plan)
 }
 
-// CreateTargets binds payload to Target struct defined in openapi.yaml and sends it to pull loader
+// CreateTargets binds payload to payloadTargets struct defined in openapi contract. Passes
 func (a *APIServer) CreateTargets(c *gin.Context) {
-	// logger.Info("Create Targets called")
 
-	var payloadTarget []Target
-	var payloadTargetSource TargetSource
+	var payloadTargets Targets
 	fmt.Println("Binding Target to PayloadTarget")
-	// https://gin-gonic.com/en/docs/binding/bind-body-into-different-structs/
-	if err := c.ShouldBindBodyWithJSON(&payloadTarget); err != nil {
+	if err := c.ShouldBind(&payloadTargets); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		fmt.Printf("err: %s", err.Error)
 		return
 	}
-	fmt.Printf("payloadTarget: %s", payloadTarget)
-	if err := c.ShouldBindBodyWithJSON(&payloadTargetSource); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// error {"error":"json: cannot unmarshal object into Go   value of type []apiserver.Target"}
 
 	targets := []core.DiscoveryEvent{}
-	for _, target := range payloadTarget {
-		event := core.CREATE
-		switch *target.Operation {
-		case Create:
-			event = core.CREATE
-		case Delete:
-			event = core.DELETE
+	if len(*payloadTargets.TargetList) > 0 { // doesn't work on empty TargetList
+		for _, target := range *payloadTargets.TargetList {
+			event := core.CREATE
+			switch *target.Operation {
+			case Create:
+				event = core.CREATE
+			case Delete:
+				event = core.DELETE
+			}
+			targets = append(targets, core.DiscoveryEvent{
+				Target: core.DiscoveredTarget{
+					Name:    *target.Name,
+					Address: *target.Address,
+					Labels:  map[string]string{"key": "Is this a tag?"},
+				},
+				Event: event,
+			})
 		}
-		targets = append(targets, core.DiscoveryEvent{
-			Target: core.DiscoveredTarget{
-				Name:    *target.Name,
-				Address: *target.Address,
-				Labels:  map[string]string{"key": "Is this a tag?"},
-			},
-			Event: event,
-		})
 	}
 
 	key := types.NamespacedName{
-		Namespace: *payloadTargetSource.Namespace,
-		Name:      *payloadTargetSource.Name,
+		Namespace: *payloadTargets.TargetSourceNameSpace,
+		Name:      *payloadTargets.TargetSourceName,
 	}
 	ch, ok := a.DiscoveryRegistry.Get(key)
 	if !ok {
@@ -100,7 +93,7 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Target Source doesn't exist"})
 		return
 	}
-
+	fmt.Println("Preparing SendEvents")
 	core.SendEvents(context.Background(), ch, targets, 10) // make number constant
-	c.JSON(http.StatusOK, payloadTarget)
+	c.JSON(http.StatusOK, payloadTargets)
 }
