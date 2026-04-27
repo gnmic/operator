@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -81,13 +82,12 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		WithValues("targetsource", req.NamespacedName)
 
 	targetSource, err := r.fetchTargetSource(ctx, req.NamespacedName)
-	if err != nil {
-		// If the TargetSource no longer exists, ensure runtime cleanup
-		if client.IgnoreNotFound(err) == nil {
-			logger.Info("TargetSource not found; stopping discovery pipeline")
-			r.stopDiscoveryPipeline(req.NamespacedName)
-			return ctrl.Result{}, nil
-		}
+	// If the TargetSource no longer exists, ensure runtime cleanup
+	if apierrors.IsNotFound(err) {
+		logger.Info("TargetSource not found; stopping discovery pipeline")
+		r.stopDiscoveryPipeline(req.NamespacedName)
+		return ctrl.Result{}, nil
+	} else if err != nil {
 		return ctrl.Result{}, err
 	}
 
