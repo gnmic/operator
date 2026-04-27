@@ -177,7 +177,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}
 
 	// Create target targetHandler instance
-	targetHandler := discovery.NewTargetHandler(
+	targetHandler := discovery.NewMessageProcessor(
 		r.Client,
 		r.Scheme,
 		targetSource,
