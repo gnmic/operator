@@ -39,8 +39,6 @@ import (
 )
 
 const (
-	targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
-
 	pipelineMaxRestarts = 5
 	pipelineBackoff     = 3 * time.Second
 )
@@ -153,8 +151,8 @@ func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key type
 	r.stopDiscoveryPipeline(key)
 
 	// Remove finalizer if exists
-	if controllerutil.ContainsFinalizer(targetSource, targetSourceFinalizer) {
-		controllerutil.RemoveFinalizer(targetSource, targetSourceFinalizer)
+	if controllerutil.ContainsFinalizer(targetSource, LabelTargetSourceFinalizer) {
+		controllerutil.RemoveFinalizer(targetSource, LabelTargetSourceFinalizer)
 		if err := r.Update(ctx, targetSource); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -165,11 +163,11 @@ func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key type
 
 // ensureFinalizer adds the finalizer if not present and updates the TargetSource
 func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSource *gnmicv1alpha1.TargetSource) error {
-	if controllerutil.ContainsFinalizer(targetSource, targetSourceFinalizer) {
+	if controllerutil.ContainsFinalizer(targetSource, LabelTargetSourceFinalizer) {
 		return nil
 	}
 
-	controllerutil.AddFinalizer(targetSource, targetSourceFinalizer)
+	controllerutil.AddFinalizer(targetSource, LabelTargetSourceFinalizer)
 	if err := r.Update(ctx, targetSource); err != nil {
 		return err
 	}

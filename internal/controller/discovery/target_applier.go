@@ -33,7 +33,7 @@ type TargetApplier struct {
 	queue          []core.DiscoveryMessage
 	activeSnapshot *snapshotBuffer
 	// Events are deferred while snapshot is in progress
-	defferedEvents []core.DiscoveryEvent
+	deferredEvents []core.DiscoveryEvent
 }
 
 // NewTargetApplier wires a TargetApplier instance
@@ -170,7 +170,7 @@ func (a *TargetApplier) startNewSnapshot(chunk core.DiscoverySnapshot, logger lo
 		complete:    false,
 	}
 	// Delete buffered events that will be current with new snapshot
-	a.defferedEvents = nil
+	a.deferredEvents = nil
 
 	a.collectSnapshot(chunk, logger)
 }
@@ -204,7 +204,7 @@ func (a *TargetApplier) collectSnapshot(chunk core.DiscoverySnapshot, logger log
 func (a *TargetApplier) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	// If snapshot collecting is active defer events
 	if a.activeSnapshot != nil {
-		a.defferedEvents = append(a.defferedEvents, event)
+		a.deferredEvents = append(a.deferredEvents, event)
 		return nil
 	}
 
@@ -276,8 +276,8 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 		a.processEvent(ctx, e, logger)
 	}
 
-	// Replay deffered events
-	for _, event := range a.defferedEvents {
+	// Replay deferred events
+	for _, event := range a.deferredEvents {
 		select {
 		case <-ctx.Done():
 			return nil
@@ -289,8 +289,7 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 	}
 
 	a.activeSnapshot = nil
-	a.defferedEvents = nil
-
+	a.deferredEvents = nil
 	return nil
 }
 
