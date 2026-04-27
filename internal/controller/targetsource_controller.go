@@ -32,7 +32,6 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/loaders"
-	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
 	"github.com/gnmic/operator/internal/controller/discovery/registry"
 	"github.com/go-logr/logr"
 )
