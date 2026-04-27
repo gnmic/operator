@@ -31,6 +31,7 @@ import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/gnmic/operator/internal/controller/discovery/loaders"
 	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
 	"github.com/gnmic/operator/internal/controller/discovery/registry"
 	"github.com/go-logr/logr"
@@ -207,7 +208,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	loaderConfigured := targetSource.Spec.Provider != nil
 	webhookConfigured := targetSource.Spec.Webhook.Enabled != nil
 	if loaderConfigured {
-		loader, err := discovery.NewLoader(
+		loader, err := loaders.NewLoader(
 			key,
 			targetSource.Spec,
 			core.LoaderConfig{ChunkSize: r.ChunkSize},
