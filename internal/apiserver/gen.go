@@ -36,11 +36,11 @@ func (e TargetOperation) Valid() bool {
 
 // Target defines model for Target.
 type Target struct {
-	Address   *string          `json:"address,omitempty"`
-	Name      *string          `json:"name,omitempty"`
-	Operation *TargetOperation `json:"operation,omitempty"`
-	Profile   *string          `json:"profile,omitempty"`
-	Tags      *[]string        `json:"tags,omitempty"`
+	Address   string          `json:"address"`
+	Name      string          `json:"name"`
+	Operation TargetOperation `json:"operation"`
+	Profile   *string         `json:"profile,omitempty"`
+	Tags      *[]string       `json:"tags,omitempty"`
 }
 
 // TargetOperation defines model for Target.Operation.
@@ -48,9 +48,9 @@ type TargetOperation string
 
 // Targets defines model for Targets.
 type Targets struct {
-	TargetList            *[]Target `json:"TargetList,omitempty"`
-	TargetSourceName      *string   `json:"TargetSourceName,omitempty"`
-	TargetSourceNameSpace *string   `json:"targetSourceNameSpace,omitempty"`
+	TargetList            []Target `json:"TargetList"`
+	TargetSourceName      string   `json:"TargetSourceName"`
+	TargetSourceNameSpace string   `json:"targetSourceNameSpace"`
 }
 
 // ServerInterface represents all server handlers.
@@ -132,13 +132,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/4yTz2vdMAzH/xWj7RiStLvlNsooD7au7PU2dvAcJc8lsY2kDB4l//uwnf5Ikwc9xchf",
-	"Wfp+pDyB8WPwDp0wNE/A5oSjTscHTT1KPAXyAUksprhuW0JORzkHhAZYyLoe5gKcHnH3Ij6gxXoXb9FN",
-	"IzS/wRBqQSigxQEF4U+xTQzkOzvsPyq6T21YwXG/nyWgifQZ5teA//uIRqIiu+StzXzx3bKsSnwm7KCB",
-	"T9Urt2qBVi3ENnWfqxz9RAbvLjGSd6Jj0GZPubURQ9Z1PomtRFzQ3/04GPUzcfekfn07Pqiv9wco4B8S",
-	"p0lAXdbl1TIep4OFBr6U12UNBQQtp2S4ylN6y8lnJi8zPbTQwM1KVgAhB+84w7yur+LHeCfoUrIOYbAm",
-	"pVePnPcic7w0ig/i50uAWmRDNuQlfH5TZXet4skYZO6mYcibwtM4ajq/OFOyZFin5IRqzTelVGHQycjy",
-	"36wB3aLcDBML0n2UbQjV8bNu8o1eEcpEDtt3zd2iKJNlKpWf53n+HwAA////AVrz1gMAAA==",
+	"H4sIAAAAAAAC/4yTz4rbMBDGX0VMezSxd3vzrSxlCbTbpdlb6UGVJ4kWW1JnxoWw+N2LJCdrxw70ZCHN",
+	"n29+3/gNjO+Cd+iEoX4DNkfsdDq+aDqgxFMgH5DEYrrXTUPI6SingFADC1l3gKEApztcfYgFtFjv4iu6",
+	"voP6JxhCLQgFNNiiIPwqlomB/N6260VFH5IMK9it6xkvNJE+wTAUQPint4RNbJ/EFpd5piLflfjfr2gk",
+	"1so8eAkkP3y1LDMxHwn3UMOH8p1wOeItR7YLhecuO9+TwadbNOUqaBe0WYu8Gng9baVnMZ1pySLWtW7v",
+	"U0cr0R04PH3bGvU9EfSkfnzZvajPz1so4C8SJ+Oh2lSbu3EbnA4Wavi0ud9UUEDQckzUyrwUU9g+g724",
+	"s22ghodZWJyTg3ecHbmv7uLHeCfoUrIOobUmpZevnNcwm3HLz//0kBeUz/fr3BpkQzbkX+Ecq/LQjeLe",
+	"GGTe922b95X7rtN0ugysZMywTskR1Rx7SilDq9N849875/aI8tD2LEjPMWwBroqfuchJvCKUnhw2V+Ie",
+	"UZTJYSq1H4Zh+BcAAP//nMyhxFwEAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

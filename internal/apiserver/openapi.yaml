@@ -21,6 +21,8 @@ paths:
             application/json:
               schema:
                 type: object
+                required: 
+                  - Targets
                 properties:
                   Targets:
                     $ref: '#/components/schemas/Targets'
@@ -28,6 +30,10 @@ components:
   schemas:
     Targets:
       type: object
+      required:
+        - targetSourceNameSpace
+        - TargetSourceName
+        - TargetList
       properties:
         targetSourceNameSpace:
           type: string
@@ -39,6 +45,10 @@ components:
             $ref: '#/components/schemas/Target'
     Target:
       type: object
+      required: 
+        - name
+        - address
+        - operation
       properties:
         name:
           type: string
