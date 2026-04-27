@@ -19,9 +19,11 @@ package controller
 import (
 	"context"
 	"sync"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,21 +34,42 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
+	"github.com/gnmic/operator/internal/controller/discovery/registry"
+	"github.com/go-logr/logr"
 )
 
-const targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
+const (
+	targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
 
-type runningSource struct {
+	pipelineMaxRestarts = 5
+	pipelineBackoff     = 3 * time.Second
+)
+
+// pipelineHandle represents a controller-owned handle to a running pipeline
+// The controller never manipulates internals; it only invokes cancel()
+type pipelineHandle struct {
 	cancel context.CancelFunc
 }
 
 // TargetSourceReconciler reconciles a TargetSource object
+//
+// Responsibilities:
+// - Ensure at most one pipeline per TargetSource
+// - Start pipelines on reconcile
+// - Stop pipelines on deletion or NotFound
+// - Delegate runtime failure handling to the Supervisor
 type TargetSourceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	mu      sync.Mutex
-	running map[client.ObjectKey]runningSource
+	mu sync.Mutex
+	// runningPipelines tracks currently active pipelines by NamespacedName
+	runningPipelines map[types.NamespacedName]pipelineHandle
+
+	BufferSize int
+	ChunkSize  int
+
+	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -57,37 +80,38 @@ type TargetSourceReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx).WithValues(
-		"Name", req.NamespacedName,
-	)
+	logger := log.FromContext(ctx).
+		WithName("targetsource controller").
+		WithValues("targetsource", req.NamespacedName)
 
-	targetSource, err := r.getTargetSource(ctx, req.NamespacedName)
+	targetSource, err := r.fetchTargetSource(ctx, req.NamespacedName)
 	if err != nil {
+		// If the TargetSource no longer exists, ensure runtime cleanup
+		if client.IgnoreNotFound(err) == nil {
+			logger.Info("TargetSource not found; stopping discovery pipeline")
+			r.stopDiscoveryPipeline(req.NamespacedName)
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, err
 	}
 
-	// Handle deletion with finalizer
 	if !targetSource.DeletionTimestamp.IsZero() {
-		return r.handleTargetSourceDeletion(ctx, req.NamespacedName, targetSource)
+		return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
 	}
 
-	// Ensure finalizer is set
 	if err := r.ensureFinalizer(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// Check if pipeline is already running
-	if r.isPipelineRunning(req.NamespacedName) {
+	if r.hasPipelineRunning(req.NamespacedName) {
 		if targetSource.Generation != targetSource.Status.ObservedGeneration {
-			r.stopDiscovery(req.NamespacedName)
+			r.stopDiscoveryPipeline(req.NamespacedName)
 		} else {
 			err := r.updateStatus(ctx, targetSource)
 			return ctrl.Result{}, err
 		}
 	}
 
-	// Start discovery pipeline
-	if err := r.startDiscoveryPipeline(req.NamespacedName, targetSource); err != nil {
+	if err := r.startDiscoveryPipeline(req.NamespacedName, targetSource, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -100,29 +124,33 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("TargetSource pipeline started")
+	logger.Info("Discover pipeline started")
 	return ctrl.Result{}, nil
 }
 
-// getTargetSource retrieves a TargetSource by name, handling cleanup if not found
-func (r *TargetSourceReconciler) getTargetSource(ctx context.Context, key client.ObjectKey) (*gnmicv1alpha1.TargetSource, error) {
+// fetchTargetSource retrieves a TargetSource by name, handling cleanup if not found
+func (r *TargetSourceReconciler) fetchTargetSource(ctx context.Context, key types.NamespacedName) (*gnmicv1alpha1.TargetSource, error) {
 	var targetSource gnmicv1alpha1.TargetSource
 	if err := r.Get(ctx, key, &targetSource); err != nil {
-		// If the TargetSource no longer exists, ensure runtime cleanup
-		if client.IgnoreNotFound(err) == nil {
-			r.stopDiscovery(key)
-		}
-		return nil, client.IgnoreNotFound(err)
+		return nil, err
 	}
 	return &targetSource, nil
 }
 
-// handleTargetSourceDeletion stops the discovery pipeline and removes the finalizer
-func (r *TargetSourceReconciler) handleTargetSourceDeletion(ctx context.Context, key client.ObjectKey, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("TargetSource is being deleted, stopping pipeline", "name", targetSource.Name)
+// hasPipelineRunning checks if a discovery pipeline is already running for the given key
+func (r *TargetSourceReconciler) hasPipelineRunning(key types.NamespacedName) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, exists := r.runningPipelines[key]
+	return exists
+}
 
-	r.stopDiscovery(key)
+// reconcileDeletion stops the discovery pipeline and removes the finalizer
+func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("TargetSource is being deleted, stopping pipeline", "name", key)
+
+	r.stopDiscoveryPipeline(key)
 
 	// Remove finalizer if exists
 	if controllerutil.ContainsFinalizer(targetSource, targetSourceFinalizer) {
@@ -149,57 +177,109 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 	return nil
 }
 
-// isPipelineRunning checks if a discovery pipeline is already running for the given key
-func (r *TargetSourceReconciler) isPipelineRunning(key client.ObjectKey) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+// startDiscoveryPipeline creates and starts a discover pipeline for a TargetSource
+//
+// Pipeline semantics:
+// 1. target-applier is mandatory and must start first
+// 2. loader is optional and conditional on spec
+// 3. Permanent failure of required components shuts down the pipeline
+// 4. Shutdown ordering: cancel ctx -> wait for goroutines to exit -> close channel -> unregister
+func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource, logger logr.Logger) error {
+	supervisor := discovery.NewSupervisor(context.Background())
 
-	_, exists := r.running[key]
-	return exists
-}
-
-// startDiscoveryPipeline creates and starts the loader and target manager
-func (r *TargetSourceReconciler) startDiscoveryPipeline(key client.ObjectKey, targetSource *gnmicv1alpha1.TargetSource) error {
-	loader, err := discovery.NewLoader(
-		targetSource.Name,
-		targetSource.Namespace,
-		targetSource.Spec,
-	)
-	if err != nil {
+	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
+	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
 		return err
 	}
 
-	runtimeCtx, cancel := context.WithCancel(context.Background())
-	targetChannel := make(chan []core.DiscoveryMessage, 10)
-
-	// Start loader
-	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)
-
-	// Start target manager
-	manager := discovery.NewTargetManager(
+	// Create target applier instance
+	applier := discovery.NewTargetApplier(
 		r.Client,
 		r.Scheme,
 		targetSource,
 		targetChannel,
 	)
-	go manager.Run(runtimeCtx)
+	// Start target applier
+	applierReady := make(chan struct{})
+	supervisor.StartSupervisedComponent(discovery.ComponentSpec{
+		Name: "target-applier",
+		Policy: discovery.RestartPolicy{
+			MaxRestarts: pipelineMaxRestarts,
+			Backoff:     pipelineBackoff,
+		},
+		EscalatesOnFailure: true,
+		Run: func(ctx context.Context) error {
+			close(applierReady) // Signals that applier started successfully
+			return applier.Run(ctx)
+		},
+	})
+	// Wait for applier to be ready before starting loader
+	select {
+	case <-applierReady:
+	case <-supervisor.Done():
+		return nil
+	}
+
+	// Create loader instance
+	loaderConfigured := targetSource.Spec.Provider != nil
+	webhookConfigured := targetSource.Spec.Webhook.Enabled != nil
+	if loaderConfigured {
+		loader, err := discovery.NewLoader(
+			key,
+			targetSource.Spec,
+			core.LoaderConfig{ChunkSize: r.ChunkSize},
+		)
+		if err != nil {
+			supervisor.Stop()
+			return err
+		}
+
+		supervisor.StartSupervisedComponent(discovery.ComponentSpec{
+			Name: "loader",
+			Policy: discovery.RestartPolicy{
+				MaxRestarts: pipelineMaxRestarts,
+				Backoff:     pipelineBackoff,
+			},
+			EscalatesOnFailure: !webhookConfigured,
+			Run: func(ctx context.Context) error {
+				return loader.Start(ctx, key, targetSource.Spec, targetChannel)
+			},
+		})
+	}
+
+	// Monitor supervisor in a separate goroutine to handle shutdown and cleanup
+	go func() {
+		<-supervisor.Done()
+		supervisor.Wait() // Wait for components to exit
+
+		logger.Info("Pipeline stopped; cleaning up")
+		close(targetChannel)
+		r.DiscoveryRegistry.Unregister(key)
+		r.stopDiscoveryPipeline(key)
+	}()
 
 	r.mu.Lock()
-	r.running[key] = runningSource{cancel: cancel}
+	r.runningPipelines[key] = pipelineHandle{
+		cancel: func() {
+			supervisor.Stop()
+		},
+	}
 	r.mu.Unlock()
 
 	return nil
 }
 
-// stopDiscovery stops and removes a running discovery pipeline
-// for the given TargetSource key
-func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
+// stopDiscoveryPipeline stops and removes a running discovery pipeline
+func (r *TargetSourceReconciler) stopDiscoveryPipeline(key types.NamespacedName) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	running, ok := r.runningPipelines[key]
+	if ok {
+		delete(r.runningPipelines, key)
+	}
+	r.mu.Unlock()
 
-	if running, ok := r.running[key]; ok {
+	if ok {
 		running.cancel()
-		delete(r.running, key)
 	}
 }
 
@@ -234,7 +314,7 @@ func (r *TargetSourceReconciler) updateStatus(ctx context.Context, ts *gnmicv1al
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.running = make(map[client.ObjectKey]runningSource)
+	r.runningPipelines = make(map[types.NamespacedName]pipelineHandle)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.TargetSource{}).
