@@ -55,6 +55,11 @@ spec:
                     required:
                     - url
                     type: object
+                  pull:
+                    properties:
+                      enabled:
+                        type: boolean
+                    type: object
                 type: object
                 x-kubernetes-validations:
                 - message: exactly one of the fields in [http consul] must be set
@@ -67,6 +72,11 @@ spec:
               targetProfile:
                 minLength: 1
                 type: string
+              webhook:
+                properties:
+                  enabled:
+                    type: boolean
+                type: object
             required:
             - provider
             - targetProfile
