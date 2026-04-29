@@ -86,7 +86,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	discoveryRegistry := registry.NewRegistry[types.NamespacedName, []core.DiscoveryMessage]()
+	discoveryRegistry := registry.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,

@@ -14,7 +14,7 @@ type APIServer struct {
 	Server            *http.Server
 	clusterReconciler *controller.ClusterReconciler
 
-	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
+	DiscoveryRegistry *registry.Registry[types.NamespacedName, core.DiscoveryRegistryValue]
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler) *APIServer {

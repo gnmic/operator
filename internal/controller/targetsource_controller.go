@@ -66,7 +66,7 @@ type TargetSourceReconciler struct {
 	BufferSize int
 	ChunkSize  int
 
-	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
+	DiscoveryRegistry *registry.Registry[types.NamespacedName, core.DiscoveryRegistryValue]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -108,7 +108,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Discover pipeline started")
+	logger.Info("Discovery pipeline started")
 	return ctrl.Result{}, nil
 }
 
@@ -161,7 +161,7 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 	return nil
 }
 
-// startDiscoveryPipeline creates and starts a discover pipeline for a TargetSource
+// startDiscoveryPipeline creates and starts a discovery pipeline for a TargetSource
 //
 // Pipeline semantics:
 // 1. target reconciler is mandatory and must start first
@@ -169,10 +169,16 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 // 3. Permanent failure of required components shuts down the pipeline
 // 4. Shutdown ordering: cancel ctx -> wait for goroutines to exit -> close channel -> unregister
 func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource, logger logr.Logger) error {
+	loaderConfigured := targetSource.Spec.Provider != nil
+	webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
+
 	supervisor := pipeline.NewSupervisor(context.Background())
 
 	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
-	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
+	if err := r.DiscoveryRegistry.Register(key, core.DiscoveryRegistryValue{
+		Channel:        targetChannel,
+		WebhookEnabled: webhookActivated,
+	}); err != nil {
 		return err
 	}
 
@@ -205,8 +211,6 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}
 
 	// Create loader instance
-	loaderConfigured := targetSource.Spec.Provider != nil
-	webhookConfigured := targetSource.Spec.Webhook.Enabled != nil
 	if loaderConfigured {
 		loader, err := loaders.NewLoader(
 			key,
@@ -224,7 +228,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 				MaxRestarts: pipelineMaxRestarts,
 				Backoff:     pipelineBackoff,
 			},
-			EscalatesOnFailure: !webhookConfigured,
+			EscalatesOnFailure: !webhookActivated,
 			Run: func(ctx context.Context) error {
 				return loader.Start(ctx, key, targetSource.Spec, targetChannel)
 			},

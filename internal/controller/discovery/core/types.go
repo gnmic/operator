@@ -1,5 +1,10 @@
 package core
 
+type DiscoveryRegistryValue struct {
+	Channel        chan<- []DiscoveryMessage
+	WebhookEnabled bool
+}
+
 type LoaderConfig struct {
 	ChunkSize int
 }
