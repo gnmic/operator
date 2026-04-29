@@ -6,6 +6,7 @@ package apiserver
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/bytedance/gopkg/util/logger"
@@ -25,8 +26,8 @@ type APIServer struct {
 }
 
 type urlStruct struct {
-	namespace string `uri:"namespace" binding:"required"`
-	gNMIcClusterName string `uri:"gNMIcClusterName" binding:"required"`
+	namespace           string `uri:"namespace" binding:"required"`
+	gNMIcControllerName string `uri:"gNMIcControllerName" binding:"required"`
 }
 
 func New(addr string, clusterReconciler *controller.ClusterReconciler, chunkSize int) (*APIServer, error) {
@@ -40,7 +41,7 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler, chunkSize
 		clusterReconciler: clusterReconciler,
 		chunkSize:         chunkSize,
 	}
-	apiBaseURL := "/api/v1/:namespace/:gNMIcClusterName"
+	apiBaseURL := "/api/v1/:namespace/:gNMIcControllerName"
 	RegisterHandlersWithOptions(router, a, GinServerOptions{BaseURL: apiBaseURL})
 	return a, nil
 }
@@ -50,7 +51,7 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler, chunkSize
 // GetClusterPlan returns cluster plan
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	url := parseURI(c)
-	plan, err := a.clusterReconciler.GetClusterPlan(url.namespace, url.gNMIcClusterName)
+	plan, err := a.clusterReconciler.GetClusterPlan(url.namespace, url.gNMIcControllerName)
 	if err != nil {
 		c.String(404, err.Error())
 		return
@@ -60,12 +61,7 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) CreateTargets(c *gin.Context) {
-	// Discussion with Daniel: this was input from Jan and Karim that the URI should be a template
-	// But I don't think it is needed in the CreateTargets function
-	// url := parseURI(c)
-	// fmt.Printf("namespace: %s", url.namespace)
-	// fmt.Printf("gNMIcClusterName: %s", url.gNMIcClusterName)
-
+	logger.Info("received POST request for CreateTargets.")
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -76,32 +72,50 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	// needs to be used: https://deepwiki.com/oapi-codegen/oapi-codegen/7-middleware-and-validation
 	// The one for gin-gonic is not actively maintained, so for v1 I'll do validation manually. To be improved.
 	if payloadTargets.TargetSourceNameSpace == "" {
+		logger.Error("POST request does not contain value targetSourceNameSpace.")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "targetSourceNameSpace is required"})
 		return
 	}
 	if payloadTargets.TargetSourceName == "" {
+		logger.Error("POST request does not contain value targetSourceName.")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "targetSourceName is required"})
 		return
 	}
+	key := types.NamespacedName{
+		Namespace: payloadTargets.TargetSourceNameSpace,
+		Name:      payloadTargets.TargetSourceName,
+	}
+	ch, ok := a.DiscoveryRegistry.Get(key)
+	if !ok {
+		logger.Error("TargetSource ", payloadTargets.TargetSourceNameSpace, "/", payloadTargets.TargetSourceName, "does not exist.")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource does not exist"})
+		return
+	}
+
+	fmt.Printf("payloadTargets %+v\n", payloadTargets)
 
 	targets := []core.DiscoveryEvent{}
 	if len(payloadTargets.TargetList) > 0 {
 		for i, target := range payloadTargets.TargetList {
 			if target.Address == "" || target.Name == "" || target.Operation == "" {
-				logger.Warn("Target receieved at index", i , " by pull interface does not contain Address, Name or Operation and is skipped.")
+				logger.Warn("Target receieved at index", i, " by pull interface does not contain Address, Name or Operation and is skipped.")
 				break
 			}
 			if target.Operation.Valid() != true {
-				logger.Warn("Target receieved at index", i , " by pull interface has invalid Operation.")
+				logger.Warn("Target receieved at index", i, " by pull interface has invalid Operation.")
 				break
 			}
 
 			event := core.CREATE
 			switch target.Operation {
-			case Create:
-				event = core.CREATE
-			case Delete:
+			case Created:
+				event = core.UPDATE
+			case Updated:
+				event = core.UPDATE
+			case Deleted:
 				event = core.DELETE
+			default:
+				logger.Warn("Received invalid Operation flag")
 			}
 
 			targets = append(targets, core.DiscoveryEvent{
@@ -113,17 +127,6 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 				Event: event,
 			})
 		}
-	}
-
-	key := types.NamespacedName{
-		Namespace: payloadTargets.TargetSourceNameSpace,
-		Name:      payloadTargets.TargetSourceName,
-	}
-	ch, ok := a.DiscoveryRegistry.Get(key)
-	if !ok {
-		logger.Error("TargetSource " , payloadTargets.TargetSourceNameSpace, "/", payloadTargets.TargetSourceName,  "does not exist.")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource does not exist"})
-		return
 	}
 	core.SendEvents(context.Background(), ch, targets, a.chunkSize)
 	c.JSON(http.StatusOK, payloadTargets)

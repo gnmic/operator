@@ -63,5 +63,6 @@ components:
         operation:
           type: string
           enum:
-            - create
-            - delete
+            - created
+            - updated
+            - deleted

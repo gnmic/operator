@@ -18,16 +18,19 @@ import (
 
 // Defines values for TargetOperation.
 const (
-	Create TargetOperation = "create"
-	Delete TargetOperation = "delete"
+	Created TargetOperation = "created"
+	Deleted TargetOperation = "deleted"
+	Updated TargetOperation = "updated"
 )
 
 // Valid indicates whether the value is a known member of the TargetOperation enum.
 func (e TargetOperation) Valid() bool {
 	switch e {
-	case Create:
+	case Created:
 		return true
-	case Delete:
+	case Deleted:
+		return true
+	case Updated:
 		return true
 	default:
 		return false
@@ -132,14 +135,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/4yTz4rbMBDGX0VMezSxd3vzrSxlCbTbpdlb6UGVJ4kWW1JnxoWw+N2LJCdrxw70ZCHN",
-	"n29+3/gNjO+Cd+iEoX4DNkfsdDq+aDqgxFMgH5DEYrrXTUPI6SingFADC1l3gKEApztcfYgFtFjv4iu6",
-	"voP6JxhCLQgFNNiiIPwqlomB/N6260VFH5IMK9it6xkvNJE+wTAUQPint4RNbJ/EFpd5piLflfjfr2gk",
-	"1so8eAkkP3y1LDMxHwn3UMOH8p1wOeItR7YLhecuO9+TwadbNOUqaBe0WYu8Gng9baVnMZ1pySLWtW7v",
-	"U0cr0R04PH3bGvU9EfSkfnzZvajPz1so4C8SJ+Oh2lSbu3EbnA4Wavi0ud9UUEDQckzUyrwUU9g+g724",
-	"s22ghodZWJyTg3ecHbmv7uLHeCfoUrIOobUmpZevnNcwm3HLz//0kBeUz/fr3BpkQzbkX+Ecq/LQjeLe",
-	"GGTe922b95X7rtN0ugysZMywTskR1Rx7SilDq9N849875/aI8tD2LEjPMWwBroqfuchJvCKUnhw2V+Ie",
-	"UZTJYSq1H4Zh+BcAAP//nMyhxFwEAAA=",
+	"H4sIAAAAAAAC/4yTzYrbMBDHX0VMezSxd3vzrSxlCbTbpdlb6UGVJokWW1JHo0JY/O5FkpO1Ywd60iDN",
+	"x39+M3oD5XrvLFoO0L5BUEfsZTZfJB2Qk+XJeSQ2mO+l1oQhm3zyCC0EJmMPMFRgZY+rDymBZONsekUb",
+	"e2h/giKUjBoqiF6PlsYOk/WrWibx5PamWy/A8pAlGcZ+Xdt4IYnkCYahAsI/0RDqJCULry69TQW/K3G/",
+	"X1FxylXYhCWc8vDVBJ6J+Ui4hxY+1O+06xF1PXJeKDxX2blICp9ukeUrp52Xas3zquH1sJWa1bSnJYuU",
+	"19i9yxUNp+nA4enbVonvmaAj8ePL7kV8ft5CBX+RQl4CaDbN5m7cDCu9gRY+be43DVTgJR8ztbosyBS2",
+	"K2Av09lqaOFh5pb6DN7ZUCZy39ylQznLaHOw9L4zKofXr6GsZBnGrXn+5wzDgvL5fp2bxqDI+PItzr5i",
+	"/BUiRKUwhH3surKvIfa9pNOlYcFjhLGCjyjm2HNI7TuZ+xt/8pzbI/JDFwMjPSe3BbgmHXORE39ByJEs",
+	"6itxj8hCFTeRyw/DMPwLAAD//2Qu5BBoBAAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
