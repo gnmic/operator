@@ -29,9 +29,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/loaders"
+	"github.com/gnmic/operator/internal/controller/discovery/pipeline"
+	"github.com/gnmic/operator/internal/controller/discovery/reconciler"
 	"github.com/gnmic/operator/internal/controller/discovery/registry"
 	"github.com/go-logr/logr"
 )
@@ -168,7 +169,7 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 // 3. Permanent failure of required components shuts down the pipeline
 // 4. Shutdown ordering: cancel ctx -> wait for goroutines to exit -> close channel -> unregister
 func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource, logger logr.Logger) error {
-	supervisor := discovery.NewSupervisor(context.Background())
+	supervisor := pipeline.NewSupervisor(context.Background())
 
 	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
 	if err := r.DiscoveryRegistry.Register(key, targetChannel); err != nil {
@@ -176,7 +177,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}
 
 	// Create target targetHandler instance
-	targetHandler := discovery.NewMessageProcessor(
+	targetHandler := reconciler.NewMessageProcessor(
 		r.Client,
 		r.Scheme,
 		targetSource,
@@ -184,9 +185,9 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	)
 	// Start target handler
 	handlerReady := make(chan struct{})
-	supervisor.StartSupervisedComponent(discovery.ComponentSpec{
+	supervisor.StartSupervisedComponent(pipeline.ComponentSpec{
 		Name: "target-handler",
-		Policy: discovery.RestartPolicy{
+		Policy: pipeline.RestartPolicy{
 			MaxRestarts: pipelineMaxRestarts,
 			Backoff:     pipelineBackoff,
 		},
@@ -217,9 +218,9 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 			return err
 		}
 
-		supervisor.StartSupervisedComponent(discovery.ComponentSpec{
+		supervisor.StartSupervisedComponent(pipeline.ComponentSpec{
 			Name: "loader",
-			Policy: discovery.RestartPolicy{
+			Policy: pipeline.RestartPolicy{
 				MaxRestarts: pipelineMaxRestarts,
 				Backoff:     pipelineBackoff,
 			},

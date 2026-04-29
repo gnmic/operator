@@ -1,4 +1,4 @@
-package discovery
+package pipeline
 
 import (
 	"context"
@@ -25,12 +25,13 @@ type Supervisor struct {
 	stopped bool
 }
 
-// RestartPolicy defines the restart behavior for a component
+// RestartPolicy defines restart behavior of a component
 type RestartPolicy struct {
 	MaxRestarts int
 	Backoff     time.Duration
 }
 
+// ComponentSpec defines a supervised component
 type ComponentSpec struct {
 	Name   string
 	Run    func(ctx context.Context) error

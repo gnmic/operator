@@ -1,4 +1,4 @@
-package discovery
+package reconciler
 
 import (
 	"context"
@@ -9,10 +9,17 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
-func fetchExistingTargets(ctx context.Context, c client.Client, ts *gnmicv1alpha1.TargetSource) ([]gnmicv1alpha1.Target, error) {
+func fetchExistingTargets(
+	ctx context.Context,
+	c client.Client,
+	ts *gnmicv1alpha1.TargetSource,
+) ([]gnmicv1alpha1.Target, error) {
+
 	var targetList gnmicv1alpha1.TargetList
 
-	err := c.List(ctx, &targetList,
+	err := c.List(
+		ctx,
+		&targetList,
 		client.InNamespace(ts.Namespace),
 		client.MatchingLabels{
 			core.LabelTargetSourceName: ts.Name,

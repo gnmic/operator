@@ -12,13 +12,13 @@ type DiscoveredTarget struct {
 	Labels  map[string]string
 }
 
+type EventAction int
+
 const (
 	DELETE EventAction = 0
 	CREATE EventAction = 1
 	UPDATE EventAction = 2
 )
-
-type EventAction int
 
 type DiscoveryEvent struct {
 	Target DiscoveredTarget
