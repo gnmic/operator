@@ -1,4 +1,4 @@
-package loaders
+package utils
 
 import (
 	"context"
