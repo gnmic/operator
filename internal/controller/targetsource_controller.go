@@ -30,7 +30,7 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
+	discoveryTypes "github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/go-logr/logr"
 )
 
@@ -63,7 +63,7 @@ type TargetSourceReconciler struct {
 	BufferSize int
 	ChunkSize  int
 
-	DiscoveryRegistry *discovery.Registry[types.NamespacedName, core.DiscoveryRegistryValue]
+	DiscoveryRegistry *discovery.Registry[types.NamespacedName, discoveryTypes.DiscoveryRegistryValue]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -171,8 +171,8 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 
 	supervisor := discovery.NewSupervisor(context.Background())
 
-	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
-	if err := r.DiscoveryRegistry.Register(key, core.DiscoveryRegistryValue{
+	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
+	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
 		Channel:        targetChannel,
 		WebhookEnabled: webhookActivated,
 	}); err != nil {
@@ -212,7 +212,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		loader, err := discovery.NewLoader(
 			key,
 			targetSource.Spec,
-			core.LoaderConfig{ChunkSize: r.ChunkSize},
+			discoveryTypes.LoaderConfig{ChunkSize: r.ChunkSize},
 		)
 		if err != nil {
 			supervisor.Stop()
