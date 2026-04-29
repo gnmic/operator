@@ -6,7 +6,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
 func fetchExistingTargets(
@@ -22,7 +21,7 @@ func fetchExistingTargets(
 		&targetList,
 		client.InNamespace(ts.Namespace),
 		client.MatchingLabels{
-			core.LabelTargetSourceName: ts.Name,
+			LabelTargetSourceName: ts.Name,
 		},
 	)
 	if err != nil {
