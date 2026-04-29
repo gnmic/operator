@@ -15,10 +15,8 @@ type EventAction int
 const (
 	// EventDelete indicates that a target should be removed
 	EventDelete EventAction = iota
-	// EventCreate indicates that a target should be created
-	EventCreate
-	// EventUpdate indicates that a target should be updated
-	EventUpdate
+	// EventApply indicates that a target should be applied (created or updated)
+	EventApply
 )
 
 // DiscoveredTarget represents a target discovered from an external source

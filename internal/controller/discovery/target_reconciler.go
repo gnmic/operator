@@ -258,12 +258,10 @@ func (r *TargetReconciler) processEvent(ctx context.Context, event core.Discover
 
 func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
-	case core.EventCreate:
-		logger.Info("Would create target", "name", event.Target.Name, "address", event.Target.Address, "labels", event.Target.Labels)
-	case core.EventUpdate:
-		logger.Info("Would update target", "name", event.Target.Name, "address", event.Target.Address, "labels", event.Target.Labels)
 	case core.EventDelete:
 		logger.Info("Would delete target", "name", event.Target.Name)
+	case core.EventApply:
+		logger.Info("Would apply target", "name", event.Target.Name, "address", event.Target.Address, "labels", event.Target.Labels)
 	}
 	return nil
 }
