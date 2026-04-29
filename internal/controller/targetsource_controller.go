@@ -32,7 +32,6 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/loaders"
-	"github.com/gnmic/operator/internal/controller/discovery/pipeline"
 	"github.com/go-logr/logr"
 )
 
@@ -171,7 +170,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	loaderConfigured := targetSource.Spec.Provider != nil
 	webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
 
-	supervisor := pipeline.NewSupervisor(context.Background())
+	supervisor := discovery.NewSupervisor(context.Background())
 
 	targetChannel := make(chan []core.DiscoveryMessage, r.BufferSize)
 	if err := r.DiscoveryRegistry.Register(key, core.DiscoveryRegistryValue{
@@ -190,9 +189,9 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	)
 	// Start target reconciler
 	reconcilerReady := make(chan struct{})
-	supervisor.StartSupervisedComponent(pipeline.ComponentSpec{
+	supervisor.StartSupervisedComponent(discovery.ComponentSpec{
 		Name: "target-reconciler",
-		Policy: pipeline.RestartPolicy{
+		Policy: discovery.RestartPolicy{
 			MaxRestarts: pipelineMaxRestarts,
 			Backoff:     pipelineBackoff,
 		},
@@ -221,9 +220,9 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 			return err
 		}
 
-		supervisor.StartSupervisedComponent(pipeline.ComponentSpec{
+		supervisor.StartSupervisedComponent(discovery.ComponentSpec{
 			Name: "loader",
-			Policy: pipeline.RestartPolicy{
+			Policy: discovery.RestartPolicy{
 				MaxRestarts: pipelineMaxRestarts,
 				Backoff:     pipelineBackoff,
 			},
