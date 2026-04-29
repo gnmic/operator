@@ -164,7 +164,7 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 // startDiscoveryPipeline creates and starts a discover pipeline for a TargetSource
 //
 // Pipeline semantics:
-// 1. target-handler is mandatory and must start first
+// 1. target reconciler is mandatory and must start first
 // 2. loader is optional and conditional on spec
 // 3. Permanent failure of required components shuts down the pipeline
 // 4. Shutdown ordering: cancel ctx -> wait for goroutines to exit -> close channel -> unregister
@@ -176,14 +176,14 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		return err
 	}
 
-	// Create target targetHandler instance
-	targetHandler := reconciler.NewMessageProcessor(
+	// Create target reconciler instance
+	targetReconciler := reconciler.NewMessageProcessor(
 		r.Client,
 		r.Scheme,
 		targetSource,
 		targetChannel,
 	)
-	// Start target handler
+	// Start target reconciler
 	handlerReady := make(chan struct{})
 	supervisor.StartSupervisedComponent(pipeline.ComponentSpec{
 		Name: "target-handler",
@@ -194,7 +194,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		EscalatesOnFailure: true,
 		Run: func(ctx context.Context) error {
 			close(handlerReady) // Signals that handler started successfully
-			return targetHandler.Run(ctx)
+			return targetReconciler.Run(ctx)
 		},
 	})
 	// Wait for handler to be ready before starting loader

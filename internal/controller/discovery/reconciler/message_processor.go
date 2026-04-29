@@ -53,20 +53,20 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 			"name", m.targetSource.Name,
 			"namespace", m.targetSource.Namespace,
 		)
-	logger.Info("target handler started")
+	logger.Info("target reconciler started")
 
 	for m.ctx.Err() == nil {
 		select {
 		case batch, ok := <-m.in:
 			if !ok {
 				// Channel closed, pipeline is shutting down
-				logger.Info("input channel closed, stopping target handler")
+				logger.Info("input channel closed, stopping target reconciler")
 				return nil
 			}
 			m.queue = append(m.queue, batch...)
 
 		case <-ctx.Done():
-			logger.Info("context canceled, stopping target handler")
+			logger.Info("context canceled, stopping target reconciler")
 			return nil
 		}
 
@@ -88,7 +88,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 		}
 	}
 
-	logger.Info("target handler stopped")
+	logger.Info("target reconciler stopped")
 	return nil
 }
 
