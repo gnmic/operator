@@ -10,6 +10,7 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	loaderUtils "github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
 	"github.com/google/uuid"
 )
 
@@ -66,7 +67,7 @@ func (l *Loader) Start(
 				},
 			}
 
-			if err := core.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
+			if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
 				return err
 			}
 		}
