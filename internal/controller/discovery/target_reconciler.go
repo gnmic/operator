@@ -112,7 +112,7 @@ func (r *TargetReconciler) processMessage(ctx context.Context, message core.Disc
 			msg.Targets[i] = normalizeTarget(msg.Targets[i], r.targetSource.Namespace)
 		}
 
-		return r.processSnapshot(ctx, msg, logger)
+		return r.handleSnapshot(ctx, msg, logger)
 
 	case core.DiscoveryEvent:
 		// Process individual event-driven update
@@ -122,15 +122,15 @@ func (r *TargetReconciler) processMessage(ctx context.Context, message core.Disc
 		)
 
 		msg.Target = normalizeTarget(msg.Target, r.targetSource.Namespace)
-		return r.processEvent(ctx, msg, logger)
+		return r.handleEvent(ctx, msg, logger)
 
 	default:
 		return fmt.Errorf("unknonw discovery message type %T", msg)
 	}
 }
 
-// processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
-func (r *TargetReconciler) processSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
+// handleSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
+func (r *TargetReconciler) handleSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	if r.activeSnapshot == nil {
 		r.startNewSnapshot(chunk, logger)
 		return nil
@@ -141,7 +141,7 @@ func (r *TargetReconciler) processSnapshot(ctx context.Context, chunk core.Disco
 	if snapshot.snapshotID != chunk.SnapshotID {
 		// If current snapshot is complete apply it first
 		if snapshot.complete {
-			if err := r.applySnapshot(ctx, snapshot, logger); err != nil {
+			if err := r.reconcileSnapshot(ctx, snapshot, logger); err != nil {
 				return err
 			}
 		} else {
@@ -200,7 +200,7 @@ func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 	return nil
 }
 
-func (r *TargetReconciler) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+func (r *TargetReconciler) handleEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	// If snapshot collecting is active defer events
 	if r.activeSnapshot != nil {
 		r.deferredEvents = append(r.deferredEvents, event)
@@ -208,10 +208,10 @@ func (r *TargetReconciler) processEvent(ctx context.Context, event core.Discover
 	}
 
 	// Apply events
-	return r.applyEvent(ctx, event, logger)
+	return r.reconcileEvent(ctx, event, logger)
 }
 
-func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
+func (r *TargetReconciler) reconcileSnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
 		r.activeSnapshot = nil
@@ -272,7 +272,7 @@ func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshot
 	)
 
 	for _, e := range events {
-		r.processEvent(ctx, e, logger)
+		r.handleEvent(ctx, e, logger)
 	}
 
 	// Replay deferred events
@@ -282,7 +282,7 @@ func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshot
 			return nil
 		default:
 		}
-		if err := r.applyEvent(ctx, event, logger); err != nil {
+		if err := r.reconcileEvent(ctx, event, logger); err != nil {
 			return err
 		}
 	}
@@ -292,7 +292,7 @@ func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshot
 	return nil
 }
 
-func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+func (r *TargetReconciler) reconcileEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
 	case core.EventDelete:
 		if err := deleteTarget(ctx, r.client, event.Target.Name, r.targetSource.Namespace); err != nil {
