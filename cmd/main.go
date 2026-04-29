@@ -42,7 +42,7 @@ import (
 	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/gnmic/operator/internal/controller/discovery/registry"
+	"github.com/gnmic/operator/internal/controller/discovery"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
@@ -86,7 +86,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	discoveryRegistry := registry.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
+	discoveryRegistry := discovery.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
