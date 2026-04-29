@@ -28,9 +28,9 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 	maps.Copy(t.Labels, ts.Spec.TargetLabels)
 
 	for k, v := range d.Labels {
-		if strings.HasPrefix(k, core.ExternalLabelPrefix) {
+		if strings.HasPrefix(k, ExternalLabelPrefix) {
 			switch k {
-			case core.ExternalLabelTargetProfile:
+			case ExternalLabelTargetProfile:
 				t.Spec.Profile = v
 			default:
 				// handle unknown label
@@ -40,7 +40,7 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 		}
 	}
 
-	t.Labels[core.LabelTargetSourceName] = ts.Name
+	t.Labels[LabelTargetSourceName] = ts.Name
 
 	return t
 }
@@ -59,7 +59,7 @@ func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.Discovere
 				Target: core.DiscoveredTarget{
 					Name: e.Name,
 				},
-				Event: core.DELETE,
+				Event: core.EventDelete,
 			})
 		}
 	}
@@ -67,7 +67,7 @@ func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.Discovere
 	for _, d := range discovered {
 		events = append(events, core.DiscoveryEvent{
 			Target: d,
-			Event:  core.APPLY,
+			Event:  core.EventApply,
 		})
 	}
 

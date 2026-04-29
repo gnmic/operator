@@ -24,8 +24,9 @@ type snapshotBuffer struct {
 	complete    bool
 }
 
-// TargetApplier consumes discovered targets and applies them to Kubernetes
-type TargetApplier struct {
+// TargetReconciler consumes discovered targets and applies them to Kubernetes
+type TargetReconciler struct {
+	ctx            context.Context
 	client         client.Client
 	scheme         *runtime.Scheme
 	targetSource   *gnmicv1alpha1.TargetSource
@@ -36,9 +37,9 @@ type TargetApplier struct {
 	deferredEvents []core.DiscoveryEvent
 }
 
-// NewTargetApplier wires a TargetApplier instance
-func NewTargetApplier(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetApplier {
-	return &TargetApplier{
+// NewTargetReconciler wires a TargetReconciler instance
+func NewTargetReconciler(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetReconciler {
+	return &TargetReconciler{
 		client:       c,
 		scheme:       s,
 		targetSource: ts,
@@ -48,38 +49,40 @@ func NewTargetApplier(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.Targ
 
 // Run is a long‑running loop that receives target snapshots
 // and reconciles Target CRs accordingly
-func (a *TargetApplier) Run(ctx context.Context) error {
-	logger := log.FromContext(ctx).
-		WithValues(
-			"name", a.targetSource.Name,
-			"namespace", a.targetSource.Namespace,
-		)
-	logger.Info("target applier started")
+func (r *TargetReconciler) Run(ctx context.Context) error {
+	r.ctx = ctx
 
-	for ctx.Err() == nil {
+	logger := log.FromContext(r.ctx).
+		WithValues(
+			"name", r.targetSource.Name,
+			"namespace", r.targetSource.Namespace,
+		)
+	logger.Info("target reconciler started")
+
+	for r.ctx.Err() == nil {
 		select {
-		case batch, ok := <-a.in:
+		case batch, ok := <-r.in:
 			if !ok {
 				// Channel closed, pipeline is shutting down
-				logger.Info("input channel closed, stopping target applier")
+				logger.Info("input channel closed, stopping target reconciler")
 				return nil
 			}
-			a.queue = append(a.queue, batch...)
+			r.queue = append(r.queue, batch...)
 
 		case <-ctx.Done():
-			logger.Info("context canceled, stopping target applier")
+			logger.Info("context canceled, stopping target reconciler")
 			return nil
 		}
 
-		for len(a.queue) > 0 {
+		for len(r.queue) > 0 {
 			if ctx.Err() != nil {
 				return nil // why return nil?
 			}
 
-			msg := a.queue[0]
-			a.queue = a.queue[1:]
+			msg := r.queue[0]
+			r.queue = r.queue[1:]
 
-			if err := a.processMessage(ctx, msg, logger); err != nil {
+			if err := r.processMessage(r.ctx, msg, logger); err != nil {
 				// Returning error lets the supervisor (controller)
 				// tear down and restart the pipeline via reconciliation
 				// Q: when to return an error vs just log and continue?
@@ -89,11 +92,11 @@ func (a *TargetApplier) Run(ctx context.Context) error {
 		}
 	}
 
-	logger.Info("target applier stopped")
+	logger.Info("target reconciler stopped")
 	return nil
 }
 
-func (a *TargetApplier) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
+func (r *TargetReconciler) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -110,10 +113,10 @@ func (a *TargetApplier) processMessage(ctx context.Context, message core.Discove
 		)
 
 		for i := range msg.Targets {
-			msg.Targets[i] = a.normalizeTarget(msg.Targets[i])
+			msg.Targets[i] = r.normalizeTarget(msg.Targets[i])
 		}
 
-		return a.processSnapshot(ctx, msg, logger)
+		return r.processSnapshot(ctx, msg, logger)
 
 	case core.DiscoveryEvent:
 		// Process individual event-driven update
@@ -122,8 +125,8 @@ func (a *TargetApplier) processMessage(ctx context.Context, message core.Discove
 			"target", msg.Target.Name,
 		)
 
-		msg.Target = a.normalizeTarget(msg.Target)
-		return a.processEvent(ctx, msg, logger)
+		msg.Target = r.normalizeTarget(msg.Target)
+		return r.processEvent(ctx, msg, logger)
 
 	default:
 		return fmt.Errorf("unknonw discovery message type %T", msg)
@@ -131,18 +134,18 @@ func (a *TargetApplier) processMessage(ctx context.Context, message core.Discove
 }
 
 // processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
-func (a *TargetApplier) processSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
-	if a.activeSnapshot == nil {
-		a.startNewSnapshot(chunk, logger)
+func (r *TargetReconciler) processSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
+	if r.activeSnapshot == nil {
+		r.startNewSnapshot(chunk, logger)
 		return nil
 	}
 
-	snapshot := a.activeSnapshot
+	snapshot := r.activeSnapshot
 	// Check if a new snapshot arrived
 	if snapshot.snapshotID != chunk.SnapshotID {
 		// If current snapshot is complete apply it first
 		if snapshot.complete {
-			if err := a.applySnapshot(ctx, snapshot, logger); err != nil {
+			if err := r.applySnapshot(ctx, snapshot, logger); err != nil {
 				return err
 			}
 		} else {
@@ -155,40 +158,40 @@ func (a *TargetApplier) processSnapshot(ctx context.Context, chunk core.Discover
 		}
 
 		// Start collecting the new snapshot
-		a.startNewSnapshot(chunk, logger)
+		r.startNewSnapshot(chunk, logger)
 		return nil
 	}
 
-	return a.collectSnapshot(chunk, logger)
+	return r.collectSnapshot(chunk, logger)
 }
 
-func (a *TargetApplier) startNewSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) {
-	a.activeSnapshot = &snapshotBuffer{
+func (r *TargetReconciler) startNewSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) {
+	r.activeSnapshot = &snapshotBuffer{
 		snapshotID:  chunk.SnapshotID,
 		totalChunks: chunk.TotalChunks,
 		received:    make(map[int][]core.DiscoveredTarget),
 		complete:    false,
 	}
 	// Delete buffered events that will be current with new snapshot
-	a.deferredEvents = nil
+	r.deferredEvents = nil
 
-	a.collectSnapshot(chunk, logger)
+	r.collectSnapshot(chunk, logger)
 }
 
-func (a *TargetApplier) collectSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) error {
-	snapshot := a.activeSnapshot
+func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) error {
+	snapshot := r.activeSnapshot
 
 	if chunk.TotalChunks != snapshot.totalChunks {
 		logger.Error(nil, "snapshot totalChunks mismatch", "snapshotID", snapshot.snapshotID)
 	}
 	if chunk.ChunkIndex < 0 || chunk.ChunkIndex >= snapshot.totalChunks {
 		logger.Error(nil, "snapshot chunk index out of range", "index", chunk.ChunkIndex)
-		a.activeSnapshot = nil
+		r.activeSnapshot = nil
 		return nil
 	}
 	if _, exists := snapshot.received[chunk.ChunkIndex]; exists {
 		logger.Error(nil, "duplicate snapshot chunk", "index", chunk.ChunkIndex)
-		a.activeSnapshot = nil
+		r.activeSnapshot = nil
 		return nil
 	}
 
@@ -201,21 +204,21 @@ func (a *TargetApplier) collectSnapshot(chunk core.DiscoverySnapshot, logger log
 	return nil
 }
 
-func (a *TargetApplier) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+func (r *TargetReconciler) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	// If snapshot collecting is active defer events
-	if a.activeSnapshot != nil {
-		a.deferredEvents = append(a.deferredEvents, event)
+	if r.activeSnapshot != nil {
+		r.deferredEvents = append(r.deferredEvents, event)
 		return nil
 	}
 
 	// Apply events
-	return a.applyEvent(ctx, event, logger)
+	return r.applyEvent(ctx, event, logger)
 }
 
-func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
+func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
-		a.activeSnapshot = nil
+		r.activeSnapshot = nil
 		return nil
 	default:
 	}
@@ -224,7 +227,7 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 	for i := 0; i < snapshot.totalChunks; i++ {
 		select {
 		case <-ctx.Done():
-			a.activeSnapshot = nil
+			r.activeSnapshot = nil
 			return nil
 		default:
 		}
@@ -232,7 +235,7 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 		chunk, ok := snapshot.received[i]
 		if !ok {
 			logger.Error(nil, "missing snapshot chunk", "index", i)
-			a.activeSnapshot = nil
+			r.activeSnapshot = nil
 			return nil
 		}
 		allTargets = append(allTargets, chunk...)
@@ -244,7 +247,7 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 		"targetCount", len(allTargets),
 	)
 
-	existing, err := FetchExistingTargets(ctx, a.client, *a.targetSource)
+	existing, err := fetchExistingTargets(ctx, r.client, r.targetSource)
 	if err != nil {
 		logger.Error(err, "error fetching existing targets")
 	} else {
@@ -260,9 +263,9 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 
 	for _, e := range events {
 		switch e.Event {
-		case core.APPLY:
+		case core.EventApply:
 			nApply++
-		case core.DELETE:
+		case core.EventDelete:
 			nDelete++
 		}
 	}
@@ -273,30 +276,30 @@ func (a *TargetApplier) applySnapshot(ctx context.Context, snapshot *snapshotBuf
 	)
 
 	for _, e := range events {
-		a.processEvent(ctx, e, logger)
+		r.processEvent(ctx, e, logger)
 	}
 
 	// Replay deferred events
-	for _, event := range a.deferredEvents {
+	for _, event := range r.deferredEvents {
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
 		}
-		if err := a.applyEvent(ctx, event, logger); err != nil {
+		if err := r.applyEvent(ctx, event, logger); err != nil {
 			return err
 		}
 	}
 
-	a.activeSnapshot = nil
-	a.deferredEvents = nil
+	r.activeSnapshot = nil
+	r.deferredEvents = nil
 	return nil
 }
 
-func (a *TargetApplier) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
-	case core.DELETE:
-		if err := a.deleteTarget(ctx, event.Target.Name); err != nil {
+	case core.EventDelete:
+		if err := r.deleteTarget(ctx, event.Target.Name); err != nil {
 			logger.Error(err, "error deleting target",
 				"targetName", event.Target.Name,
 			)
@@ -305,10 +308,10 @@ func (a *TargetApplier) applyEvent(ctx context.Context, event core.DiscoveryEven
 				"name", event.Target.Name,
 			)
 		}
-	case core.APPLY:
-		target := generateTargetResource(event.Target, a.targetSource)
+	case core.EventApply:
+		target := generateTargetResource(event.Target, r.targetSource)
 
-		if err := a.applyTarget(ctx, target); err != nil {
+		if err := r.applyTarget(ctx, target); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)
@@ -322,7 +325,7 @@ func (a *TargetApplier) applyEvent(ctx context.Context, event core.DiscoveryEven
 	return nil
 }
 
-func (a *TargetApplier) applyTarget(ctx context.Context, desired *gnmicv1alpha1.Target) error {
+func (r *TargetReconciler) applyTarget(ctx context.Context, desired *gnmicv1alpha1.Target) error {
 	existing := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      desired.Name,
@@ -330,22 +333,22 @@ func (a *TargetApplier) applyTarget(ctx context.Context, desired *gnmicv1alpha1.
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, a.client, existing, func() error {
+	_, err := controllerutil.CreateOrUpdate(ctx, r.client, existing, func() error {
 		existing.Spec = desired.Spec
 		existing.Labels = desired.Labels
 
-		return controllerutil.SetControllerReference(a.targetSource, existing, a.scheme)
+		return controllerutil.SetControllerReference(r.targetSource, existing, r.scheme)
 	})
 
 	return err
 }
 
-func (a *TargetApplier) deleteTarget(ctx context.Context, name string) error {
+func (r *TargetReconciler) deleteTarget(ctx context.Context, name string) error {
 	existing := &gnmicv1alpha1.Target{}
 
-	err := a.client.Get(ctx, types.NamespacedName{
+	err := r.client.Get(ctx, types.NamespacedName{
 		Name:      name,
-		Namespace: a.targetSource.Namespace,
+		Namespace: r.targetSource.Namespace,
 	}, existing)
 	if apierrors.IsNotFound(err) {
 		return nil
@@ -353,7 +356,7 @@ func (a *TargetApplier) deleteTarget(ctx context.Context, name string) error {
 		return err
 	}
 
-	err = a.client.Delete(ctx, existing)
+	err = r.client.Delete(ctx, existing)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -361,7 +364,7 @@ func (a *TargetApplier) deleteTarget(ctx context.Context, name string) error {
 	return err
 }
 
-func (a *TargetApplier) normalizeTarget(t core.DiscoveredTarget) core.DiscoveredTarget {
-	t.Name = a.targetSource.Name + "-" + t.Name
+func (r *TargetReconciler) normalizeTarget(t core.DiscoveredTarget) core.DiscoveredTarget {
+	t.Name = r.targetSource.Name + "-" + t.Name
 	return t
 }

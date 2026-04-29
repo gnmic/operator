@@ -14,7 +14,7 @@ type Loader interface {
 	Name() string
 
 	// Start begins discovery and pushes target snapshots or events into the out channel
-	// The loader must stop cleanly when ctx is cancelled
+	// The loader must stop cleanly when ctx is canceled
 	Start(
 		ctx context.Context,
 		targetsourceName types.NamespacedName,
