@@ -258,11 +258,11 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 
 func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
-	case core.CREATE:
+	case core.EventCreate:
 		logger.Info("Would create target", "name", event.Target.Name, "address", event.Target.Address, "labels", event.Target.Labels)
-	case core.UPDATE:
+	case core.EventUpdate:
 		logger.Info("Would update target", "name", event.Target.Name, "address", event.Target.Address, "labels", event.Target.Labels)
-	case core.DELETE:
+	case core.EventDelete:
 		logger.Info("Would delete target", "name", event.Target.Name)
 	}
 	return nil
