@@ -183,7 +183,7 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	}
 
 	// Create target reconciler instance
-	targetReconciler := discovery.NewMessageProcessor(
+	targetReconciler := discovery.NewTargetReconciler(
 		r.Client,
 		r.Scheme,
 		targetSource,
