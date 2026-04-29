@@ -33,7 +33,6 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/loaders"
 	"github.com/gnmic/operator/internal/controller/discovery/pipeline"
-	"github.com/gnmic/operator/internal/controller/discovery/registry"
 	"github.com/go-logr/logr"
 )
 
@@ -66,7 +65,7 @@ type TargetSourceReconciler struct {
 	BufferSize int
 	ChunkSize  int
 
-	DiscoveryRegistry *registry.Registry[types.NamespacedName, core.DiscoveryRegistryValue]
+	DiscoveryRegistry *discovery.Registry[types.NamespacedName, core.DiscoveryRegistryValue]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
