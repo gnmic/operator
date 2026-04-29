@@ -184,22 +184,22 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		targetChannel,
 	)
 	// Start target reconciler
-	handlerReady := make(chan struct{})
+	reconcilerReady := make(chan struct{})
 	supervisor.StartSupervisedComponent(pipeline.ComponentSpec{
-		Name: "target-handler",
+		Name: "target-reconciler",
 		Policy: pipeline.RestartPolicy{
 			MaxRestarts: pipelineMaxRestarts,
 			Backoff:     pipelineBackoff,
 		},
 		EscalatesOnFailure: true,
 		Run: func(ctx context.Context) error {
-			close(handlerReady) // Signals that handler started successfully
+			close(reconcilerReady) // Signals that reconciler started successfully
 			return targetReconciler.Run(ctx)
 		},
 	})
-	// Wait for handler to be ready before starting loader
+	// Wait for reconciler to be ready before starting loader
 	select {
-	case <-handlerReady:
+	case <-reconcilerReady:
 	case <-supervisor.Done():
 		return nil
 	}
