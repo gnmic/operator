@@ -4,12 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -113,7 +109,7 @@ func (r *TargetReconciler) processMessage(ctx context.Context, message core.Disc
 		)
 
 		for i := range msg.Targets {
-			msg.Targets[i] = r.normalizeTarget(msg.Targets[i])
+			msg.Targets[i] = normalizeTarget(msg.Targets[i], r.targetSource.Namespace)
 		}
 
 		return r.processSnapshot(ctx, msg, logger)
@@ -125,7 +121,7 @@ func (r *TargetReconciler) processMessage(ctx context.Context, message core.Disc
 			"target", msg.Target.Name,
 		)
 
-		msg.Target = r.normalizeTarget(msg.Target)
+		msg.Target = normalizeTarget(msg.Target, r.targetSource.Namespace)
 		return r.processEvent(ctx, msg, logger)
 
 	default:
@@ -299,7 +295,7 @@ func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshot
 func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
 	case core.EventDelete:
-		if err := r.deleteTarget(ctx, event.Target.Name); err != nil {
+		if err := deleteTarget(ctx, r.client, event.Target.Name, r.targetSource.Namespace); err != nil {
 			logger.Error(err, "error deleting target",
 				"targetName", event.Target.Name,
 			)
@@ -311,7 +307,7 @@ func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryE
 	case core.EventApply:
 		target := generateTargetResource(event.Target, r.targetSource)
 
-		if err := r.applyTarget(ctx, target); err != nil {
+		if err := applyTarget(ctx, r.client, r.scheme, target, r.targetSource); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)
@@ -323,48 +319,4 @@ func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryE
 	}
 
 	return nil
-}
-
-func (r *TargetReconciler) applyTarget(ctx context.Context, desired *gnmicv1alpha1.Target) error {
-	existing := &gnmicv1alpha1.Target{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      desired.Name,
-			Namespace: desired.Namespace,
-		},
-	}
-
-	_, err := controllerutil.CreateOrUpdate(ctx, r.client, existing, func() error {
-		existing.Spec = desired.Spec
-		existing.Labels = desired.Labels
-
-		return controllerutil.SetControllerReference(r.targetSource, existing, r.scheme)
-	})
-
-	return err
-}
-
-func (r *TargetReconciler) deleteTarget(ctx context.Context, name string) error {
-	existing := &gnmicv1alpha1.Target{}
-
-	err := r.client.Get(ctx, types.NamespacedName{
-		Name:      name,
-		Namespace: r.targetSource.Namespace,
-	}, existing)
-	if apierrors.IsNotFound(err) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	err = r.client.Delete(ctx, existing)
-	if apierrors.IsNotFound(err) {
-		return nil
-	}
-
-	return err
-}
-
-func (r *TargetReconciler) normalizeTarget(t core.DiscoveredTarget) core.DiscoveredTarget {
-	t.Name = r.targetSource.Name + "-" + t.Name
-	return t
 }

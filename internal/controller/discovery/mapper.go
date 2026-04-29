@@ -73,3 +73,8 @@ func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.Discovere
 
 	return events
 }
+
+func normalizeTarget(t core.DiscoveredTarget, tsName string) core.DiscoveredTarget {
+	t.Name = tsName + "-" + t.Name
+	return t
+}
