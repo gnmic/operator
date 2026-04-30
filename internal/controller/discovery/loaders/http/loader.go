@@ -77,7 +77,7 @@ func (l *Loader) Start(
 			return
 		}
 
-		snapshotID := fmt.Sprintf("snapshot-%s-%s-%s", targetsourceNN.Namespace, targetsourceNN.Name, uuid.NewString())
+		snapshotID := fmt.Sprintf("%s-%s-%s", targetsourceNN.Namespace, targetsourceNN.Name, uuid.NewString())
 		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
 			logger.Error(err, "failed to send discovery snapshot")
 			return
