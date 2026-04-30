@@ -50,6 +50,7 @@ func (r *TargetReconciler) Run(ctx context.Context) error {
 
 	logger := log.FromContext(r.ctx).
 		WithValues(
+			"component", "target reconciler",
 			"name", r.targetSource.Name,
 			"namespace", r.targetSource.Namespace,
 		)
