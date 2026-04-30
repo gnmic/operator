@@ -1,5 +1,34 @@
 package core
 
+import "context"
+
+// DiscoveryRegistryValue represents the controller-owned runtime state
+// of a discovery pipeline for a single TargetSource
+type DiscoveryRegistryValue struct {
+	// Channel is the outbound communication channel used by discovery
+	// components (loaders, webhooks, etc.) to emit discovery messages
+	Channel chan<- []DiscoveryMessage
+	// WebhookEnabled indicates whether webhook-based discovery is enabled
+	// for this TargetSource
+	WebhookEnabled bool
+	// Stop cancels the discovery pipeline associated with this registry entry
+	Stop context.CancelFunc
+}
+
+type LoaderConfig struct {
+	ChunkSize int
+}
+
+// EventAction represents the type of a discovery event
+type EventAction int
+
+const (
+	// EventDelete indicates that a target should be removed
+	EventDelete EventAction = iota
+	// EventApply indicates that a target should be applied (created or updated)
+	EventApply
+)
+
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
@@ -8,15 +37,14 @@ type DiscoveredTarget struct {
 	Labels  map[string]string
 }
 
-const (
-	DELETE DiscoveryEvent = 0
-	CREATE DiscoveryEvent = 1
-	UPDATE DiscoveryEvent = 2
-)
-
-type DiscoveryEvent int
-
-type DiscoveryMessage struct {
+type DiscoveryEvent struct {
 	Target DiscoveredTarget
-	Event  DiscoveryEvent
+	Event  EventAction
+}
+
+type DiscoverySnapshot struct {
+	SnapshotID  string
+	ChunkIndex  int
+	TotalChunks int
+	Targets     []DiscoveredTarget
 }
