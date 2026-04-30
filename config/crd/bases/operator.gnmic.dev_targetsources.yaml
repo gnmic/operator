@@ -62,6 +62,13 @@ spec:
                 - message: exactly one of the fields in [http consul] must be set
                   rule: '[has(self.http),has(self.consul)].filter(x,x==true).size()
                     == 1'
+              restartPolicy:
+                properties:
+                  backoffSeconds:
+                    type: integer
+                  maxRestarts:
+                    type: integer
+                type: object
               targetLabels:
                 additionalProperties:
                   type: string
@@ -69,6 +76,11 @@ spec:
               targetProfile:
                 minLength: 1
                 type: string
+              webhook:
+                properties:
+                  enabled:
+                    type: boolean
+                type: object
             required:
             - provider
             - targetProfile

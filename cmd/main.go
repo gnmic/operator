@@ -28,6 +28,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +41,8 @@ import (
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/controller/discovery"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
@@ -83,6 +86,8 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	discoveryRegistry := discovery.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
@@ -121,10 +126,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.TargetSourceReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		BufferSize: discoveryBufferSize,
-		ChunkSize:  discoveryChunkSize,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		BufferSize:        discoveryBufferSize,
+		ChunkSize:         discoveryChunkSize,
+		DiscoveryRegistry: discoveryRegistry,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetSource")
 		os.Exit(1)
@@ -226,6 +232,7 @@ func main() {
 
 	if apiAddr != "" {
 		apiServer := apiserver.New(apiAddr, clusterReconciler)
+		apiServer.DiscoveryRegistry = discoveryRegistry
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error)
 			go func() {

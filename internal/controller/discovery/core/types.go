@@ -1,8 +1,23 @@
 package core
 
+type DiscoveryRegistryValue struct {
+	Channel        chan<- []DiscoveryMessage
+	WebhookEnabled bool
+}
+
 type LoaderConfig struct {
 	ChunkSize int
 }
+
+// EventAction represents the type of a discovery event
+type EventAction int
+
+const (
+	// EventDelete indicates that a target should be removed
+	EventDelete EventAction = iota
+	// EventApply indicates that a target should be applied (created or updated)
+	EventApply
+)
 
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
@@ -12,22 +27,14 @@ type DiscoveredTarget struct {
 	Labels  map[string]string
 }
 
-const (
-	DELETE EventAction = 0
-	CREATE EventAction = 1
-	UPDATE EventAction = 2
-)
-
-type EventAction int
-
 type DiscoveryEvent struct {
 	Target DiscoveredTarget
 	Event  EventAction
 }
 
 type DiscoverySnapshot struct {
-	Targets     []DiscoveredTarget
-	Event       EventAction
 	SnapshotID  string
-	IsLastChunk bool
+	ChunkIndex  int
+	TotalChunks int
+	Targets     []DiscoveredTarget
 }

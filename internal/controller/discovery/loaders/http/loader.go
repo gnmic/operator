@@ -1,4 +1,4 @@
-package pull
+package http
 
 import (
 	"context"
@@ -8,15 +8,16 @@ import (
 	"net/http"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	loaderUtils "github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
 	"github.com/google/uuid"
 )
 
 const (
-	chunkSize           = 100
 	defaultPollInterval = 30 * time.Second
 )
 
@@ -25,31 +26,32 @@ type Loader struct {
 	cfg core.LoaderConfig
 }
 
-// New instantiates the pull loader with the provided config
+// New instantiates the http loader with the provided config
 func New(cfg core.LoaderConfig) core.Loader {
 	return &Loader{cfg: cfg}
 }
 
 func (l *Loader) Name() string {
-	return "pull"
+	return "http"
 }
 
 func (l *Loader) Start(
 	ctx context.Context,
-	targetsourceName string,
+	targetsourceNN types.NamespacedName,
 	spec gnmicv1alpha1.TargetSourceSpec,
 	out chan<- []core.DiscoveryMessage,
 ) error {
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", targetsourceName,
+		"targetsource", targetsourceNN,
 	)
-	logger.Info("HTTP pull loader started")
+
+	logger.Info("HTTP loader started")
 
 	// Input Validation of spec
 	if spec.Provider == nil || spec.Provider.HTTP == nil {
-		return errors.New("http_pull loader requires spec.provider.http to be set")
+		return errors.New("HTTP loader requires spec.provider.http to be set")
 	}
 
 	client := &http.Client{
@@ -75,8 +77,8 @@ func (l *Loader) Start(
 			return
 		}
 
-		snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceName, uuid.NewString())
-		if err := core.SendSnapshot(ctx, out, targets, snapshotID, chunkSize); err != nil {
+		snapshotID := fmt.Sprintf("snapshot-%s-%s-%s", targetsourceNN.Namespace, targetsourceNN.Name, uuid.NewString())
+		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
 			logger.Error(err, "failed to send discovery snapshot")
 			return
 		}
@@ -89,7 +91,7 @@ func (l *Loader) Start(
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("HTTP pull loader stopped")
+			logger.Info("HTTP loader stopped")
 			return nil
 
 		case <-ticker.C:
