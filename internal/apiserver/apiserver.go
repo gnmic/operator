@@ -6,7 +6,6 @@ package apiserver
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/bytedance/gopkg/util/logger"
@@ -62,42 +61,33 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) CreateTargets(c *gin.Context) {
 	logger.Info("received POST request for CreateTargets.")
+
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// the openapi.yaml contract has required fields, but these are not enforced... To enforce them, a middleware
-	// needs to be used: https://deepwiki.com/oapi-codegen/oapi-codegen/7-middleware-and-validation
-	// The one for gin-gonic is not actively maintained, so for v1 I'll do validation manually. To be improved.
-	if payloadTargets.TargetSourceNameSpace == "" {
-		logger.Error("POST request does not contain value targetSourceNameSpace.")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "targetSourceNameSpace is required"})
-		return
-	}
-	if payloadTargets.TargetSourceName == "" {
-		logger.Error("POST request does not contain value targetSourceName.")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "targetSourceName is required"})
-		return
-	}
-	key := types.NamespacedName{
-		Namespace: payloadTargets.TargetSourceNameSpace,
-		Name:      payloadTargets.TargetSourceName,
-	}
-	ch, ok := a.DiscoveryRegistry.Get(key)
+	ch, ok := a.DiscoveryRegistry.Get(getKey(payloadTargets))
 	if !ok {
 		logger.Error("TargetSource ", payloadTargets.TargetSourceNameSpace, "/", payloadTargets.TargetSourceName, "does not exist.")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource does not exist"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + payloadTargets.TargetSourceNameSpace + " / " + payloadTargets.TargetSourceName + " does not exist"})
 		return
 	}
 
-	fmt.Printf("payloadTargets %+v\n", payloadTargets)
+	targets := createDiscoveryEvent(payloadTargets)
+	// fmt.Printf("core.DiscoveryEvent was created: %v", targets)
+	core.SendEvents(context.Background(), ch, targets, a.chunkSize)
+	c.JSON(http.StatusOK, payloadTargets)
+}
 
+// createDiscoveryEvent creates object of type core.DiscoveryEvent
+func createDiscoveryEvent(payloadTargets Targets) []core.DiscoveryEvent {
 	targets := []core.DiscoveryEvent{}
 	if len(payloadTargets.TargetList) > 0 {
 		for i, target := range payloadTargets.TargetList {
 			if target.Address == "" || target.Name == "" || target.Operation == "" {
+				// no REST API return here as not all targets might
 				logger.Warn("Target receieved at index", i, " by pull interface does not contain Address, Name or Operation and is skipped.")
 				break
 			}
@@ -106,42 +96,56 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 				break
 			}
 
-			event := core.CREATE
-			switch target.Operation {
-			case Created:
-				event = core.UPDATE
-			case Updated:
-				event = core.UPDATE
-			case Deleted:
-				event = core.DELETE
-			default:
-				logger.Warn("Received invalid Operation flag")
-			}
-
-			labelToMap := make(map[string]string)
-			if target.Labels != nil {
-				for _, tag := range *target.Labels {
-					if tag.Key == nil || tag.Value == nil || *tag.Key == "" {
-						continue
-					}
-					labelToMap[*tag.Key] = *tag.Value
-				}
-			}
-
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:    target.Name,
 					Address: target.Address,
-					Labels:  labelToMap,
+					Labels:  convertTargetLabelsToMap(target),
 				},
-				Event: event,
+				Event: getEvent(target),
 			})
 		}
 	}
+	return targets
+}
 
-	fmt.Printf("core.DiscoveryEvent was created: %v", targets)
-	core.SendEvents(context.Background(), ch, targets, a.chunkSize)
-	c.JSON(http.StatusOK, payloadTargets)
+// getKey returns key for used to identify correct channel in DiscoveryRegistry
+func getKey(payloadTargets Targets) types.NamespacedName {
+	key := types.NamespacedName{
+		Namespace: payloadTargets.TargetSourceNameSpace,
+		Name:      payloadTargets.TargetSourceName,
+	}
+	return key
+}
+
+// convertTargetLabelsToMap converts target.Labels to map.
+func convertTargetLabelsToMap(target Target) map[string]string {
+	labelToMap := make(map[string]string)
+	if target.Labels != nil {
+		for _, tag := range *target.Labels {
+			if tag.Key == nil || tag.Value == nil || *tag.Key == "" {
+				continue
+			}
+			labelToMap[*tag.Key] = *tag.Value
+		}
+	}
+	return labelToMap
+}
+
+// getEvent converts target.Operation to core.Operation.
+func getEvent(target Target) core.EventAction {
+	event := core.CREATE
+	switch target.Operation {
+	case Created:
+		event = core.UPDATE
+	case Updated:
+		event = core.UPDATE
+	case Deleted:
+		event = core.DELETE
+	default:
+		logger.Warn("Received invalid Operation flag")
+	}
+	return event
 }
 
 // parseURI parses URI to urlStruct.
