@@ -35,11 +35,6 @@ import (
 	"github.com/go-logr/logr"
 )
 
-const (
-	pipelineMaxRestarts = 5
-	pipelineBackoff     = 3 * time.Second
-)
-
 // pipelineHandle represents a controller-owned handle to a running pipeline
 // The controller never manipulates internals; it only invokes cancel()
 type pipelineHandle struct {
@@ -158,6 +153,29 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 	return nil
 }
 
+// resolveRestartPolicy merges an optional spec override with the controller’s default restart policy
+func resolveRestartPolicy(
+	override *gnmicv1alpha1.RestartPolicySpec,
+) discovery.RestartPolicy {
+	defaults := discovery.DefaultRestartPolicy()
+
+	if override == nil {
+		return defaults
+	}
+
+	resolved := defaults
+
+	if override.MaxRestarts != nil {
+		resolved.MaxRestarts = *override.MaxRestarts
+	}
+
+	if override.BackoffSeconds != nil {
+		resolved.Backoff = time.Duration(*override.BackoffSeconds) * time.Second
+	}
+
+	return resolved
+}
+
 // startDiscoveryPipeline creates and starts a discovery pipeline for a TargetSource
 //
 // Pipeline semantics:
@@ -168,6 +186,7 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource, logger logr.Logger) error {
 	loaderConfigured := targetSource.Spec.Provider != nil
 	webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
+	restartPolicy := resolveRestartPolicy(targetSource.Spec.RestartPolicy)
 
 	supervisor := discovery.NewSupervisor(context.Background())
 
@@ -187,22 +206,19 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		targetChannel,
 	)
 	// Start target reconciler
-	reconcilerReady := make(chan struct{})
+	targetReconcilerReady := make(chan struct{})
 	supervisor.StartSupervisedComponent(discovery.ComponentSpec{
-		Name: "target-reconciler",
-		Policy: discovery.RestartPolicy{
-			MaxRestarts: pipelineMaxRestarts,
-			Backoff:     pipelineBackoff,
-		},
+		Name:               "target-reconciler",
+		Policy:             restartPolicy,
 		EscalatesOnFailure: true,
 		Run: func(ctx context.Context) error {
-			close(reconcilerReady) // Signals that reconciler started successfully
+			close(targetReconcilerReady) // Signals that reconciler started successfully
 			return targetReconciler.Run(ctx)
 		},
 	})
 	// Wait for reconciler to be ready before starting loader
 	select {
-	case <-reconcilerReady:
+	case <-targetReconcilerReady:
 	case <-supervisor.Done():
 		return nil
 	}
@@ -220,11 +236,8 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		}
 
 		supervisor.StartSupervisedComponent(discovery.ComponentSpec{
-			Name: "loader",
-			Policy: discovery.RestartPolicy{
-				MaxRestarts: pipelineMaxRestarts,
-				Backoff:     pipelineBackoff,
-			},
+			Name:               "loader",
+			Policy:             restartPolicy,
 			EscalatesOnFailure: !webhookActivated,
 			Run: func(ctx context.Context) error {
 				return loader.Start(ctx, key, targetSource.Spec, targetChannel)
