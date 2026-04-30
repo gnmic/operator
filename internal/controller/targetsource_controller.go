@@ -80,11 +80,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	targetSource, err := r.fetchTargetSource(ctx, req.NamespacedName)
 	// If the TargetSource no longer exists, ensure runtime cleanup
 	if apierrors.IsNotFound(err) {
-		logger.Info(
-			"TargetSource not found; stopped discovery pipeline",
-			"targetsource", req.NamespacedName.Name,
-			"namespace", req.NamespacedName.Namespace,
-		)
+		logger.Info("TargetSource not found; stopped discovery pipeline")
 		r.stopDiscoveryPipeline(req.NamespacedName)
 		return ctrl.Result{}, nil
 	} else if err != nil {
@@ -100,6 +96,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if r.hasPipelineRunning(req.NamespacedName) {
+		logger.Info("Discovery pipeline already running; reconciliation completed")
 		return ctrl.Result{}, nil
 	}
 
@@ -107,11 +104,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	logger.Info(
-		"Started discovery pipeline",
-		"targetsource", req.NamespacedName.Name,
-		"namespace", req.NamespacedName.Namespace,
-	)
+	logger.Info("Started discovery pipeline")
 	return ctrl.Result{}, nil
 }
 
@@ -134,13 +127,11 @@ func (r *TargetSourceReconciler) hasPipelineRunning(key types.NamespacedName) bo
 
 // reconcileDeletion stops the discovery pipeline and removes the finalizer
 func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info(
-		"TargetSource was marked for deletion; stopping discovery pipeline",
+	logger := log.FromContext(ctx).WithValues(
 		"targetsource", key.Name,
 		"namespace", key.Namespace,
 	)
-
+	logger.Info("TargetSource was marked for deletion; stopping discovery pipeline")
 	r.stopDiscoveryPipeline(key)
 
 	// Remove finalizer if exists
@@ -149,6 +140,8 @@ func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key type
 		if err := r.Update(ctx, targetSource); err != nil {
 			return ctrl.Result{}, err
 		}
+
+		logger.Info("Removed TargetSource finalizer")
 	}
 
 	return ctrl.Result{}, nil
@@ -164,6 +157,12 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 	if err := r.Update(ctx, targetSource); err != nil {
 		return err
 	}
+
+	log.FromContext(ctx).Info(
+		"Added TargetSource finalizer",
+		"targetsource", targetSource.Name,
+		"namespace", targetSource.Namespace,
+	)
 
 	return nil
 }
@@ -234,7 +233,9 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 	// Wait for reconciler to be ready before starting loader
 	select {
 	case <-targetReconcilerReady:
+		logger.Info("Target reconciler started")
 	case <-supervisor.Done():
+		logger.Info("Supervisor stopped before target reconciler became ready")
 		return nil
 	}
 

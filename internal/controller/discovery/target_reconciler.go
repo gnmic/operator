@@ -48,36 +48,26 @@ func NewTargetReconciler(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.T
 func (r *TargetReconciler) Run(ctx context.Context) error {
 	r.ctx = ctx
 
-	logger := log.FromContext(r.ctx).
-		WithValues(
-			"component", "target reconciler",
-			"name", r.targetSource.Name,
-			"namespace", r.targetSource.Namespace,
-		)
-	logger.Info(
-		"Target reconciler started",
+	logger := log.FromContext(ctx).WithValues(
+		"component", "target-reconciler",
 		"targetsource", r.targetSource.Name,
 		"namespace", r.targetSource.Namespace,
 	)
+
+	logger.Info("Target reconciler started")
 
 	for r.ctx.Err() == nil {
 		select {
 		case batch, ok := <-r.in:
 			if !ok {
 				// Channel closed, pipeline is shutting down
-				logger.Info(
-					"Input channel closed; stopping target reconciler",
-					"targetsource", r.targetSource.Name,
-				)
+				logger.Info("Input channel closed; stopping target reconciler")
 				return nil
 			}
 			r.queue = append(r.queue, batch...)
 
 		case <-ctx.Done():
-			logger.Info(
-				"Context was canceled; stopping target reconciler",
-				"targetsource", r.targetSource.Name,
-			)
+			logger.Info("Context was canceled; stopping target reconciler")
 			return nil
 		}
 
@@ -190,7 +180,11 @@ func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 		)
 	}
 	if chunk.ChunkIndex < 0 || chunk.ChunkIndex >= snapshot.totalChunks {
-		logger.Error(nil, "snapshot chunk index out of range", "index", chunk.ChunkIndex)
+		logger.Error(
+			nil,
+			"Snapshot chunk index out of range",
+			"chunkIndex", chunk.ChunkIndex,
+		)
 		r.activeSnapshot = nil
 		return nil
 	}
@@ -232,7 +226,11 @@ func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshot
 
 		chunk, ok := snapshot.received[i]
 		if !ok {
-			logger.Error(nil, "missing snapshot chunk", "index", i)
+			logger.Error(
+				nil,
+				"Missing snapshot chunk",
+				"chunkIndex", i,
+			)
 			r.activeSnapshot = nil
 			return nil
 		}
