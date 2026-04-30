@@ -44,14 +44,11 @@ func (l *Loader) Start(
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", targetsourceNN,
-	)
-
-	logger.Info(
-		"HTTP loader started",
 		"targetsource", targetsourceNN.Name,
 		"namespace", targetsourceNN.Namespace,
 	)
+
+	logger.Info("HTTP loader started")
 
 	// Input Validation of spec
 	if spec.Provider == nil || spec.Provider.HTTP == nil {
@@ -66,7 +63,11 @@ func (l *Loader) Start(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	logger.Info("HTTP pull loader started", "interval", interval.String())
+	logger.Info(
+		"HTTP polling discovery started",
+		"interval", interval.String(),
+		"url", spec.Provider.HTTP.URL,
+	)
 
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
@@ -90,9 +91,17 @@ func (l *Loader) Start(
 			logger.Error(
 				err,
 				"Failed to send discovery snapshot",
+				"snapshotID", snapshotID,
+				"targets", len(targets),
 			)
 			return
 		}
+
+		logger.Info(
+			"Discovery snapshot sent",
+			"snapshotID", snapshotID,
+			"targets", len(targets),
+		)
 	}
 
 	// Immediate fetch on startup
@@ -102,11 +111,7 @@ func (l *Loader) Start(
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info(
-				"HTTP loader stopped",
-				"targetsource", targetsourceNN.Name,
-				"namespace", targetsourceNN.Namespace,
-			)
+			logger.Info("HTTP loader stopped")
 			return nil
 
 		case <-ticker.C:
