@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	defaultPollInterval = 30 * time.Second
+	defaultPollInterval   = 30 * time.Second
+	defaultTimeoutSeconds = 30
 )
 
 // Loader implements the HTTP pull discovery mechanism
@@ -56,9 +57,8 @@ func (l *Loader) Start(
 	}
 
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: defaultTimeoutSeconds * time.Second,
 	}
-
 	interval := defaultPollInterval
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
