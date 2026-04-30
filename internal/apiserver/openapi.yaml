@@ -56,13 +56,20 @@ components:
           type: string # in the format "IP:port"
         profile:
           type: string
-        tags:
+        labels:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/Tag'
         operation:
           type: string
           enum:
             - created
             - updated
             - deleted
+    Tag:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string

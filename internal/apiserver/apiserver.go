@@ -118,16 +118,28 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 				logger.Warn("Received invalid Operation flag")
 			}
 
+			labelToMap := make(map[string]string)
+			if target.Labels != nil {
+				for _, tag := range *target.Labels {
+					if tag.Key == nil || tag.Value == nil || *tag.Key == "" {
+						continue
+					}
+					labelToMap[*tag.Key] = *tag.Value
+				}
+			}
+
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:    target.Name,
 					Address: target.Address,
-					Labels:  map[string]string{"key": "Is this a tag?"},
+					Labels:  labelToMap,
 				},
 				Event: event,
 			})
 		}
 	}
+
+	fmt.Printf("core.DiscoveryEvent was created: %v", targets)
 	core.SendEvents(context.Background(), ch, targets, a.chunkSize)
 	c.JSON(http.StatusOK, payloadTargets)
 }
