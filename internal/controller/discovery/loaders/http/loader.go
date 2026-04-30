@@ -39,7 +39,11 @@ func (l *Loader) Start(
 		"targetsource", targetsourceNN,
 	)
 
-	logger.Info("HTTP loader started")
+	logger.Info(
+		"HTTP loader started",
+		"targetsource", targetsourceNN.Name,
+		"namespace", targetsourceNN.Namespace,
+	)
 
 	// Only for debugging: emit a static snapshot every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)

@@ -78,7 +78,10 @@ func (s *Supervisor) StartSupervisedComponent(component ComponentSpec) {
 		failures := 0
 
 		for {
-			logger.Info("starting component")
+			logger.Info(
+				"Starting supervised component",
+				"component", component.Name,
+			)
 			err := component.Run(s.ctx)
 
 			if s.ctx.Err() != nil {
@@ -87,21 +90,26 @@ func (s *Supervisor) StartSupervisedComponent(component ComponentSpec) {
 			}
 
 			failures++
-			logger.Error(err,
-				"component failed to run",
+			logger.Error(
+				err,
+				"Supervised component failed",
+				"component", component.Name,
 				"attempt", failures,
-				"max", component.Policy.MaxRestarts,
+				"maxRestarts", component.Policy.MaxRestarts,
 			)
 
 			if failures >= component.Policy.MaxRestarts {
 				if component.EscalatesOnFailure {
-					logger.Error(err,
-						"component permanently failed; shutting down pipeline",
+					logger.Error(
+						err,
+						"Supervised component permanently failed; stopped discovery pipeline",
+						"component", component.Name,
 					)
 					s.Stop()
 				} else {
 					logger.Info(
-						"optional component permanently failed; continuing without it",
+						"Optional component permanently failed; continuing without it",
+						"component", component.Name,
 					)
 				}
 				return
