@@ -1,8 +1,18 @@
 package core
 
+import "context"
+
+// DiscoveryRegistryValue represents the controller-owned runtime state
+// of a discovery pipeline for a single TargetSource
 type DiscoveryRegistryValue struct {
-	Channel        chan<- []DiscoveryMessage
+	// Channel is the outbound communication channel used by discovery
+	// components (loaders, webhooks, etc.) to emit discovery messages
+	Channel chan<- []DiscoveryMessage
+	// WebhookEnabled indicates whether webhook-based discovery is enabled
+	// for this TargetSource
 	WebhookEnabled bool
+	// Stop cancels the discovery pipeline associated with this registry entry
+	Stop context.CancelFunc
 }
 
 type LoaderConfig struct {
