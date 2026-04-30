@@ -71,13 +71,20 @@ type TargetSourceReconciler struct {
 // move the current state of the cluster closer to the desired state.
 func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).
-		WithName("targetsource controller").
-		WithValues("targetsource", req.NamespacedName)
+		WithName("targetsource-controller").
+		WithValues(
+			"targetsource", req.NamespacedName.Name,
+			"namespace", req.NamespacedName.Namespace,
+		)
 
 	targetSource, err := r.fetchTargetSource(ctx, req.NamespacedName)
 	// If the TargetSource no longer exists, ensure runtime cleanup
 	if apierrors.IsNotFound(err) {
-		logger.Info("TargetSource not found; stopping discovery pipeline")
+		logger.Info(
+			"TargetSource not found; stopped discovery pipeline",
+			"targetsource", req.NamespacedName.Name,
+			"namespace", req.NamespacedName.Namespace,
+		)
 		r.stopDiscoveryPipeline(req.NamespacedName)
 		return ctrl.Result{}, nil
 	} else if err != nil {
@@ -100,7 +107,11 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Discovery pipeline started")
+	logger.Info(
+		"Started discovery pipeline",
+		"targetsource", req.NamespacedName.Name,
+		"namespace", req.NamespacedName.Namespace,
+	)
 	return ctrl.Result{}, nil
 }
 
@@ -124,7 +135,11 @@ func (r *TargetSourceReconciler) hasPipelineRunning(key types.NamespacedName) bo
 // reconcileDeletion stops the discovery pipeline and removes the finalizer
 func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("TargetSource is being deleted, stopping pipeline", "name", key)
+	logger.Info(
+		"TargetSource was marked for deletion; stopping discovery pipeline",
+		"targetsource", key.Name,
+		"namespace", key.Namespace,
+	)
 
 	r.stopDiscoveryPipeline(key)
 
@@ -250,10 +265,14 @@ func (r *TargetSourceReconciler) startDiscoveryPipeline(key types.NamespacedName
 		<-supervisor.Done()
 		supervisor.Wait() // Wait for components to exit
 
-		logger.Info("Pipeline stopped; cleaning up")
 		close(targetChannel)
 		r.DiscoveryRegistry.Unregister(key)
 		r.stopDiscoveryPipeline(key)
+		logger.Info(
+			"Discovery pipeline stopped; cleaned up resources",
+			"targetsource", key.Name,
+			"namespace", key.Namespace,
+		)
 	}()
 
 	r.mu.Lock()

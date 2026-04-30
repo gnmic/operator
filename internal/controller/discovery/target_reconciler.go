@@ -54,26 +54,36 @@ func (r *TargetReconciler) Run(ctx context.Context) error {
 			"name", r.targetSource.Name,
 			"namespace", r.targetSource.Namespace,
 		)
-	logger.Info("target reconciler started")
+	logger.Info(
+		"Target reconciler started",
+		"targetsource", r.targetSource.Name,
+		"namespace", r.targetSource.Namespace,
+	)
 
 	for r.ctx.Err() == nil {
 		select {
 		case batch, ok := <-r.in:
 			if !ok {
 				// Channel closed, pipeline is shutting down
-				logger.Info("input channel closed, stopping target reconciler")
+				logger.Info(
+					"Input channel closed; stopping target reconciler",
+					"targetsource", r.targetSource.Name,
+				)
 				return nil
 			}
 			r.queue = append(r.queue, batch...)
 
 		case <-ctx.Done():
-			logger.Info("context canceled, stopping target reconciler")
+			logger.Info(
+				"Context was canceled; stopping target reconciler",
+				"targetsource", r.targetSource.Name,
+			)
 			return nil
 		}
 
 		for len(r.queue) > 0 {
 			if ctx.Err() != nil {
-				return nil // why return nil?
+				return ctx.Err()
 			}
 
 			msg := r.queue[0]
@@ -103,23 +113,24 @@ func (r *TargetReconciler) processMessage(ctx context.Context, message core.Disc
 	case core.DiscoverySnapshot:
 		// Collect snapshot chunks
 		logger.Info(
-			"received snapshot chunk",
+			"Received discovery snapshot chunk",
 			"snapshotID", msg.SnapshotID,
-			"index", msg.ChunkIndex,
-			"targetCount", len(msg.Targets),
+			"chunkIndex", msg.ChunkIndex,
+			"targets", len(msg.Targets),
 		)
 		return r.processSnapshot(ctx, msg, logger)
 
 	case core.DiscoveryEvent:
 		// Process individual event-driven update
 		logger.Info(
-			"received discovery event",
+			"Received discovery event",
+			"event", msg.Event,
 			"target", msg.Target.Name,
 		)
 		return r.processEvent(ctx, msg, logger)
 
 	default:
-		return fmt.Errorf("unknonw discovery message type %T", msg)
+		return fmt.Errorf("Unknown discovery message type %T", msg)
 	}
 }
 
@@ -142,7 +153,7 @@ func (r *TargetReconciler) processSnapshot(ctx context.Context, chunk core.Disco
 			// If a new snapshot is started before the old one completed
 			// the old one can be discarded
 			logger.Info(
-				"discarding incomplete snapshot",
+				"Discarded incomplete discovery snapshot",
 				"snapshotID", snapshot.snapshotID,
 			)
 		}
@@ -172,7 +183,11 @@ func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 	snapshot := r.activeSnapshot
 
 	if chunk.TotalChunks != snapshot.totalChunks {
-		logger.Error(nil, "snapshot totalChunks mismatch", "snapshotID", snapshot.snapshotID)
+		logger.Error(
+			nil,
+			"Snapshot totalChunks mismatch",
+			"snapshotID", snapshot.snapshotID,
+		)
 	}
 	if chunk.ChunkIndex < 0 || chunk.ChunkIndex >= snapshot.totalChunks {
 		logger.Error(nil, "snapshot chunk index out of range", "index", chunk.ChunkIndex)
@@ -180,7 +195,11 @@ func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 		return nil
 	}
 	if _, exists := snapshot.received[chunk.ChunkIndex]; exists {
-		logger.Error(nil, "duplicate snapshot chunk", "index", chunk.ChunkIndex)
+		logger.Error(
+			nil,
+			"Duplicate snapshot chunk received",
+			"chunkIndex", chunk.ChunkIndex,
+		)
 		r.activeSnapshot = nil
 		return nil
 	}
@@ -221,9 +240,9 @@ func (r *TargetReconciler) applySnapshot(ctx context.Context, snapshot *snapshot
 	}
 
 	logger.Info(
-		"applying snapshot",
+		"Applying discovery snapshot",
 		"snapshotID", snapshot.snapshotID,
-		"targetCount", len(allTargets),
+		"targets", len(allTargets),
 	)
 
 	// apply all targets
@@ -260,9 +279,19 @@ func (r *TargetReconciler) processEvent(ctx context.Context, event core.Discover
 func (r *TargetReconciler) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
 	case core.EventDelete:
-		logger.Info("Would delete target", "name", event.Target.Name)
+		logger.Info(
+			"Deleting Target",
+			"target", event.Target.Name,
+			"targetsource", r.targetSource.Name,
+		)
 	case core.EventApply:
-		logger.Info("Would apply target", "name", event.Target.Name, "address", event.Target.Address, "labels", event.Target.Labels)
+		logger.Info(
+			"Applying Target",
+			"target", event.Target.Name,
+			"address", event.Target.Address,
+			"labels", event.Target.Labels,
+			"targetsource", r.targetSource.Name,
+		)
 	}
 	return nil
 }

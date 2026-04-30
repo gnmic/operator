@@ -47,7 +47,11 @@ func (l *Loader) Start(
 		"targetsource", targetsourceNN,
 	)
 
-	logger.Info("HTTP loader started")
+	logger.Info(
+		"HTTP loader started",
+		"targetsource", targetsourceNN.Name,
+		"namespace", targetsourceNN.Namespace,
+	)
 
 	// Input Validation of spec
 	if spec.Provider == nil || spec.Provider.HTTP == nil {
