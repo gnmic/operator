@@ -77,13 +77,20 @@ func (l *Loader) Start(
 			spec.Provider.HTTP.Token,
 		)
 		if err != nil {
-			logger.Error(err, "failed to fetch targets from HTTP endpoint")
+			logger.Error(
+				err,
+				"Failed to fetch targets from HTTP endpoint",
+				"url", spec.Provider.HTTP.URL,
+			)
 			return
 		}
 
 		snapshotID := fmt.Sprintf("%s-%s-%s", targetsourceNN.Namespace, targetsourceNN.Name, uuid.NewString())
 		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
-			logger.Error(err, "failed to send discovery snapshot")
+			logger.Error(
+				err,
+				"Failed to send discovery snapshot",
+			)
 			return
 		}
 	}
@@ -95,7 +102,11 @@ func (l *Loader) Start(
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("HTTP loader stopped")
+			logger.Info(
+				"HTTP loader stopped",
+				"targetsource", targetsourceNN.Name,
+				"namespace", targetsourceNN.Namespace,
+			)
 			return nil
 
 		case <-ticker.C:
