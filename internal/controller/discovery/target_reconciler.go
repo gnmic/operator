@@ -73,7 +73,7 @@ func (r *TargetReconciler) Run(ctx context.Context) error {
 
 		for len(r.queue) > 0 {
 			if ctx.Err() != nil {
-				return nil // why return nil?
+				return ctx.Err()
 			}
 
 			msg := r.queue[0]
