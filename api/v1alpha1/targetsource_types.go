@@ -26,7 +26,7 @@ type TargetSourceSpec struct {
 	Provider *ProviderSpec `json:"provider"`
 	// +kubebuilder:validation:Optional
 	Webhook WebhookSpec `json:"webhook,omitempty"`
-	//
+	// +kubebuilder:validation:Optional
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
 	// +kubebuilder:validation:MinLength=1

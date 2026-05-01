@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	loaderUtils "github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
 	"github.com/google/uuid"
 )
 
@@ -26,19 +25,18 @@ func (l *Loader) Name() string {
 	return "http"
 }
 
-func (l *Loader) Start(
-	ctx context.Context,
-	targetsourceNN types.NamespacedName,
-	spec gnmicv1alpha1.TargetSourceSpec,
-	out chan<- []core.DiscoveryMessage,
-) error {
+func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) error {
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", targetsourceNN,
+		"targetsource", l.cfg.TargetsourceNN,
 	)
 
-	logger.Info("HTTP loader started")
+	logger.Info(
+		"HTTP loader started",
+		"targetsource", l.cfg.TargetsourceNN.Name,
+		"namespace", l.cfg.TargetsourceNN.Namespace,
+	)
 
 	// Only for debugging: emit a static snapshot every 30 seconds
 	ticker := time.NewTicker(30 * time.Second)
@@ -52,21 +50,21 @@ func (l *Loader) Start(
 
 		case <-ticker.C:
 			// Example snapshot (placeholder)
-			snapshotID := fmt.Sprintf("snapshot-%s-%s", targetsourceNN, uuid.NewString())
+			snapshotID := fmt.Sprintf("%s-%s-%s", l.cfg.TargetsourceNN.Namespace, l.cfg.TargetsourceNN.Name, uuid.NewString())
 			targets := []core.DiscoveredTarget{
 				{
 					Name:    "ceos1",
 					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSource": targetsourceNN.String()},
+					Labels:  map[string]string{"TargetSource": l.cfg.TargetsourceNN.String()},
 				},
 				{
 					Name:    "leaf1",
 					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSource": targetsourceNN.String()},
+					Labels:  map[string]string{"TargetSource": l.cfg.TargetsourceNN.String()},
 				},
 			}
 
-			if err := core.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
+			if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
 				return err
 			}
 		}

@@ -34,3 +34,8 @@ docs/public
 docs/resources/_gen/
 docs/.hugo_build.lock
 test/integration/clab-*
+
+# Only for development and testing purposes
+# To be removed after development of targetsource
+# ignored in order to not add unnecassary logging messages
+lab/dev/resources/targetsources

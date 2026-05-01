@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/gnmic/operator/internal/controller/discovery/registry"
+	"github.com/gnmic/operator/internal/controller/discovery"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -20,8 +20,8 @@ type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
-	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
-	chunkSize         int
+
+	DiscoveryRegistry *discovery.Registry[types.NamespacedName, core.DiscoveryRegistryValue]
 }
 
 type urlStruct struct {
