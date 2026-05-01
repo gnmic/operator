@@ -10,8 +10,8 @@ import (
 func NewLoader(cfg core.LoaderConfig) (core.Loader, error) {
 	switch {
 	case cfg.Spec.Provider.HTTP != nil:
+		cfg.AcceptPush = cfg.Spec.Provider.HTTP.AcceptPush
 		return http.New(cfg), nil
-		// webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
 
 	default:
 		return nil, fmt.Errorf("unknown targetsource loader, check TargetSource CRD for %s", cfg.TargetsourceNN)
