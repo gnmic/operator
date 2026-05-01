@@ -22,7 +22,7 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	}
 
 	registry, ok := a.DiscoveryRegistry.Get(key)
-	if !ok {
+	if !ok || (registry.LoaderConfig.AcceptPush != true) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "TargetSource not active or does not exist",
 		})
