@@ -16,10 +16,10 @@ type DiscoveryRegistryValue struct {
 	// Stop cancels the discovery context associated with this registry entry
 	Stop context.CancelFunc
 
-	LoaderConfig *LoaderConfig
+	CommonLoaderConfig *CommonLoaderConfig
 }
 
-type LoaderConfig struct {
+type CommonLoaderConfig struct {
 	TargetsourceNN types.NamespacedName
 	ChunkSize      int
 	Router         *gin.Engine
