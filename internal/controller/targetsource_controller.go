@@ -36,10 +36,10 @@ import (
 // TargetSourceReconciler reconciles a TargetSource object
 //
 // Responsibilities:
-// - Ensure at most one runtime per TargetSource
-// - Start runtimes on reconcile
-// - Stop runtimes on deletion or NotFound
-// - Delegate runtime failure handling to the Supervisor
+// - Ensure at most one discovery runtime per TargetSource
+// - Start runtime on reconcile if not already running
+// - Restart runtime on reconcile if spec changed
+// - Stop runtime on deletion or NotFound
 type TargetSourceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -94,7 +94,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.startDiscoveryRuntime(req.NamespacedName, targetSource, logger); err != nil {
+	if err := r.startDiscovery(req.NamespacedName, targetSource, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -156,113 +156,78 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 	return nil
 }
 
-
-// resolveRestartPolicy merges an optional spec override with the controller’s default restart policy
-func resolveRestartPolicy(
-	override *gnmicv1alpha1.RestartPolicySpec,
-) discovery.RestartPolicy {
-	defaults := discovery.DefaultRestartPolicy()
-
-	if override == nil {
-		return defaults
-	}
-
-	resolved := defaults
-
-	if override.MaxRestarts != nil {
-		resolved.MaxRestarts = *override.MaxRestarts
-	}
-
-	if override.BackoffSeconds != nil {
-		resolved.Backoff = time.Duration(*override.BackoffSeconds) * time.Second
-	}
-
-	return resolved
-}
-// startDiscoveryRuntime creates and starts a discovery runtime for a TargetSource
+// startDiscovery creates and starts a discovery runtime for a TargetSource
 //
-// Runtime semantics:
-// 1. target reconciler is mandatory and must start first
-// 2. loader is optional and conditional on spec
-// 3. Permanent failure of required components shuts down the runtime
-// 4. Shutdown ordering: cancel ctx -> wait for goroutines to exit -> close channel -> unregister
-func (r *TargetSourceReconciler) startDiscoveryRuntime(
+// Invariant:
+// - MessageProcessor and Loader must run for the lifetime of the TargetSource
+// - Any unexpected exit is treated as a bug and triggers full shutdown
+func (r *TargetSourceReconciler) startDiscovery(
 	key types.NamespacedName,
 	targetSource *gnmicv1alpha1.TargetSource,
 	logger logr.Logger,
 ) error {
-	webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
-
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Register discovery runtime of targetsource
 	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
-		Channel:        targetChannel,
-		WebhookEnabled: webhookActivated,
-		Stop:           supervisor.Stop,
+		Channel: targetChannel,
+		Stop:    cancel,
 	}); err != nil {
 		return err
 	}
 
-	// Create target reconciler instance
-	targetReconciler := discovery.NewMessageProcessor(
+	// Cleanup function to cleanup discovery runtime of targetsource
+	cleanup := func() {
+		cancel()
+		r.DiscoveryRegistry.Unregister(key)
+		close(targetChannel)
+	}
+
+	// Start message processor
+	messageProcessor := discovery.NewMessageProcessor(
 		r.Client,
 		r.Scheme,
 		targetSource,
 		targetChannel,
 	)
-	// Start target reconciler
-	targetReconcilerReady := make(chan struct{})
-	supervisor.StartSupervisedComponent(discovery.ComponentSpec{
-		Name:               "target-reconciler",
-		Policy:             restartPolicy,
-		EscalatesOnFailure: true,
-		Run: func(ctx context.Context) error {
-			close(targetReconcilerReady) // Signals that reconciler started successfully
-			return targetReconciler.Run(ctx)
-		},
-	})
-	// Wait for reconciler to be ready before starting loader
-	select {
-	case <-targetReconcilerReady:
-		logger.Info("Target reconciler started")
-	case <-supervisor.Done():
-		logger.Info("Supervisor stopped before target reconciler became ready")
-		return nil
-	}
+	go func() {
+		logger.Info("Message processor started")
 
-	// Create loader instance
-	if loaderConfigured {
-		loader, err := discovery.NewLoader(
-			key,
-			targetSource.Spec,
-			discoveryTypes.LoaderConfig{ChunkSize: r.ChunkSize},
-		)
-		if err != nil {
-			supervisor.Stop()
-			return err
+		if err := messageProcessor.Run(ctx); err != nil {
+			logger.Error(err, "Message processor exited unecpectedly")
+		} else {
+			logger.Error(nil, "Message processor exited unexpectedly without error")
 		}
 
-		supervisor.StartSupervisedComponent(discovery.ComponentSpec{
-			Name:               "loader",
-			Policy:             restartPolicy,
-			EscalatesOnFailure: !webhookActivated,
-			Run: func(ctx context.Context) error {
-				return loader.Start(ctx, key, targetSource.Spec, targetChannel)
-			},
-		})
+		// Any exit is considered a bug that should stop the discovery runtime
+		cleanup()
+	}()
+
+	// Start target loader
+	// webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
+	loaderConfig := discoveryTypes.LoaderConfig{
+		ChunkSize: r.ChunkSize,
 	}
-
-	// Monitor supervisor in a separate goroutine to handle shutdown and cleanup
+	loader, err := discovery.NewLoader(
+		key,
+		targetSource.Spec,
+		loaderConfig,
+	)
+	if err != nil {
+		logger.Error(err, "Target loader could not be created")
+		cleanup()
+		return err
+	}
 	go func() {
-		<-supervisor.Done()
-		supervisor.Wait() // Wait for components to exit
+		if err := loader.Run(ctx, key, targetSource.Spec, targetChannel); err != nil {
+			logger.Error(err, "Target loader exited unexpectedly")
+		} else {
+			logger.Error(nil, "Target loader exited unexpectedly without error")
+		}
 
-		close(targetChannel)
-		r.DiscoveryRegistry.Unregister(key)
-		logger.Info(
-			"Discovery runtime stopped; cleaned up resources",
-			"targetsource", key.Name,
-			"namespace", key.Namespace,
-		)
+		// Any exit is considered a bug that should stop the discovery runtime
+		cleanup()
 	}()
 
 	return nil

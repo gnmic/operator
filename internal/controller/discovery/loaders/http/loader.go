@@ -27,7 +27,7 @@ func (l *Loader) Name() string {
 	return "http"
 }
 
-func (l *Loader) Start(
+func (l *Loader) Run(
 	ctx context.Context,
 	targetsourceNN types.NamespacedName,
 	spec gnmicv1alpha1.TargetSourceSpec,

@@ -13,9 +13,9 @@ type Loader interface {
 	// Name returns the unique loader identifier e.g. "pull"
 	Name() string
 
-	// Start begins discovery and pushes target snapshots or events into the out channel
+	// Run begins discovery and pushes target snapshots or events into the out channel
 	// The loader must stop cleanly when ctx is canceled
-	Start(
+	Run(
 		ctx context.Context,
 		targetsourceName types.NamespacedName,
 		spec gnmicv1alpha1.TargetSourceSpec,
