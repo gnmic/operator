@@ -43,8 +43,8 @@ import (
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
@@ -127,12 +127,22 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)
 	}
+
+	var api *apiserver.APIServer
+	if apiAddr != "" {
+		api, err = apiserver.New(apiAddr, clusterReconciler, discoveryRegistry, discoveryChunkSize)
+		if err != nil {
+			setupLog.Error(err, "unable to initialize API server")
+			os.Exit(1)
+		}
+	}
 	if err := (&controller.TargetSourceReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		BufferSize:        discoveryBufferSize,
 		ChunkSize:         discoveryChunkSize,
 		DiscoveryRegistry: discoveryRegistry,
+		APIRouter:         api.Router(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetSource")
 		os.Exit(1)
@@ -232,13 +242,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if apiAddr != "" {
-		api, err := apiserver.New(apiAddr, clusterReconciler, discoveryChunkSize)
-		if err != nil {
-			setupLog.Error(err, "unable to intialize gin API server")
-			os.Exit(1)
-		}
-		api.DiscoveryRegistry = discoveryRegistry
+	if api != nil {
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error)
 			go func() {

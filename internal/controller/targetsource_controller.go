@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/gin-gonic/gin"
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
 	discoveryTypes "github.com/gnmic/operator/internal/controller/discovery/core"
@@ -51,6 +52,8 @@ type TargetSourceReconciler struct {
 		types.NamespacedName,
 		discoveryTypes.DiscoveryRegistryValue,
 	]
+
+	APIRouter *gin.Engine
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -209,6 +212,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 		TargetsourceNN: key,
 		Spec:           &targetSource.Spec,
 		ChunkSize:      r.ChunkSize,
+		Router:         r.APIRouter,
 	}
 	loader, err := discovery.NewLoader(loaderConfig)
 	if err != nil {

@@ -826,6 +826,11 @@ func (in *ProviderSpec) DeepCopyInto(out *ProviderSpec) {
 		*out = new(HTTPConfig)
 		**out = **in
 	}
+	if in.PULL != nil {
+		in, out := &in.PULL, &out.PULL
+		*out = new(WebhookSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Consul != nil {
 		in, out := &in.Consul, &out.Consul
 		*out = new(ConsulConfig)

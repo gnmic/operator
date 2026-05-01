@@ -3,12 +3,13 @@ package core
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
 // DiscoveryRegistryValue represents the controller-owned runtime state
-// of a discovery pipeline for a single TargetSource
+// and its configuration
 type DiscoveryRegistryValue struct {
 	// Channel is the outbound communication channel used by discovery
 	// components (loaders, webhooks, etc.) to emit discovery messages
@@ -21,6 +22,7 @@ type LoaderConfig struct {
 	TargetsourceNN types.NamespacedName
 	Spec           *gnmicv1alpha1.TargetSourceSpec
 	ChunkSize      int
+	Router         *gin.Engine
 }
 
 // EventAction represents the type of a discovery event
