@@ -207,20 +207,18 @@ func (r *TargetSourceReconciler) startDiscovery(
 	// Start target loader
 	// webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
 	loaderConfig := discoveryTypes.LoaderConfig{
-		ChunkSize: r.ChunkSize,
+		TargetsourceNN: key,
+		Spec:           &targetSource.Spec,
+		ChunkSize:      r.ChunkSize,
 	}
-	loader, err := discovery.NewLoader(
-		key,
-		targetSource.Spec,
-		loaderConfig,
-	)
+	loader, err := discovery.NewLoader(loaderConfig)
 	if err != nil {
 		logger.Error(err, "Target loader could not be created")
 		cleanup()
 		return err
 	}
 	go func() {
-		if err := loader.Run(ctx, key, targetSource.Spec, targetChannel); err != nil {
+		if err := loader.Run(ctx, targetChannel); err != nil {
 			logger.Error(err, "Target loader exited unexpectedly")
 		} else {
 			logger.Error(nil, "Target loader exited unexpectedly without error")

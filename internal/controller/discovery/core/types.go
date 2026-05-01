@@ -1,6 +1,11 @@
 package core
 
-import "context"
+import (
+	"context"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/types"
+)
 
 // DiscoveryRegistryValue represents the controller-owned runtime state
 // of a discovery pipeline for a single TargetSource
@@ -13,7 +18,9 @@ type DiscoveryRegistryValue struct {
 }
 
 type LoaderConfig struct {
-	ChunkSize int
+	TargetsourceNN types.NamespacedName
+	Spec           *gnmicv1alpha1.TargetSourceSpec
+	ChunkSize      int
 }
 
 // EventAction represents the type of a discovery event
