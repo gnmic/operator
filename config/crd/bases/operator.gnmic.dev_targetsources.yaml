@@ -49,16 +49,13 @@ spec:
                     type: object
                   http:
                     properties:
+                      acceptPush:
+                        type: boolean
                       url:
                         minLength: 1
                         type: string
                     required:
                     - url
-                    type: object
-                  pull:
-                    properties:
-                      enabled:
-                        type: boolean
                     type: object
                 type: object
                 x-kubernetes-validations:
@@ -72,11 +69,6 @@ spec:
               targetProfile:
                 minLength: 1
                 type: string
-              webhook:
-                properties:
-                  enabled:
-                    type: boolean
-                type: object
             required:
             - provider
             - targetProfile
