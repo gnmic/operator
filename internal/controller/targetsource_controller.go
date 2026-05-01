@@ -18,9 +18,10 @@ package controller
 
 import (
 	"context"
-	"sync"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -28,23 +29,28 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
-	_ "github.com/gnmic/operator/internal/controller/discovery/loaders/all"
+	discoveryTypes "github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/go-logr/logr"
 )
 
-const targetSourceFinalizer = "operator.gnmic.dev/targetsource-finalizer"
-
-type runningSource struct {
-	cancel context.CancelFunc
-}
-
 // TargetSourceReconciler reconciles a TargetSource object
+//
+// Responsibilities:
+// - Ensure at most one discovery runtime per TargetSource
+// - Start runtime on reconcile if not already running
+// - Restart runtime on reconcile if spec changed
+// - Stop runtime on deletion or NotFound
 type TargetSourceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	mu      sync.Mutex
-	running map[client.ObjectKey]runningSource
+	BufferSize int
+	ChunkSize  int
+
+	DiscoveryRegistry *discovery.Registry[
+		types.NamespacedName,
+		discoveryTypes.DiscoveryRegistryValue,
+	]
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -55,110 +61,183 @@ type TargetSourceReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	logger := log.FromContext(ctx).
+		WithName("targetsource-controller").
+		WithValues(
+			"targetsource", req.NamespacedName.Name,
+			"namespace", req.NamespacedName.Namespace,
+		)
 
-	var targetSource gnmicv1alpha1.TargetSource
-	if err := r.Get(ctx, req.NamespacedName, &targetSource); err != nil {
-		// If the TargetSource no longer exists, ensure runtime cleanup
-		if client.IgnoreNotFound(err) == nil {
-			r.stopDiscovery(req.NamespacedName)
+	targetSource, err := r.fetchTargetSource(ctx, req.NamespacedName)
+	// If the TargetSource no longer exists, ensure runtime cleanup
+	if apierrors.IsNotFound(err) {
+		if runtime, ok := r.DiscoveryRegistry.Get(req.NamespacedName); ok {
+			runtime.Stop()
+			r.DiscoveryRegistry.Unregister(req.NamespacedName)
 		}
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
-	logger.Info("reconciling TargetSource", "name", targetSource.Name)
-
-	// Handle deletion with finalizer
-	if !targetSource.DeletionTimestamp.IsZero() {
-		logger.Info("TargetSource is being deleted, stopping pipeline", "name", targetSource.Name)
-
-		r.stopDiscovery(req.NamespacedName)
-
-		// Remove finalizer if exists
-		if controllerutil.ContainsFinalizer(&targetSource, targetSourceFinalizer) {
-			controllerutil.RemoveFinalizer(&targetSource, targetSourceFinalizer)
-			if err := r.Update(ctx, &targetSource); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-
+		logger.Info("TargetSource not found; stopped discovery runtime")
 		return ctrl.Result{}, nil
-	}
-
-	// Ensure finalizer is set
-	if !controllerutil.ContainsFinalizer(&targetSource, targetSourceFinalizer) {
-		controllerutil.AddFinalizer(&targetSource, targetSourceFinalizer)
-		if err := r.Update(ctx, &targetSource); err != nil {
-			return ctrl.Result{}, err
-		}
-		// Requeue to continue with a clean state
-		return ctrl.Result{}, nil
-	}
-
-	// TODO:
-	// 1. Check if a pipeline is already running for this TargetSource
-	// 2. If not, create and start a new pipeline:
-	//    a. Create a Loader based on TargetSource spec
-	//    b. Start the Loader in a new goroutine, passing a channel for discovered targets
-	//    c. Start a TargetManager in another goroutine to consume discovered targets and manage Target CRs
-	// 3. If yes, check if the spec has changed and restart the pipeline if needed
-
-	r.mu.Lock()
-	_, exists := r.running[req.NamespacedName]
-	r.mu.Unlock()
-
-	// If a targetsource loader exists, return immediately without starting
-	// any new loader or target manager
-	if exists {
-		return ctrl.Result{}, nil
-	}
-
-	loader, err := discovery.NewLoader(targetSource.ObjectMeta.Name, targetSource.ObjectMeta.Namespace, targetSource.Spec)
-	if err != nil {
+	} else if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	runtimeCtx, cancel := context.WithCancel(context.Background())
+	if !targetSource.DeletionTimestamp.IsZero() {
+		return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
+	}
 
-	targetChannel := make(chan []core.DiscoveryMessage, 10)
+	if err := r.ensureFinalizer(ctx, targetSource); err != nil {
+		return ctrl.Result{}, err
+	}
 
-	// start loader
-	go loader.Start(runtimeCtx, targetSource.Name, targetSource.Spec, targetChannel)
+	if r.DiscoveryRegistry.Exists(req.NamespacedName) {
+		logger.Info("Discovery runtime already running; reconciliation completed")
+		return ctrl.Result{}, nil
+	}
 
-	// start target manager
-	manager := discovery.NewTargetManager(
-		r.Client,
-		r.Scheme,
-		&targetSource,
-		targetChannel,
+	if err := r.startDiscovery(req.NamespacedName, targetSource, logger); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Started discovery runtime")
+	return ctrl.Result{}, nil
+}
+
+// fetchTargetSource retrieves a TargetSource by name, handling cleanup if not found
+func (r *TargetSourceReconciler) fetchTargetSource(ctx context.Context, key types.NamespacedName) (*gnmicv1alpha1.TargetSource, error) {
+	var targetSource gnmicv1alpha1.TargetSource
+	if err := r.Get(ctx, key, &targetSource); err != nil {
+		return nil, err
+	}
+	return &targetSource, nil
+}
+
+// reconcileDeletion stops the discovery runtime and removes the finalizer
+func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues(
+		"targetsource", key.Name,
+		"namespace", key.Namespace,
 	)
-	go manager.Run(runtimeCtx)
+	logger.Info("TargetSource was marked for deletion; stopping discovery runtime")
+	if runtime, ok := r.DiscoveryRegistry.Get(key); ok {
+		runtime.Stop()
+		r.DiscoveryRegistry.Unregister(key)
+	}
 
-	r.mu.Lock()
-	r.running[req.NamespacedName] = runningSource{cancel: cancel}
-	r.mu.Unlock()
+	// Remove finalizer if exists
+	if controllerutil.ContainsFinalizer(targetSource, LabelTargetSourceFinalizer) {
+		controllerutil.RemoveFinalizer(targetSource, LabelTargetSourceFinalizer)
+		if err := r.Update(ctx, targetSource); err != nil {
+			return ctrl.Result{}, err
+		}
 
-	logger.Info("TargetSource pipeline started", "name", targetSource.Name)
+		logger.Info("Removed TargetSource finalizer")
+	}
 
 	return ctrl.Result{}, nil
 }
 
-// stopDiscovery stops and removes a running discovery pipeline
-// for the given TargetSource key
-func (r *TargetSourceReconciler) stopDiscovery(key client.ObjectKey) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if running, ok := r.running[key]; ok {
-		running.cancel()
-		delete(r.running, key)
+// ensureFinalizer adds the finalizer if not present and updates the TargetSource
+func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSource *gnmicv1alpha1.TargetSource) error {
+	if controllerutil.ContainsFinalizer(targetSource, LabelTargetSourceFinalizer) {
+		return nil
 	}
+
+	controllerutil.AddFinalizer(targetSource, LabelTargetSourceFinalizer)
+	if err := r.Update(ctx, targetSource); err != nil {
+		return err
+	}
+
+	log.FromContext(ctx).Info(
+		"Added TargetSource finalizer",
+		"targetsource", targetSource.Name,
+		"namespace", targetSource.Namespace,
+	)
+
+	return nil
+}
+
+// startDiscovery creates and starts a discovery runtime for a TargetSource
+//
+// Invariant:
+// - MessageProcessor and Loader must run for the lifetime of the TargetSource
+// - Any unexpected exit is treated as a bug and triggers full shutdown
+func (r *TargetSourceReconciler) startDiscovery(
+	key types.NamespacedName,
+	targetSource *gnmicv1alpha1.TargetSource,
+	logger logr.Logger,
+) error {
+	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
+	ctx, cancel := context.WithCancel(context.Background())
+	loaderConfig := discoveryTypes.CommonLoaderConfig{
+		TargetsourceNN: key,
+		ChunkSize:      r.ChunkSize,
+	}
+
+	// Cleanup function to cleanup discovery runtime of targetsource
+	cleanup := func() {
+		cancel()
+		r.DiscoveryRegistry.Unregister(key)
+		close(targetChannel)
+	}
+
+	messageProcessor := discovery.NewMessageProcessor(
+		r.Client,
+		r.Scheme,
+		targetSource,
+		targetChannel,
+	)
+	loader, loaderConfig, err := discovery.NewLoader(discoveryTypes.CommonLoaderConfig{
+		TargetsourceNN: key,
+		ChunkSize:      r.ChunkSize,
+	},
+		&targetSource.Spec,
+	)
+	if err != nil {
+		logger.Error(err, "Target loader could not be created")
+		cleanup()
+		return err
+	}
+
+	// Register discovery runtime of targetsource
+	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
+		Channel:            targetChannel,
+		Stop:               cancel,
+		CommonLoaderConfig: &loaderConfig,
+	}); err != nil {
+		return err
+	}
+
+	// Start message processor
+	go func() {
+		logger.Info("Message processor started")
+
+		if err := messageProcessor.Run(ctx); err != nil {
+			logger.Error(err, "Message processor exited unecpectedly")
+		} else {
+			logger.Error(nil, "Message processor exited unexpectedly without error")
+		}
+
+		// Any exit is considered a bug that should stop the discovery runtime
+		cleanup()
+	}()
+
+	// Start target loader
+	go func() {
+		if err := loader.Run(ctx, targetChannel); err != nil {
+			logger.Error(err, "Target loader exited unexpectedly")
+		} else {
+			logger.Error(nil, "Target loader exited unexpectedly without error")
+		}
+
+		// Any exit is considered a bug that should stop the discovery runtime
+		cleanup()
+	}()
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.running = make(map[client.ObjectKey]runningSource)
-
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.TargetSource{}).
 		Named("targetsource").

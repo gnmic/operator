@@ -49,6 +49,8 @@ spec:
                     type: object
                   http:
                     properties:
+                      acceptPush:
+                        type: boolean
                       url:
                         minLength: 1
                         type: string
