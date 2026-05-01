@@ -13,12 +13,12 @@ import (
 )
 
 type Loader struct {
-	cfg core.LoaderConfig
+	commonCfg core.CommonLoaderConfig
 }
 
 // New instantiates the http loader with the provided config
-func New(cfg core.LoaderConfig) core.Loader {
-	return &Loader{cfg: cfg}
+func New(cfg core.CommonLoaderConfig) core.Loader {
+	return &Loader{commonCfg: cfg}
 }
 
 func (l *Loader) Name() string {
@@ -29,13 +29,13 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", l.cfg.TargetsourceNN,
+		"targetsource", l.commonCfg.TargetsourceNN,
 	)
 
 	logger.Info(
 		"HTTP loader started",
-		"targetsource", l.cfg.TargetsourceNN.Name,
-		"namespace", l.cfg.TargetsourceNN.Namespace,
+		"targetsource", l.commonCfg.TargetsourceNN.Name,
+		"namespace", l.commonCfg.TargetsourceNN.Namespace,
 	)
 
 	// Only for debugging: emit a static snapshot every 30 seconds
@@ -50,21 +50,21 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 		case <-ticker.C:
 			// Example snapshot (placeholder)
-			snapshotID := fmt.Sprintf("%s-%s-%s", l.cfg.TargetsourceNN.Namespace, l.cfg.TargetsourceNN.Name, uuid.NewString())
+			snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
 			targets := []core.DiscoveredTarget{
 				{
 					Name:    "ceos1",
 					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSource": l.cfg.TargetsourceNN.String()},
+					Labels:  map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
 				},
 				{
 					Name:    "leaf1",
 					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSource": l.cfg.TargetsourceNN.String()},
+					Labels:  map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
 				},
 			}
 
-			if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
+			if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
 				return err
 			}
 		}

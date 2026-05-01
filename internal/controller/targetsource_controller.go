@@ -168,18 +168,9 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
-	loaderConfig := discoveryTypes.LoaderConfig{
+	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,
-	}
-
-	// Register discovery runtime of targetsource
-	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
-		Channel:      targetChannel,
-		Stop:         cancel,
-		LoaderConfig: &loaderConfig,
-	}); err != nil {
-		return err
 	}
 
 	// Cleanup function to cleanup discovery runtime of targetsource
@@ -189,13 +180,34 @@ func (r *TargetSourceReconciler) startDiscovery(
 		close(targetChannel)
 	}
 
-	// Start message processor
 	messageProcessor := discovery.NewMessageProcessor(
 		r.Client,
 		r.Scheme,
 		targetSource,
 		targetChannel,
 	)
+	loader, loaderConfig, err := discovery.NewLoader(discoveryTypes.CommonLoaderConfig{
+		TargetsourceNN: key,
+		ChunkSize:      r.ChunkSize,
+	},
+		&targetSource.Spec,
+	)
+	if err != nil {
+		logger.Error(err, "Target loader could not be created")
+		cleanup()
+		return err
+	}
+
+	// Register discovery runtime of targetsource
+	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
+		Channel:            targetChannel,
+		Stop:               cancel,
+		CommonLoaderConfig: &loaderConfig,
+	}); err != nil {
+		return err
+	}
+
+	// Start message processor
 	go func() {
 		logger.Info("Message processor started")
 
@@ -210,12 +222,6 @@ func (r *TargetSourceReconciler) startDiscovery(
 	}()
 
 	// Start target loader
-	loader, err := discovery.NewLoader(loaderConfig, &targetSource.Spec)
-	if err != nil {
-		logger.Error(err, "Target loader could not be created")
-		cleanup()
-		return err
-	}
 	go func() {
 		if err := loader.Run(ctx, targetChannel); err != nil {
 			logger.Error(err, "Target loader exited unexpectedly")
