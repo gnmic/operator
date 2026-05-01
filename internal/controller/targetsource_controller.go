@@ -205,7 +205,6 @@ func (r *TargetSourceReconciler) startDiscovery(
 	}()
 
 	// Start target loader
-	// webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
 	loaderConfig := discoveryTypes.LoaderConfig{
 		TargetsourceNN: key,
 		Spec:           &targetSource.Spec,
