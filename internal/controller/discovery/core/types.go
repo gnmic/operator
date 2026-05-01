@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -22,7 +21,6 @@ type DiscoveryRegistryValue struct {
 
 type LoaderConfig struct {
 	TargetsourceNN types.NamespacedName
-	Spec           *gnmicv1alpha1.TargetSourceSpec
 	ChunkSize      int
 	Router         *gin.Engine
 	AcceptPush     bool

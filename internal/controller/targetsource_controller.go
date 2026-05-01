@@ -171,11 +171,16 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
+	loaderConfig := discoveryTypes.LoaderConfig{
+		TargetsourceNN: key,
+		ChunkSize:      r.ChunkSize,
+	}
 
 	// Register discovery runtime of targetsource
 	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
-		Channel: targetChannel,
-		Stop:    cancel,
+		Channel:      targetChannel,
+		Stop:         cancel,
+		LoaderConfig: &loaderConfig,
 	}); err != nil {
 		return err
 	}
@@ -208,13 +213,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 	}()
 
 	// Start target loader
-	loaderConfig := discoveryTypes.LoaderConfig{
-		TargetsourceNN: key,
-		Spec:           &targetSource.Spec,
-		ChunkSize:      r.ChunkSize,
-		Router:         r.APIRouter,
-	}
-	loader, err := discovery.NewLoader(loaderConfig)
+	loader, err := discovery.NewLoader(loaderConfig, &targetSource.Spec)
 	if err != nil {
 		logger.Error(err, "Target loader could not be created")
 		cleanup()
