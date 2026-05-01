@@ -8,19 +8,22 @@ import (
 )
 
 // DiscoveryRegistryValue represents the controller-owned runtime state
-// of a discovery pipeline for a single TargetSource
+// with its configuration for a single TargetSource
 type DiscoveryRegistryValue struct {
 	// Channel is the outbound communication channel used by discovery
 	// components (loaders, webhooks, etc.) to emit discovery messages
 	Channel chan<- []DiscoveryMessage
 	// Stop cancels the discovery context associated with this registry entry
 	Stop context.CancelFunc
+
+	LoaderConfig *LoaderConfig
 }
 
 type LoaderConfig struct {
 	TargetsourceNN types.NamespacedName
 	Spec           *gnmicv1alpha1.TargetSourceSpec
 	ChunkSize      int
+	AcceptPush     bool
 }
 
 // EventAction represents the type of a discovery event
