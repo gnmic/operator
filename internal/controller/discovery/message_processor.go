@@ -20,8 +20,8 @@ type snapshotBuffer struct {
 	complete    bool
 }
 
-// TargetReconciler consumes discovered targets and applies them to Kubernetes
-type TargetReconciler struct {
+// MessageProcessor consumes discovery messages and applies them to Kubernetes
+type MessageProcessor struct {
 	ctx            context.Context
 	client         client.Client
 	scheme         *runtime.Scheme
@@ -33,9 +33,9 @@ type TargetReconciler struct {
 	deferredEvents []core.DiscoveryEvent
 }
 
-// NewTargetReconciler wires a TargetReconciler instance
-func NewTargetReconciler(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *TargetReconciler {
-	return &TargetReconciler{
+// NewMessageProcessor wires a MessageProcessor instance
+func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *MessageProcessor {
+	return &MessageProcessor{
 		client:       c,
 		scheme:       s,
 		targetSource: ts,
@@ -45,40 +45,41 @@ func NewTargetReconciler(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.T
 
 // Run is a long‑running loop that receives target snapshots
 // and reconciles Target CRs accordingly
-func (r *TargetReconciler) Run(ctx context.Context) error {
-	r.ctx = ctx
+func (m *MessageProcessor) Run(ctx context.Context) error {
+	m.ctx = ctx
 
-	logger := log.FromContext(r.ctx).
-		WithValues(
-			"name", r.targetSource.Name,
-			"namespace", r.targetSource.Namespace,
-		)
-	logger.Info("target reconciler started")
+	logger := log.FromContext(ctx).WithValues(
+		"component", "message-processor",
+		"targetsource", m.targetSource.Name,
+		"namespace", m.targetSource.Namespace,
+	)
 
-	for r.ctx.Err() == nil {
+	logger.Info("Message processor started")
+
+	for m.ctx.Err() == nil {
 		select {
-		case batch, ok := <-r.in:
+		case batch, ok := <-m.in:
 			if !ok {
 				// Channel closed, pipeline is shutting down
-				logger.Info("input channel closed, stopping target reconciler")
+				logger.Info("Input channel closed; stopping message processor")
 				return nil
 			}
-			r.queue = append(r.queue, batch...)
+			m.queue = append(m.queue, batch...)
 
 		case <-ctx.Done():
-			logger.Info("context canceled, stopping target reconciler")
+			logger.Info("Context was canceled; stopping message processor")
 			return nil
 		}
 
-		for len(r.queue) > 0 {
+		for len(m.queue) > 0 {
 			if ctx.Err() != nil {
-				return nil // why return nil?
+				return ctx.Err()
 			}
 
-			msg := r.queue[0]
-			r.queue = r.queue[1:]
+			msg := m.queue[0]
+			m.queue = m.queue[1:]
 
-			if err := r.processMessage(r.ctx, msg, logger); err != nil {
+			if err := m.processMessage(m.ctx, msg, logger); err != nil {
 				// Returning error lets the supervisor (controller)
 				// tear down and restart the pipeline via reconciliation
 				// Q: when to return an error vs just log and continue?
@@ -88,11 +89,11 @@ func (r *TargetReconciler) Run(ctx context.Context) error {
 		}
 	}
 
-	logger.Info("target reconciler stopped")
+	logger.Info("Message processor stopped")
 	return nil
 }
 
-func (r *TargetReconciler) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
+func (m *MessageProcessor) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -102,92 +103,105 @@ func (r *TargetReconciler) processMessage(ctx context.Context, message core.Disc
 	case core.DiscoverySnapshot:
 		// Collect snapshot chunks
 		logger.Info(
-			"received snapshot chunk",
+			"Received discovery snapshot chunk",
 			"snapshotID", msg.SnapshotID,
-			"index", msg.ChunkIndex,
-			"targetCount", len(msg.Targets),
+			"chunkIndex", msg.ChunkIndex,
+			"targets", len(msg.Targets),
 		)
 
 		for i := range msg.Targets {
-			msg.Targets[i] = normalizeTarget(msg.Targets[i], r.targetSource.Namespace)
+			msg.Targets[i] = normalizeTarget(msg.Targets[i], m.targetSource.Namespace)
 		}
 
-		return r.handleSnapshot(ctx, msg, logger)
+		return m.processSnapshot(ctx, msg, logger)
 
 	case core.DiscoveryEvent:
 		// Process individual event-driven update
 		logger.Info(
-			"received discovery event",
+			"Received discovery event",
+			"event", msg.Event,
 			"target", msg.Target.Name,
 		)
 
-		msg.Target = normalizeTarget(msg.Target, r.targetSource.Namespace)
-		return r.handleEvent(ctx, msg, logger)
+		msg.Target = normalizeTarget(msg.Target, m.targetSource.Namespace)
+		return m.processEvent(ctx, msg, logger)
 
 	default:
-		return fmt.Errorf("unknonw discovery message type %T", msg)
+		return fmt.Errorf("Unknown discovery message type %T", msg)
 	}
 }
 
-// handleSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
-func (r *TargetReconciler) handleSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
-	if r.activeSnapshot == nil {
-		r.startNewSnapshot(chunk, logger)
+// processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
+func (m *MessageProcessor) processSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
+	if m.activeSnapshot == nil {
+		m.startNewSnapshot(chunk, logger)
 		return nil
 	}
 
-	snapshot := r.activeSnapshot
+	snapshot := m.activeSnapshot
 	// Check if a new snapshot arrived
 	if snapshot.snapshotID != chunk.SnapshotID {
 		// If current snapshot is complete apply it first
 		if snapshot.complete {
-			if err := r.reconcileSnapshot(ctx, snapshot, logger); err != nil {
+			if err := m.applySnapshot(ctx, snapshot, logger); err != nil {
 				return err
 			}
 		} else {
 			// If a new snapshot is started before the old one completed
 			// the old one can be discarded
 			logger.Info(
-				"discarding incomplete snapshot",
+				"Discarded incomplete discovery snapshot",
 				"snapshotID", snapshot.snapshotID,
 			)
 		}
 
 		// Start collecting the new snapshot
-		r.startNewSnapshot(chunk, logger)
+		m.startNewSnapshot(chunk, logger)
 		return nil
 	}
 
-	return r.collectSnapshot(chunk, logger)
+	return m.collectSnapshot(chunk, logger)
 }
 
-func (r *TargetReconciler) startNewSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) {
-	r.activeSnapshot = &snapshotBuffer{
+func (m *MessageProcessor) startNewSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) {
+	m.activeSnapshot = &snapshotBuffer{
 		snapshotID:  chunk.SnapshotID,
 		totalChunks: chunk.TotalChunks,
 		received:    make(map[int][]core.DiscoveredTarget),
 		complete:    false,
 	}
 	// Delete buffered events that will be current with new snapshot
-	r.deferredEvents = nil
+	m.deferredEvents = nil
 
-	r.collectSnapshot(chunk, logger)
+	m.collectSnapshot(chunk, logger)
 }
 
-func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) error {
-	snapshot := r.activeSnapshot
+func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) error {
+	snapshot := m.activeSnapshot
 
 	if chunk.TotalChunks != snapshot.totalChunks {
-		logger.Error(nil, "snapshot totalChunks mismatch", "snapshotID", snapshot.snapshotID)
+		logger.Error(
+			nil,
+			"Snapshot totalChunks mismatch",
+			"snapshotID", snapshot.snapshotID,
+		)
 	}
 	if chunk.ChunkIndex < 0 || chunk.ChunkIndex >= snapshot.totalChunks {
-		logger.Error(nil, "snapshot chunk index out of range", "index", chunk.ChunkIndex)
-		r.activeSnapshot = nil
+		logger.Error(
+			nil,
+			"Snapshot chunk index out of range",
+			"chunkIndex", chunk.ChunkIndex,
+		)
+		m.activeSnapshot = nil
 		return nil
 	}
 	if _, exists := snapshot.received[chunk.ChunkIndex]; exists {
-		logger.Error(nil, "duplicate snapshot chunk", "index", chunk.ChunkIndex)
-		r.activeSnapshot = nil
+		logger.Error(
+			nil,
+			"Duplicate snapshot chunk received",
+			"chunkIndex", chunk.ChunkIndex,
+		)
+		m.activeSnapshot = nil
 		return nil
 	}
 
@@ -200,21 +214,21 @@ func (r *TargetReconciler) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 	return nil
 }
 
-func (r *TargetReconciler) handleEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+func (m *MessageProcessor) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	// If snapshot collecting is active defer events
-	if r.activeSnapshot != nil {
-		r.deferredEvents = append(r.deferredEvents, event)
+	if m.activeSnapshot != nil {
+		m.deferredEvents = append(m.deferredEvents, event)
 		return nil
 	}
 
 	// Apply events
-	return r.reconcileEvent(ctx, event, logger)
+	return m.applyEvent(ctx, event, logger)
 }
 
-func (r *TargetReconciler) reconcileSnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
+func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
-		r.activeSnapshot = nil
+		m.activeSnapshot = nil
 		return nil
 	default:
 	}
@@ -223,27 +237,31 @@ func (r *TargetReconciler) reconcileSnapshot(ctx context.Context, snapshot *snap
 	for i := 0; i < snapshot.totalChunks; i++ {
 		select {
 		case <-ctx.Done():
-			r.activeSnapshot = nil
+			m.activeSnapshot = nil
 			return nil
 		default:
 		}
 
 		chunk, ok := snapshot.received[i]
 		if !ok {
-			logger.Error(nil, "missing snapshot chunk", "index", i)
-			r.activeSnapshot = nil
+			logger.Error(
+				nil,
+				"Missing snapshot chunk",
+				"chunkIndex", i,
+			)
+			m.activeSnapshot = nil
 			return nil
 		}
 		allTargets = append(allTargets, chunk...)
 	}
 
 	logger.Info(
-		"applying snapshot",
+		"Applying discovery snapshot",
 		"snapshotID", snapshot.snapshotID,
-		"targetCount", len(allTargets),
+		"targets", len(allTargets),
 	)
 
-	existing, err := fetchExistingTargets(ctx, r.client, r.targetSource)
+	existing, err := fetchExistingTargets(ctx, m.client, m.targetSource)
 	if err != nil {
 		logger.Error(err, "error fetching existing targets")
 	} else {
@@ -272,30 +290,30 @@ func (r *TargetReconciler) reconcileSnapshot(ctx context.Context, snapshot *snap
 	)
 
 	for _, e := range events {
-		r.handleEvent(ctx, e, logger)
+		m.applyEvent(ctx, e, logger)
 	}
 
 	// Replay deferred events
-	for _, event := range r.deferredEvents {
+	for _, event := range m.deferredEvents {
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
 		}
-		if err := r.reconcileEvent(ctx, event, logger); err != nil {
+		if err := m.applyEvent(ctx, event, logger); err != nil {
 			return err
 		}
 	}
 
-	r.activeSnapshot = nil
-	r.deferredEvents = nil
+	m.activeSnapshot = nil
+	m.deferredEvents = nil
 	return nil
 }
 
-func (r *TargetReconciler) reconcileEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
 	case core.EventDelete:
-		if err := deleteTarget(ctx, r.client, event.Target.Name, r.targetSource.Namespace); err != nil {
+		if err := deleteTarget(ctx, m.client, event.Target.Name, m.targetSource.Namespace); err != nil {
 			logger.Error(err, "error deleting target",
 				"targetName", event.Target.Name,
 			)
@@ -305,9 +323,9 @@ func (r *TargetReconciler) reconcileEvent(ctx context.Context, event core.Discov
 			)
 		}
 	case core.EventApply:
-		target := generateTargetResource(event.Target, r.targetSource)
+		target := generateTargetResource(event.Target, m.targetSource)
 
-		if err := applyTarget(ctx, r.client, r.scheme, target, r.targetSource); err != nil {
+		if err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)

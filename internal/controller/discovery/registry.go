@@ -39,3 +39,11 @@ func (r *Registry[K, V]) Get(key K) (V, bool) {
 	r.mu.RUnlock()
 	return value, ok
 }
+
+func (r *Registry[K, V]) Exists(key K) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, exists := r.m[key]
+	return exists
+}
