@@ -1,8 +1,5 @@
 package discovery
 
-// This file makes diff between existing and new targets
-// file decides which targets to create/update/delete
-
 import (
 	"maps"
 	"strings"
@@ -13,7 +10,9 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
+// generateTargetResource converts a DiscoveredTarget into a Kubernetes Target Object based on the TargetSource Spec
 func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) *gnmicv1alpha1.Target {
+	// Create object instance
 	t := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      d.Name,
@@ -22,29 +21,35 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 		},
 	}
 
+	// Add Address from DiscoveredTarget
 	t.Spec.Address = d.Address
+	// Add default Target Profile from the TargetSource Spec TargetProfile
 	t.Spec.Profile = ts.Spec.TargetProfile
 
+	// Copy TargetLabels from TargetSource Spec
 	maps.Copy(t.Labels, ts.Spec.TargetLabels)
 
+	// Handle labels from Source of Truth
 	for k, v := range d.Labels {
 		if strings.HasPrefix(k, ExternalLabelPrefix) {
 			switch k {
-			case ExternalLabelTargetProfile:
+			case ExternalLabelTargetProfile: // Overwrite TargetProfile if specified by SoT
 				t.Spec.Profile = v
 			default:
-				// handle unknown label
+				// TODO: handle unknown label
 			}
-		} else {
+		} else { // Copy all other labels into the Target
 			t.Labels[k] = v
 		}
 	}
 
+	// Add TargetSource Label to the Target (precedence over all labels)
 	t.Labels[LabelTargetSourceName] = ts.Name
 
 	return t
 }
 
+// generateEvents returns a list of DiscoveryEvents. Needed for snapshot handling to determine which devices get deleted and which applied.
 func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.DiscoveredTarget) []core.DiscoveryEvent {
 	var events []core.DiscoveryEvent
 
@@ -53,6 +58,7 @@ func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.Discovere
 		discoveredMap[d.Name] = d
 	}
 
+	// Create delete events for targets which are present in existing but not in discovered
 	for _, e := range existing {
 		if _, found := discoveredMap[e.Name]; !found {
 			events = append(events, core.DiscoveryEvent{
@@ -64,6 +70,7 @@ func generateEvents(existing []gnmicv1alpha1.Target, discovered []core.Discovere
 		}
 	}
 
+	// Create apply events for all targets in discovered
 	for _, d := range discovered {
 		events = append(events, core.DiscoveryEvent{
 			Target: d,
