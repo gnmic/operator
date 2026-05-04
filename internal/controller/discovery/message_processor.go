@@ -31,6 +31,7 @@ type MessageProcessor struct {
 	activeSnapshot *snapshotBuffer
 	// Events are deferred while snapshot is in progress
 	deferredEvents []core.DiscoveryEvent
+	targetCount    int32
 }
 
 // NewMessageProcessor wires a MessageProcessor instance
@@ -305,6 +306,9 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 
+	m.targetCount = int32(len(allTargets))
+	m.updateStatus(logger)
+
 	m.activeSnapshot = nil
 	m.deferredEvents = nil
 	return nil
@@ -321,6 +325,8 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			logger.Info("deleted target object",
 				"name", event.Target.Name,
 			)
+			m.targetCount--
+			m.updateStatus(logger)
 		}
 	case core.EventApply:
 		target := generateTargetResource(event.Target, m.targetSource)
@@ -333,8 +339,20 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			logger.Info("applied target object",
 				"name", event.Target.Name,
 			)
+			m.targetCount++
+			m.updateStatus(logger)
 		}
 	}
 
 	return nil
+}
+
+func (m *MessageProcessor) updateStatus(logger logr.Logger) {
+	if err := updateTargetSourceStatus(m.ctx, m.client, m.targetSource, m.targetCount); err != nil {
+		logger.Error(err, "error updating TargetSource status")
+	} else {
+		logger.Info("updated target source status",
+			"targetCount", m.targetCount,
+		)
+	}
 }
