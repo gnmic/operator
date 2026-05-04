@@ -23,9 +23,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
@@ -248,7 +250,10 @@ func (r *TargetSourceReconciler) startDiscovery(
 // SetupWithManager sets up the controller with the Manager.
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gnmicv1alpha1.TargetSource{}).
+		For(
+			&gnmicv1alpha1.TargetSource{},
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Named("targetsource").
 		Complete(r)
 }
