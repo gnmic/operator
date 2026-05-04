@@ -108,6 +108,10 @@ undeploy-test-netbox-instance:
 	$(MAKE) netbox-delete \
 		NETBOX_CLUSTER_NAME=test-kind
 
+.PHONY apply-test-targetsources
+apply-test-targetsources:
+	kubectl apply -f test/integration/resources/targetsources
+
 .PHONY: apply-test-targets
 apply-test-targets: ## Apply the test targets for testing
 	kubectl apply -f test/integration/resources/targets/profile
