@@ -66,7 +66,7 @@ components:
             - created
             - updated
             - deleted
-    Tag:
+    Tag: # tag will be removed, moved directly under labels
       type: object
       properties:
         key:
