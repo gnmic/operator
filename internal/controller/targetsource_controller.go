@@ -249,7 +249,6 @@ func (r *TargetSourceReconciler) startDiscovery(
 func (r *TargetSourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.TargetSource{}).
-		Owns(&gnmicv1alpha1.Target{}).
 		Named("targetsource").
 		Complete(r)
 }
