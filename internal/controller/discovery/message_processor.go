@@ -223,7 +223,19 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 	}
 
 	// Apply events
-	return m.applyEvent(ctx, event, logger)
+	err := m.applyEvent(ctx, event, logger)
+	if err == nil {
+		switch event.Event {
+		case core.EventApply:
+			m.targetCount++
+			m.updateStatus(logger)
+		case core.EventDelete:
+			m.targetCount--
+			m.updateStatus(logger)
+		}
+	}
+
+	return err
 }
 
 func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
@@ -325,8 +337,6 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			logger.Info("deleted target object",
 				"name", event.Target.Name,
 			)
-			m.targetCount--
-			m.updateStatus(logger)
 		}
 	case core.EventApply:
 		target := generateTargetResource(event.Target, m.targetSource)
@@ -339,8 +349,6 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			logger.Info("applied target object",
 				"name", event.Target.Name,
 			)
-			m.targetCount++
-			m.updateStatus(logger)
 		}
 	}
 
