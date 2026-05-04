@@ -11,10 +11,10 @@ import (
 )
 
 // createDiscoveryEvent creates object of type core.DiscoveryEvent
-func createDiscoveryEvent(payloadTargets Targets) []core.DiscoveryEvent {
+func createDiscoveryEvent(payloadTargets []Target) []core.DiscoveryEvent {
 	targets := []core.DiscoveryEvent{}
-	if len(payloadTargets.TargetList) > 0 {
-		for i, target := range payloadTargets.TargetList {
+	if len(payloadTargets) > 0 {
+		for i, target := range payloadTargets {
 			if target.Name == "" {
 				// no REST API return here as not all targets might be incomplete
 				err := fmt.Errorf("Target receieved at index %d by pull interface has no Name and is skipped.", i)
@@ -41,10 +41,10 @@ func createDiscoveryEvent(payloadTargets Targets) []core.DiscoveryEvent {
 }
 
 // getKey returns key for used to identify correct channel in DiscoveryRegistry
-func getKey(payloadTargets Targets) types.NamespacedName {
+func getKey(u urlStruct) types.NamespacedName {
 	key := types.NamespacedName{
-		Namespace: payloadTargets.TargetSourceNameSpace,
-		Name:      payloadTargets.TargetSourceName,
+		Namespace: u.Namespace,
+		Name:      u.Name,
 	}
 	return key
 }

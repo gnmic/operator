@@ -14,38 +14,37 @@ paths:
     post:
       summary: "Create targets in the gNMIc Operator"
       operationId: "createTargets"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Targets'
       responses:
         '201':
           description: "Targets created successfully"
           content:
             application/json:
               schema:
-                type: object
-                required: 
-                  - Targets
-                properties:
-                  Targets:
-                    $ref: '#/components/schemas/Targets'
+                $ref: '#/components/schemas/Targets'
 components:
   schemas:
     Targets:
+      type: array
+      items:
+        $ref: '#/components/schemas/Target'
+
+    Label:
       type: object
-      required:
-        - targetSourceNameSpace
-        - TargetSourceName
-        - TargetList
       properties:
-        targetSourceNameSpace:
+        key:
           type: string
-        TargetSourceName:
+        value:
           type: string
-        TargetList:
-          type: array
-          items:
-            $ref: '#/components/schemas/Target'
+
     Target:
       type: object
-      required: 
+      required:
         - name
         - address
         - operation
@@ -59,17 +58,11 @@ components:
         labels:
           type: array
           items:
-            $ref: '#/components/schemas/Tag'
+            $ref: '#/components/schemas/Label'
         operation:
           type: string
           enum:
             - created
             - updated
             - deleted
-    Tag: # tag will be removed, moved directly under labels
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
+      

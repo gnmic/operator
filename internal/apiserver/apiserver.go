@@ -31,8 +31,8 @@ type APIServer struct {
 }
 
 type urlStruct struct {
-	namespace           string `uri:"namespace" binding:"required"`
-	gNMIcControllerName string `uri:"gNMIcControllerName" binding:"required"`
+	Namespace string `uri:"namespace" binding:"required"`
+	Name      string `uri:"name" binding:"required"`
 }
 
 func New(
@@ -55,13 +55,9 @@ func New(
 		DiscoveryRegistry: discoveryRegistry,
 		chunzSize:         discoveryChunksize,
 	}
-	// apiBaseURL := "/api/v1/:namespace/:gNMIcClusterName"
-	// RegisterHandlersWithOptions(router, a, GinServerOptions{BaseURL: apiBaseURL})
 	a.routes()
 	return a, nil
 }
-
-// kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
 
 func (a *APIServer) Router() *gin.Engine {
 	return a.router
@@ -75,7 +71,7 @@ func (a *APIServer) routes() {
 // GetClusterPlan returns cluster plan
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	url := parseURI(c)
-	plan, err := a.clusterReconciler.GetClusterPlan(url.namespace, url.gNMIcControllerName)
+	plan, err := a.clusterReconciler.GetClusterPlan(url.Namespace, url.Name)
 	if err != nil {
 		c.String(404, err.Error())
 		return
@@ -86,17 +82,17 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) CreateTargets(c *gin.Context) {
 	logger.Info("received POST request for CreateTargets.")
-
+	url := parseURI(c)
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	registry, ok := a.DiscoveryRegistry.Get(getKey(payloadTargets))
+	registry, ok := a.DiscoveryRegistry.Get(getKey(url))
 	if !ok {
-		logger.Error("TargetSource ", payloadTargets.TargetSourceNameSpace, "/", payloadTargets.TargetSourceName, "does not exist.")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + payloadTargets.TargetSourceNameSpace + " / " + payloadTargets.TargetSourceName + " does not exist"})
+		logger.Error("TargetSource ", url.Namespace, "/", url.Name, "does not exist.")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
 		return
 	}
 	// make sure channel is not closed if targetsource in registry is deleted
