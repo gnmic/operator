@@ -1,4 +1,4 @@
-package registry
+package discovery
 
 import (
 	"fmt"
@@ -10,20 +10,20 @@ import (
 // DO NOT USE a pointer type as K
 type Registry[K comparable, V any] struct {
 	mu sync.RWMutex
-	m  map[K]chan<- V
+	m  map[K]V
 }
 
 func NewRegistry[K comparable, V any]() *Registry[K, V] {
-	return &Registry[K, V]{m: make(map[K]chan<- V)}
+	return &Registry[K, V]{m: make(map[K]V)}
 }
 
-func (r *Registry[K, V]) Register(key K, ch chan<- V) error {
+func (r *Registry[K, V]) Register(key K, value V) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.m[key]; exists {
 		return fmt.Errorf("already registered: %v", key)
 	}
-	r.m[key] = ch
+	r.m[key] = value
 	return nil
 }
 
@@ -33,9 +33,17 @@ func (r *Registry[K, V]) Unregister(key K) {
 	r.mu.Unlock()
 }
 
-func (r *Registry[K, V]) Get(key K) (chan<- V, bool) {
+func (r *Registry[K, V]) Get(key K) (V, bool) {
 	r.mu.RLock()
-	ch, ok := r.m[key]
+	value, ok := r.m[key]
 	r.mu.RUnlock()
-	return ch, ok
+	return value, ok
+}
+
+func (r *Registry[K, V]) Exists(key K) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, exists := r.m[key]
+	return exists
 }

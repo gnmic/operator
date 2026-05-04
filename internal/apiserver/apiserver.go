@@ -13,8 +13,9 @@ import (
 	"github.com/bytedance/gopkg/util/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/gnmic/operator/internal/controller/discovery/registry"
+	"github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -22,8 +23,11 @@ type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
-	DiscoveryRegistry *registry.Registry[types.NamespacedName, []core.DiscoveryMessage]
-	chunkSize         int
+	DiscoveryRegistry *discovery.Registry[
+		types.NamespacedName,
+		core.DiscoveryRegistryValue,
+	]
+	chunzSize int
 }
 
 type urlStruct struct {
@@ -31,7 +35,15 @@ type urlStruct struct {
 	gNMIcControllerName string `uri:"gNMIcControllerName" binding:"required"`
 }
 
-func New(addr string, clusterReconciler *controller.ClusterReconciler, chunkSize int) (*APIServer, error) {
+func New(
+	addr string,
+	clusterReconciler *controller.ClusterReconciler,
+	discoveryRegistry *discovery.Registry[
+		types.NamespacedName,
+		core.DiscoveryRegistryValue,
+	],
+	discoveryChunksize int,
+) (*APIServer, error) {
 	router := gin.Default()
 	a := &APIServer{
 		Server: &http.Server{
@@ -40,12 +52,24 @@ func New(addr string, clusterReconciler *controller.ClusterReconciler, chunkSize
 		},
 		router:            router,
 		clusterReconciler: clusterReconciler,
-		chunkSize:         chunkSize,
+		DiscoveryRegistry: discoveryRegistry,
+		chunzSize:         discoveryChunksize,
 	}
-	// /api/v1/:namespace/target-source/:target_source_name
-	apiBaseURL := "/api/v1/:namespace/:gNMIcControllerName"
-	RegisterHandlersWithOptions(router, a, GinServerOptions{BaseURL: apiBaseURL})
+	// apiBaseURL := "/api/v1/:namespace/:gNMIcClusterName"
+	// RegisterHandlersWithOptions(router, a, GinServerOptions{BaseURL: apiBaseURL})
+	a.routes()
 	return a, nil
+}
+
+// kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
+
+func (a *APIServer) Router() *gin.Engine {
+	return a.router
+}
+
+func (a *APIServer) routes() {
+	a.router.GET("/clusters/:namespace/:name/plan", a.GetClusterPlan)
+	a.router.POST("/api/v1/:namespace/target-source/:name/createTargets", a.CreateTargets)
 }
 
 // GetClusterPlan returns cluster plan
@@ -69,7 +93,7 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		return
 	}
 
-	ch, ok := a.DiscoveryRegistry.Get(getKey(payloadTargets))
+	registry, ok := a.DiscoveryRegistry.Get(getKey(payloadTargets))
 	if !ok {
 		logger.Error("TargetSource ", payloadTargets.TargetSourceNameSpace, "/", payloadTargets.TargetSourceName, "does not exist.")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + payloadTargets.TargetSourceNameSpace + " / " + payloadTargets.TargetSourceName + " does not exist"})
@@ -79,6 +103,6 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	// timeout for sending to the channel
 	targets := createDiscoveryEvent(payloadTargets)
 	// fmt.Printf("core.DiscoveryEvent was created: %v", targets)
-	core.SendEvents(context.Background(), ch, targets, a.chunkSize)
+	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
 	c.JSON(http.StatusOK, payloadTargets)
 }

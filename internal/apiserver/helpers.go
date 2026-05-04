@@ -65,14 +65,14 @@ func convertTargetLabelsToMap(target Target) map[string]string {
 
 // getEvent converts target.Operation to core.Operation.
 func getEvent(target Target, index int) core.EventAction {
-	event := core.CREATE
+	event := core.EventApply
 	switch target.Operation {
 	case Created:
-		event = core.UPDATE
+		event = core.EventApply
 	case Updated:
-		event = core.UPDATE
+		event = core.EventApply
 	case Deleted:
-		event = core.DELETE
+		event = core.EventDelete
 	default:
 		err := fmt.Errorf("Target receieved at index %d by pull interface has no valid Operation and is skipped.", index)
 		logger.Error(err, "Failed creating DiscoveryEvent")
