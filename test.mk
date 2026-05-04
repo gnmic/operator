@@ -85,6 +85,29 @@ deploy-test-topology: ## Deploy a test topology for testing
 undeploy-test-topology: ## Undeploy a test topology for testing
 	sudo containerlab destroy -t test/integration/t1.clab.yaml -c
 
+.PHONY: deploy-test-netbox-instance
+deploy-test-netbox-instance: 
+	$(MAKE) netbox-setup \
+		NETBOX_CLUSTER_NAME=test-kind \
+		NETBOX_PASSWORD=Netbox123
+
+.PHONY: deploy-test-netbox-instance
+deploy-test-netbox-topology:
+	sudo containerlab deploy -t test/integration/t2.clab.yaml -c
+	kubectl port-forward svc/netbox 8082:80 -n netbox --context kind-test-kind --address=0.0.0.0 >/dev/null 2>&1 &
+
+.PHONY: sync-netbox-test-data
+sync-netbox-test-data:
+	$(MAKE) netbox-sync-data \
+		NETBOX_CLUSTER_NAME=test-kind \
+		NETBOX_URL=http://localhost:8082 \
+		NETBOX_INIT=test/integration/netbox/initializers
+
+.PHONY: undeploy-test-netbox-instance
+undeploy-test-netbox-instance:
+	$(MAKE) netbox-delete \
+		NETBOX_CLUSTER_NAME=test-kind
+
 .PHONY: apply-test-targets
 apply-test-targets: ## Apply the test targets for testing
 	kubectl apply -f test/integration/resources/targets/profile
