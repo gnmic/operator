@@ -57,6 +57,12 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 
 	logger.Info("Message processor started")
 
+	if existing, err := fetchExistingTargets(m.ctx, m.client, m.targetSource); err != nil {
+		logger.Error(err, "error fetching existing targets")
+	} else {
+		m.targetCount = int32(len(existing))
+	}
+
 	for m.ctx.Err() == nil {
 		select {
 		case batch, ok := <-m.in:
