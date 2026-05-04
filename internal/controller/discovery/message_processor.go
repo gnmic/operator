@@ -94,6 +94,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 	return nil
 }
 
+// processMessage handles all of the incoming messages from the channel
 func (m *MessageProcessor) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -215,6 +216,7 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 	return nil
 }
 
+// processEvent handles a single DiscoveryEvent message. If a snapshot is in the queue, the events get deferred and applied after.
 func (m *MessageProcessor) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	// If snapshot collecting is active defer events
 	if m.activeSnapshot != nil {
@@ -238,6 +240,7 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 	return err
 }
 
+// applySnapshot is in charge of getting the Events for the discovered targets and applying them through applyEvent
 func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
@@ -318,6 +321,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 
+	// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
 	m.targetCount = int32(len(allTargets))
 	m.updateStatus(logger)
 
