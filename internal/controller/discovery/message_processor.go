@@ -57,6 +57,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 
 	logger.Info("Message processor started")
 
+	// Update internal counter in case of a process restart
 	if existing, err := fetchExistingTargets(m.ctx, m.client, m.targetSource); err != nil {
 		logger.Error(err, "error fetching existing targets")
 	} else {
