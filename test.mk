@@ -97,7 +97,7 @@ deploy-test-netbox-topology:
 	kubectl port-forward svc/netbox 8082:80 -n netbox --context kind-test-kind --address=0.0.0.0 >/dev/null 2>&1 &
 
 .PHONY: sync-netbox-test-data
-sync-netbox-test-data:
+sync-test-netbox-data:
 	$(MAKE) netbox-sync-data \
 		NETBOX_CLUSTER_NAME=test-kind \
 		NETBOX_URL=http://localhost:8082 \
