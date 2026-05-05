@@ -1,0 +1,24 @@
+- address: 172.18.1.10/32
+  assigned_object:
+    device:
+      name: spine1
+    name: mgmt0
+  status: active
+  primary: true
+  dns_name: t2-nodes-spine1
+- address: 172.18.1.11/32
+  assigned_object:
+    device:
+      name: leaf1
+    name: mgmt0
+  status: active
+  primary: true
+  dns_name: t2-nodes-leaf1
+- address: 172.18.1.12/32
+  assigned_object:
+    device:
+      name: leaf2
+    name: mgmt0
+  status: active
+  primary: true
+  dns_name: t2-nodes-leaf2

@@ -1,0 +1,11 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: netbox-ts
+spec:
+  provider:
+    http:
+      url: http://localhost:8082/targets
+  targetLabels:
+    integration-test: netbox
+  targetProfile: netbox-default
