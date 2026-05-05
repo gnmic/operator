@@ -1,4 +1,4 @@
-name: t2
+name: netbox
 
 mgmt:
   network: kind
