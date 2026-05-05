@@ -31,6 +31,7 @@ type MessageProcessor struct {
 	activeSnapshot *snapshotBuffer
 	// Events are deferred while snapshot is in progress
 	deferredEvents []core.DiscoveryEvent
+	targetCount    int32
 }
 
 // NewMessageProcessor wires a MessageProcessor instance
@@ -55,6 +56,13 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 	)
 
 	logger.Info("Message processor started")
+
+	// Update internal counter in case of a process restart
+	if existing, err := fetchExistingTargets(m.ctx, m.client, m.targetSource); err != nil {
+		logger.Error(err, "error fetching existing targets")
+	} else {
+		m.targetCount = int32(len(existing))
+	}
 
 	for m.ctx.Err() == nil {
 		select {
@@ -93,6 +101,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 	return nil
 }
 
+// processMessage handles all of the incoming messages from the channel
 func (m *MessageProcessor) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -108,6 +117,11 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 			"chunkIndex", msg.ChunkIndex,
 			"targets", len(msg.Targets),
 		)
+
+		for i := range msg.Targets {
+			msg.Targets[i] = normalizeTarget(msg.Targets[i], m.targetSource.Namespace)
+		}
+
 		return m.processSnapshot(ctx, msg, logger)
 
 	case core.DiscoveryEvent:
@@ -117,6 +131,8 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 			"event", msg.Event,
 			"target", msg.Target.Name,
 		)
+
+		msg.Target = normalizeTarget(msg.Target, m.targetSource.Namespace)
 		return m.processEvent(ctx, msg, logger)
 
 	default:
@@ -207,6 +223,31 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 	return nil
 }
 
+// processEvent handles a single DiscoveryEvent message. If a snapshot is in the queue, the events get deferred and applied after.
+func (m *MessageProcessor) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+	// If snapshot collecting is active defer events
+	if m.activeSnapshot != nil {
+		m.deferredEvents = append(m.deferredEvents, event)
+		return nil
+	}
+
+	// Apply events
+	err := m.applyEvent(ctx, event, logger)
+	if err == nil {
+		switch event.Event {
+		case core.EventApply:
+			m.targetCount++
+			m.updateStatus(logger)
+		case core.EventDelete:
+			m.targetCount--
+			m.updateStatus(logger)
+		}
+	}
+
+	return err
+}
+
+// applySnapshot is in charge of getting the Events for the discovered targets and applying them through applyEvent
 func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
@@ -243,8 +284,37 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		"targets", len(allTargets),
 	)
 
-	// apply all targets
-	// a.applyTargets
+	existing, err := fetchExistingTargets(ctx, m.client, m.targetSource)
+	if err != nil {
+		logger.Error(err, "error fetching existing targets")
+	} else {
+		logger.Info("fetched existing targets",
+			"numOfTargets", len(existing),
+		)
+	}
+
+	events := generateEvents(existing, allTargets)
+
+	nApply := 0
+	nDelete := 0
+
+	for _, e := range events {
+		switch e.Event {
+		case core.EventApply:
+			nApply++
+		case core.EventDelete:
+			nDelete++
+		}
+	}
+
+	logger.Info("generated events",
+		"numOfApply", nApply,
+		"numOfDelete", nDelete,
+	)
+
+	for _, e := range events {
+		m.applyEvent(ctx, e, logger)
+	}
 
 	// Replay deferred events
 	for _, event := range m.deferredEvents {
@@ -258,38 +328,50 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 
+	// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
+	m.targetCount = int32(len(allTargets))
+	m.updateStatus(logger)
+
 	m.activeSnapshot = nil
 	m.deferredEvents = nil
 	return nil
 }
 
-func (m *MessageProcessor) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
-	// If snapshot collecting is active defer events
-	if m.activeSnapshot != nil {
-		m.deferredEvents = append(m.deferredEvents, event)
-		return nil
-	}
-
-	// Apply events
-	return m.applyEvent(ctx, event, logger)
-}
-
 func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
 	case core.EventDelete:
-		logger.Info(
-			"Deleting Target",
-			"target", event.Target.Name,
-			"targetsource", m.targetSource.Name,
-		)
+		if err := deleteTarget(ctx, m.client, event.Target.Name, m.targetSource.Namespace); err != nil {
+			logger.Error(err, "error deleting target",
+				"targetName", event.Target.Name,
+			)
+		} else {
+			logger.Info("deleted target object",
+				"name", event.Target.Name,
+			)
+		}
 	case core.EventApply:
-		logger.Info(
-			"Applying Target",
-			"target", event.Target.Name,
-			"address", event.Target.Address,
-			"labels", event.Target.Labels,
-			"targetsource", m.targetSource.Name,
+		target := generateTargetResource(event.Target, m.targetSource)
+
+		if err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
+			logger.Error(err, "error applying target",
+				"targetName", event.Target.Name,
+			)
+		} else {
+			logger.Info("applied target object",
+				"name", event.Target.Name,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (m *MessageProcessor) updateStatus(logger logr.Logger) {
+	if err := updateTargetSourceStatus(m.ctx, m.client, m.targetSource, m.targetCount); err != nil {
+		logger.Error(err, "error updating TargetSource status")
+	} else {
+		logger.Info("updated target source status",
+			"targetCount", m.targetCount,
 		)
 	}
-	return nil
 }

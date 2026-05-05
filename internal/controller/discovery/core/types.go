@@ -47,6 +47,17 @@ type DiscoveryEvent struct {
 	Event  EventAction
 }
 
+func (e EventAction) ToString() string {
+	switch e {
+	case EventDelete:
+		return "DELETE"
+	case EventApply:
+		return "APPLY"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 type DiscoverySnapshot struct {
 	SnapshotID  string
 	ChunkIndex  int
