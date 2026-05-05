@@ -8,4 +8,4 @@ spec:
       url: http://localhost:8082/targets
   targetLabels:
     integration-test: netbox
-  profile: netbox-default
+  targetProfile: netbox-default
