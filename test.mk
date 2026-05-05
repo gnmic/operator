@@ -112,7 +112,7 @@ undeploy-test-netbox-instance: ## Undeploy the netbox instance from the test clu
 undeploy-test-netbox-topology: ## Undeploy the netbox test topology for testing
 	sudo containerlab destroy -t test/integration/netbox/netbox.clab.yaml -c
 
-.PHONY apply-test-targetsources
+.PHONY: apply-test-targetsources
 apply-test-targetsources: ## Apply the test targetsources for testing
 	kubectl apply -f test/integration/resources/targetsources
 
