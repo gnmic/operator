@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -23,32 +22,30 @@ const (
 
 // Loader implements the HTTP pull discovery mechanism
 type Loader struct {
-	cfg core.LoaderConfig
+	commonCfg core.CommonLoaderConfig
 }
 
 // New instantiates the http loader with the provided config
-func New(cfg core.LoaderConfig) core.Loader {
-	return &Loader{cfg: cfg}
+func New(cfg core.CommonLoaderConfig) core.Loader {
+	return &Loader{commonCfg: cfg}
 }
 
 func (l *Loader) Name() string {
 	return "http"
 }
 
-func (l *Loader) Start(
-	ctx context.Context,
-	targetsourceNN types.NamespacedName,
-	spec gnmicv1alpha1.TargetSourceSpec,
-	out chan<- []core.DiscoveryMessage,
-) error {
+func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage, spec gnmicv1alpha1.TargetSourceSpec) error {
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", targetsourceNN.Name,
-		"namespace", targetsourceNN.Namespace,
+		"targetsource", l.commonCfg.TargetsourceNN,
 	)
 
-	logger.Info("HTTP loader started")
+	logger.Info(
+		"HTTP loader started",
+		"targetsource", l.commonCfg.TargetsourceNN.Name,
+		"namespace", l.commonCfg.TargetsourceNN.Namespace,
+	)
 
 	// Input Validation of spec
 	if spec.Provider == nil || spec.Provider.HTTP == nil {
@@ -86,8 +83,8 @@ func (l *Loader) Start(
 			return
 		}
 
-		snapshotID := fmt.Sprintf("%s-%s-%s", targetsourceNN.Namespace, targetsourceNN.Name, uuid.NewString())
-		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.cfg.ChunkSize); err != nil {
+		snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
+		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
 			logger.Error(
 				err,
 				"Failed to send discovery snapshot",

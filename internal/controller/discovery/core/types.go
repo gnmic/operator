@@ -1,22 +1,27 @@
 package core
 
-import "context"
+import (
+	"context"
+
+	"k8s.io/apimachinery/pkg/types"
+)
 
 // DiscoveryRegistryValue represents the controller-owned runtime state
-// of a discovery pipeline for a single TargetSource
+// with its configuration for a single TargetSource
 type DiscoveryRegistryValue struct {
 	// Channel is the outbound communication channel used by discovery
 	// components (loaders, webhooks, etc.) to emit discovery messages
 	Channel chan<- []DiscoveryMessage
-	// WebhookEnabled indicates whether webhook-based discovery is enabled
-	// for this TargetSource
-	WebhookEnabled bool
-	// Stop cancels the discovery pipeline associated with this registry entry
+	// Stop cancels the discovery context associated with this registry entry
 	Stop context.CancelFunc
+
+	CommonLoaderConfig *CommonLoaderConfig
 }
 
-type LoaderConfig struct {
-	ChunkSize int
+type CommonLoaderConfig struct {
+	TargetsourceNN types.NamespacedName
+	ChunkSize      int
+	AcceptPush     bool
 }
 
 // EventAction represents the type of a discovery event
