@@ -119,7 +119,7 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 		)
 
 		for i := range msg.Targets {
-			msg.Targets[i] = normalizeTarget(msg.Targets[i], m.targetSource.Namespace)
+			msg.Targets[i] = normalizeTarget(msg.Targets[i], m.targetSource.Name)
 		}
 
 		return m.processSnapshot(ctx, msg, logger)
@@ -132,7 +132,7 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 			"target", msg.Target.Name,
 		)
 
-		msg.Target = normalizeTarget(msg.Target, m.targetSource.Namespace)
+		msg.Target = normalizeTarget(msg.Target, m.targetSource.Name)
 		return m.processEvent(ctx, msg, logger)
 
 	default:
