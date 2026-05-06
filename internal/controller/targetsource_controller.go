@@ -189,10 +189,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 		targetSource,
 		targetChannel,
 	)
-	loader, loaderConfig, err := discovery.NewLoader(discoveryTypes.CommonLoaderConfig{
-		TargetsourceNN: key,
-		ChunkSize:      r.ChunkSize,
-	},
+	loader, loaderConfig, err := discovery.NewLoader(loaderConfig,
 		&targetSource.Spec,
 	)
 	if err != nil {
