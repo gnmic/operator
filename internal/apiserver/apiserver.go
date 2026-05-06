@@ -8,15 +8,17 @@ package apiserver
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
-	"github.com/bytedance/gopkg/util/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
 	"github.com/gnmic/operator/internal/controller/discovery"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type APIServer struct {
@@ -28,6 +30,7 @@ type APIServer struct {
 		core.DiscoveryRegistryValue,
 	]
 	chunzSize int
+	logger    logr.Logger
 }
 
 type urlStruct struct {
@@ -45,6 +48,7 @@ func New(
 	discoveryChunksize int,
 ) (*APIServer, error) {
 	router := gin.Default()
+	logger := log.Log.WithValues("component", "api-server")
 	a := &APIServer{
 		Server: &http.Server{
 			Addr:    addr,
@@ -54,12 +58,15 @@ func New(
 		clusterReconciler: clusterReconciler,
 		DiscoveryRegistry: discoveryRegistry,
 		chunzSize:         discoveryChunksize,
+		logger:            logger,
 	}
+	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	a.routes()
 	return a, nil
 }
 
 func (a *APIServer) Router() *gin.Engine {
+	gin.SetMode(gin.ReleaseMode) // gin logs 
 	return a.router
 }
 
@@ -71,34 +78,55 @@ func (a *APIServer) routes() {
 // GetClusterPlan returns cluster plan
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	url := parseURI(c)
+	logger := log.FromContext(c.Request.Context()).WithValues(
+		"component", "apiserver",
+		"namespace", url.Namespace,
+		"cluster", url.Name,
+	)
+	logger.Info("Received GET request for GetClusterPlan")
+
 	plan, err := a.clusterReconciler.GetClusterPlan(url.Namespace, url.Name)
 	if err != nil {
+		logger.Error(err, "Failed to get cluster plan")
 		c.String(404, err.Error())
 		return
 	}
+	logger.Info("Successfully returned cluster plan")
 	c.JSON(200, plan)
 }
 
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) CreateTargets(c *gin.Context) {
-	logger.Info("received POST request for CreateTargets.")
 	url := parseURI(c)
+	logger := log.FromContext(c.Request.Context()).WithValues(
+		"component", "apiserver",
+		"namespace", url.Namespace,
+		"targetsource", url.Name,
+	)
+	logger.Info("Received POST request for CreateTargets")
+
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
+		logger.Error(err, "Failed to bind request payload")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	registry, ok := a.DiscoveryRegistry.Get(getKey(url))
 	if !ok {
-		logger.Error("TargetSource ", url.Namespace, "/", url.Name, "does not exist.")
+		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
+		logger.Error(err, "TargetSource lookup failed")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
 		return
 	}
 	// make sure channel is not closed if targetsource in registry is deleted
 	// timeout for sending to the channel
-	targets := createDiscoveryEvent(payloadTargets)
-	// fmt.Printf("core.DiscoveryEvent was created: %v", targets)
+	targets, err := createDiscoveryEvent(payloadTargets)
+	if err != nil{
+		logger.Error(err, "failed creating discoveryEvent")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+	}
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
+	logger.Info("CreateTargets request processed successfully", "count", len(targets))
 	c.JSON(http.StatusOK, payloadTargets)
 }
