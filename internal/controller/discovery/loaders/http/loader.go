@@ -8,11 +8,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"k8s.io/kube-openapi/pkg/validation/spec"
+
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	loaderUtils "github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
-	"github.com/google/uuid"
 )
 
 const (
@@ -23,11 +26,12 @@ const (
 // Loader implements the HTTP pull discovery mechanism
 type Loader struct {
 	commonCfg core.CommonLoaderConfig
+	spec      *gnmicv1alpha1.HTTPConfig
 }
 
 // New instantiates the http loader with the provided config
-func New(cfg core.CommonLoaderConfig) core.Loader {
-	return &Loader{commonCfg: cfg}
+func New(cfg core.CommonLoaderConfig, httpConfig gnmicv1alpha1.HTTPConfig) core.Loader {
+	return &Loader{commonCfg: cfg, spec: &httpConfig}
 }
 
 func (l *Loader) Name() string {
@@ -50,7 +54,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	logger.Info("HTTP loader started")
 
 	// Input Validation of spec
-	if spec.Provider == nil || spec.Provider.HTTP == nil {
+	if spec. == nil {
 		return errors.New("HTTP loader requires spec.provider.http to be set")
 	}
 
