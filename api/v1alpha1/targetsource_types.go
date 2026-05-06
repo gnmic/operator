@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -32,22 +33,98 @@ type TargetSourceSpec struct {
 	TargetProfile string `json:"targetProfile"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf=http;consul
+// +kubebuilder:validation:ExactlyOneOf=http
 type ProviderSpec struct {
-	HTTP   *HTTPConfig   `json:"http,omitempty"`
-	Consul *ConsulConfig `json:"consul,omitempty"`
+	HTTP *HTTPConfig `json:"http,omitempty"`
+}
+
+type WebhookSpec struct {
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type HTTPConfig struct {
 	// +kubebuilder:validation:MinLength=1
 	URL string `json:"url"`
 	// +kubebuilder:validation:Optional
+	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+	// +kubebuilder:validation:Optional
+	PollInterval *metav1.Duration `json:"interval,omitempty"`
+	// +kubebuilder:validation:Optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
+	// +kubebuilder:validation:Optional
+	TLS *ClientTLSConfig `json:"tls,omitempty"`
+	// +kubebuilder:validation:Optional
+	Pagination *PaginationSpec `json:"pagination,omitempty"`
+	// +kubebuilder:validation:Optional
+	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
+	// +kubebuilder:validation:Optional
 	AcceptPush bool `json:"acceptPush,omitempty"`
 }
 
-type ConsulConfig struct {
+type ClientTLSConfig struct {
+	InsecureSkipVerify bool                      `json:"insecureSkipVerify,omitempty"`
+	CASecretRef        *corev1.SecretKeySelector `json:"caSecretRef,omitempty"`
+}
+
+// +kubebuilder:validation:ExactlyOneOf=basic;bearer;jwt;token
+type AuthorizationSpec struct {
+	Basic  *BasicAuthSpec  `json:"basic,omitempty"`
+	Bearer *BearerAuthSpec `json:"bearer,omitempty"`
+	Token  *TokenAuthSpec  `json:"token,omitempty"`
+	JWT    *JWTAuthSpec    `json:"jwt,omitempty"`
+}
+
+// Enforce EITHER inline creds OR secret ref
+// +kubebuilder:validation:XValidation:rule="(has(self.credentialsSecretRef) && !has(self.username) && !has(self.password)) || (!has(self.credentialsSecretRef) && has(self.username) && has(self.password))",message="either credentialsSecretRef OR both username and password must be set, but not a mix"
+type BasicAuthSpec struct {
+	Username             string                    `json:"username,omitempty"`
+	Password             string                    `json:"password,omitempty"`
+	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
+}
+
+// +kubebuilder:validation:ExactlyOneOf=token;tokenSecretRef
+type BearerAuthSpec struct {
+	Token          string                    `json:"token,omitempty"`
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+}
+
+// +kubebuilder:validation:XValidation:rule="has(self.token) != has(self.tokenSecretRef)",message="either token or tokenSecretRef must be set, but not both"
+type TokenAuthSpec struct {
 	// +kubebuilder:validation:MinLength=1
-	URL string `json:"url,omitempty"`
+	Scheme         string                    `json:"scheme"`
+	Token          string                    `json:"token,omitempty"`
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+}
+
+// +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
+// +kubebuilder:validation:XValidation:rule="!( (has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)) )",message="static JWT token and generated JWT configuration cannot be combined"
+// +kubebuilder:validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != ”",message="algorithm must be specified when generating a JWT"
+type JWTAuthSpec struct {
+	// Static pre-generated JWT
+	Token          string                    `json:"token,omitempty"`
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+	// Optional: generate JWT dynamically
+	Claims              map[string]string         `json:"claims,omitempty"`
+	SigningKeySecretRef *corev1.SecretKeySelector `json:"signingKeySecretRef,omitempty"`
+	// HS256, RS256, ES256, etc.
+	Algorithm string           `json:"algorithm,omitempty"`
+	TTL       *metav1.Duration `json:"ttl,omitempty"`
+}
+
+type PaginationSpec struct {
+	Enabled bool `json:"enabled"`
+	// Example: "results"
+	ItemsField string `json:"itemsField,omitempty"`
+	// Example: "next"
+	NextField string `json:"nextField,omitempty"`
+}
+
+// JSONPath-style expressions
+type ResponseMappingSpec struct {
+	Name    string            `json:"name"`
+	Address string            `json:"address"`
+	Port    string            `json:"port,omitempty"`
+	Labels  map[string]string `json:"labels,omitempty"`
 }
 
 // TargetSourceStatus defines the observed state of TargetSource
