@@ -3,13 +3,11 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
-	"k8s.io/kube-openapi/pkg/validation/spec"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -54,9 +52,9 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	logger.Info("HTTP loader started")
 
 	// Input Validation of spec
-	if spec. == nil {
-		return errors.New("HTTP loader requires spec.provider.http to be set")
-	}
+	// if l.spec.URL == "nil" {
+	// 	return errors.New("HTTP loader requires spec.provider.http to be set")
+	// }
 
 	client := &http.Client{
 		Timeout: defaultTimeoutSeconds * time.Second,
@@ -68,7 +66,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	logger.Info(
 		"HTTP polling discovery started",
 		"interval", interval.String(),
-		"url", spec.Provider.HTTP.URL,
+		"url", l.spec.URL,
 	)
 
 	// helper function to fetch targets and emit discovery messages
@@ -76,14 +74,15 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 		targets, err := l.fetchTargetsFromHTTPEndpoint(
 			ctx,
 			client,
-			spec.Provider.HTTP.URL,
-			spec.Provider.HTTP.Token,
+			l.spec.URL,
+			l.spec.Authorization.Token.Scheme,
+			l.spec.Authorization.Token.Token,
 		)
 		if err != nil {
 			logger.Error(
 				err,
 				"Failed to fetch targets from HTTP endpoint",
-				"url", spec.Provider.HTTP.URL,
+				"url", l.spec.URL,
 			)
 			return
 		}
@@ -126,6 +125,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	ctx context.Context,
 	client *http.Client,
 	url string,
+	scheme string,
 	token string,
 ) ([]core.DiscoveredTarget, error) {
 
@@ -135,7 +135,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	}
 
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Token "+token)
+	req.Header.Set("Authorization", fmt.Sprintf("%s %s", scheme, token))
 
 	resp, err := client.Do(req)
 	if err != nil {
