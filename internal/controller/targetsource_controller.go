@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,10 +36,10 @@ import (
 // TargetSourceReconciler reconciles a TargetSource object
 //
 // Responsibilities:
-// - Ensure at most one pipeline per TargetSource
-// - Start pipelines on reconcile
-// - Stop pipelines on deletion or NotFound
-// - Delegate runtime failure handling to the Supervisor
+// - Ensure at most one discovery runtime per TargetSource
+// - Start runtime on reconcile if not already running
+// - Restart runtime on reconcile if spec changed
+// - Stop runtime on deletion or NotFound
 type TargetSourceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -72,11 +71,11 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	targetSource, err := r.fetchTargetSource(ctx, req.NamespacedName)
 	// If the TargetSource no longer exists, ensure runtime cleanup
 	if apierrors.IsNotFound(err) {
-		if pipeline, ok := r.DiscoveryRegistry.Get(req.NamespacedName); ok {
-			pipeline.Stop()
+		if runtime, ok := r.DiscoveryRegistry.Get(req.NamespacedName); ok {
+			runtime.Stop()
 			r.DiscoveryRegistry.Unregister(req.NamespacedName)
 		}
-		logger.Info("TargetSource not found; stopped discovery pipeline")
+		logger.Info("TargetSource not found; stopped discovery runtime")
 		return ctrl.Result{}, nil
 	} else if err != nil {
 		return ctrl.Result{}, err
@@ -91,15 +90,15 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if r.DiscoveryRegistry.Exists(req.NamespacedName) {
-		logger.Info("Discovery pipeline already running; reconciliation completed")
+		logger.Info("Discovery runtime already running; reconciliation completed")
 		return ctrl.Result{}, nil
 	}
 
-	if err := r.startDiscoveryPipeline(req.NamespacedName, targetSource, logger); err != nil {
+	if err := r.startDiscovery(req.NamespacedName, targetSource, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Started discovery pipeline")
+	logger.Info("Started discovery runtime")
 	return ctrl.Result{}, nil
 }
 
@@ -112,15 +111,15 @@ func (r *TargetSourceReconciler) fetchTargetSource(ctx context.Context, key type
 	return &targetSource, nil
 }
 
-// reconcileDeletion stops the discovery pipeline and removes the finalizer
+// reconcileDeletion stops the discovery runtime and removes the finalizer
 func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues(
 		"targetsource", key.Name,
 		"namespace", key.Namespace,
 	)
-	logger.Info("TargetSource was marked for deletion; stopping discovery pipeline")
-	if pipeline, ok := r.DiscoveryRegistry.Get(key); ok {
-		pipeline.Stop()
+	logger.Info("TargetSource was marked for deletion; stopping discovery runtime")
+	if runtime, ok := r.DiscoveryRegistry.Get(key); ok {
+		runtime.Stop()
 		r.DiscoveryRegistry.Unregister(key)
 	}
 
@@ -157,117 +156,78 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 	return nil
 }
 
-// resolveRestartPolicy merges an optional spec override with the controller’s default restart policy
-func resolveRestartPolicy(
-	override *gnmicv1alpha1.RestartPolicySpec,
-) discovery.RestartPolicy {
-	defaults := discovery.DefaultRestartPolicy()
-
-	if override == nil {
-		return defaults
-	}
-
-	resolved := defaults
-
-	if override.MaxRestarts != nil {
-		resolved.MaxRestarts = *override.MaxRestarts
-	}
-
-	if override.BackoffSeconds != nil {
-		resolved.Backoff = time.Duration(*override.BackoffSeconds) * time.Second
-	}
-
-	return resolved
-}
-
-// startDiscoveryPipeline creates and starts a discovery pipeline for a TargetSource
+// startDiscovery creates and starts a discovery runtime for a TargetSource
 //
-// Pipeline semantics:
-// 1. target reconciler is mandatory and must start first
-// 2. loader is optional and conditional on spec
-// 3. Permanent failure of required components shuts down the pipeline
-// 4. Shutdown ordering: cancel ctx -> wait for goroutines to exit -> close channel -> unregister
-func (r *TargetSourceReconciler) startDiscoveryPipeline(
+// Invariant:
+// - MessageProcessor and Loader must run for the lifetime of the TargetSource
+// - Any unexpected exit is treated as a bug and triggers full shutdown
+func (r *TargetSourceReconciler) startDiscovery(
 	key types.NamespacedName,
 	targetSource *gnmicv1alpha1.TargetSource,
 	logger logr.Logger,
 ) error {
-	loaderConfigured := targetSource.Spec.Provider != nil
-	webhookActivated := targetSource.Spec.Webhook.Enabled != nil && *targetSource.Spec.Webhook.Enabled
-	restartPolicy := resolveRestartPolicy(targetSource.Spec.RestartPolicy)
-
-	supervisor := discovery.NewSupervisor(context.Background())
-
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
-	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
-		Channel:        targetChannel,
-		WebhookEnabled: webhookActivated,
-		Stop:           supervisor.Stop,
-	}); err != nil {
-		return err
+	ctx, cancel := context.WithCancel(context.Background())
+	loaderConfig := discoveryTypes.CommonLoaderConfig{
+		TargetsourceNN: key,
+		ChunkSize:      r.ChunkSize,
 	}
 
-	// Create target reconciler instance
-	targetReconciler := discovery.NewTargetReconciler(
+	// Cleanup function to cleanup discovery runtime of targetsource
+	cleanup := func() {
+		cancel()
+		r.DiscoveryRegistry.Unregister(key)
+		close(targetChannel)
+	}
+
+	messageProcessor := discovery.NewMessageProcessor(
 		r.Client,
 		r.Scheme,
 		targetSource,
 		targetChannel,
 	)
-	// Start target reconciler
-	targetReconcilerReady := make(chan struct{})
-	supervisor.StartSupervisedComponent(discovery.ComponentSpec{
-		Name:               "target-reconciler",
-		Policy:             restartPolicy,
-		EscalatesOnFailure: true,
-		Run: func(ctx context.Context) error {
-			close(targetReconcilerReady) // Signals that reconciler started successfully
-			return targetReconciler.Run(ctx)
-		},
-	})
-	// Wait for reconciler to be ready before starting loader
-	select {
-	case <-targetReconcilerReady:
-		logger.Info("Target reconciler started")
-	case <-supervisor.Done():
-		logger.Info("Supervisor stopped before target reconciler became ready")
-		return nil
+	loader, loaderConfig, err := discovery.NewLoader(loaderConfig,
+		&targetSource.Spec,
+	)
+	if err != nil {
+		logger.Error(err, "Target loader could not be created")
+		cleanup()
+		return err
 	}
 
-	// Create loader instance
-	if loaderConfigured {
-		loader, err := discovery.NewLoader(
-			key,
-			targetSource.Spec,
-			discoveryTypes.LoaderConfig{ChunkSize: r.ChunkSize},
-		)
-		if err != nil {
-			supervisor.Stop()
-			return err
+	// Register discovery runtime of targetsource
+	if err := r.DiscoveryRegistry.Register(key, discoveryTypes.DiscoveryRegistryValue{
+		Channel:            targetChannel,
+		Stop:               cancel,
+		CommonLoaderConfig: &loaderConfig,
+	}); err != nil {
+		return err
+	}
+
+	// Start message processor
+	go func() {
+		logger.Info("Message processor started")
+
+		if err := messageProcessor.Run(ctx); err != nil {
+			logger.Error(err, "Message processor exited unecpectedly")
+		} else {
+			logger.Error(nil, "Message processor exited unexpectedly without error")
 		}
 
-		supervisor.StartSupervisedComponent(discovery.ComponentSpec{
-			Name:               "loader",
-			Policy:             restartPolicy,
-			EscalatesOnFailure: !webhookActivated,
-			Run: func(ctx context.Context) error {
-				return loader.Start(ctx, key, targetSource.Spec, targetChannel)
-			},
-		})
-	}
+		// Any exit is considered a bug that should stop the discovery runtime
+		cleanup()
+	}()
 
-	// Monitor supervisor in a separate goroutine to handle shutdown and cleanup
+	// Start target loader
 	go func() {
-		<-supervisor.Done()
-		supervisor.Wait() // Wait for components to exit
+		if err := loader.Run(ctx, targetChannel); err != nil {
+			logger.Error(err, "Target loader exited unexpectedly")
+		} else {
+			logger.Error(nil, "Target loader exited unexpectedly without error")
+		}
 
-		close(targetChannel)
-		r.DiscoveryRegistry.Unregister(key)
-		logger.Info(
-			"Discovery pipeline stopped; cleaned up resources",
-			"targetsource", key.Name,
-			"namespace", key.Namespace,
-		)
+		// Any exit is considered a bug that should stop the discovery runtime
+		cleanup()
 	}()
 
 	return nil
