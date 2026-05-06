@@ -11,16 +11,16 @@ import (
 )
 
 // createDiscoveryEvent creates object of type core.DiscoveryEvent
-func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error) {
+func createDiscoveryEvent(payloadTargets []target) ([]core.DiscoveryEvent, error) {
 	targets := []core.DiscoveryEvent{}
 
 	if len(payloadTargets) > 0 {
 		for i, target := range payloadTargets {
 			if target.Name == "" {
-				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Name and is skipped.", i)
+				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Name.", i)
 			}
 			if target.Address == "" {
-				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Address and is skipped.", i)
+				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Address.", i)
 			}
 			event, err := getEvent(target, i)
 			if err != nil {
@@ -50,7 +50,7 @@ func getKey(u urlStruct) types.NamespacedName {
 }
 
 // convertTargetLabelsToMap converts target.Labels to map.
-func convertTargetLabelsToMap(target Target) map[string]string {
+func convertTargetLabelsToMap(target target) map[string]string {
 	labelToMap := make(map[string]string)
 	if target.Labels != nil {
 		for _, tag := range *target.Labels {
@@ -64,7 +64,7 @@ func convertTargetLabelsToMap(target Target) map[string]string {
 }
 
 // getEvent converts target.Operation to core.Operation.
-func getEvent(target Target, index int) (core.EventAction, error) {
+func getEvent(target target, index int) (core.EventAction, error) {
 	event := core.EventApply
 	switch target.Operation {
 	case Created:
@@ -74,7 +74,7 @@ func getEvent(target Target, index int) (core.EventAction, error) {
 	case Deleted:
 		event = core.EventDelete
 	default:
-		return event, fmt.Errorf("Target receieved at index %d by pull interface has no valid Operation and is skipped.", index)
+		return event, fmt.Errorf("Target receieved at index %d by pull interface has no valid Operation", index)
 	}
 	return event, nil
 }

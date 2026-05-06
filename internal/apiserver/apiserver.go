@@ -47,6 +47,7 @@ func New(
 	],
 	discoveryChunksize int,
 ) (*APIServer, error) {
+	gin.SetMode(gin.ReleaseMode) // To double-check 
 	router := gin.Default()
 	logger := log.Log.WithValues("component", "api-server")
 	a := &APIServer{
@@ -66,7 +67,6 @@ func New(
 }
 
 func (a *APIServer) Router() *gin.Engine {
-	gin.SetMode(gin.ReleaseMode) // gin logs 
 	return a.router
 }
 
@@ -91,7 +91,6 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 		c.String(404, err.Error())
 		return
 	}
-	logger.Info("Successfully returned cluster plan")
 	c.JSON(200, plan)
 }
 
@@ -122,11 +121,10 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	// make sure channel is not closed if targetsource in registry is deleted
 	// timeout for sending to the channel
 	targets, err := createDiscoveryEvent(payloadTargets)
-	if err != nil{
+	if err != nil {
 		logger.Error(err, "failed creating discoveryEvent")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 	}
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
-	logger.Info("CreateTargets request processed successfully", "count", len(targets))
 	c.JSON(http.StatusOK, payloadTargets)
 }

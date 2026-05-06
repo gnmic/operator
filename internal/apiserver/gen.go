@@ -43,8 +43,8 @@ type Label struct {
 	Value *string `json:"value,omitempty"`
 }
 
-// Target defines model for Target.
-type Target struct {
+// target defines model for target.
+type target struct {
 	Address   string          `json:"address"`
 	Labels    *[]Label        `json:"labels,omitempty"`
 	Name      string          `json:"name"`
@@ -56,7 +56,7 @@ type Target struct {
 type TargetOperation string
 
 // Targets defines model for Targets.
-type Targets = []Target
+type Targets = []target
 
 // CreateTargetsJSONRequestBody defines body for CreateTargets for application/json ContentType.
 type CreateTargetsJSONRequestBody = Targets
