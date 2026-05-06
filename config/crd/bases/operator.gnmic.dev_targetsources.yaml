@@ -194,13 +194,12 @@ spec:
                                 && (has(self.signingKeySecretRef) || has(self.claims)))'
                             - message: static JWT token and generated JWT configuration
                                 cannot be combined
-                              rule: '!( (has(self.token) || has(self.tokenSecretRef))
-                                && (has(self.signingKeySecretRef) || has(self.claims))
-                                )'
+                              rule: '!((has(self.token) || has(self.tokenSecretRef))
+                                && (has(self.signingKeySecretRef) || has(self.claims)))'
                             - message: algorithm must be specified when generating
                                 a JWT
                               rule: '!has(self.signingKeySecretRef) || self.algorithm
-                                != ”'
+                                != ""'
                           token:
                             properties:
                               scheme:

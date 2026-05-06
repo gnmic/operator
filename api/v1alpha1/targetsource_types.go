@@ -97,8 +97,8 @@ type TokenAuthSpec struct {
 }
 
 // +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
-// +kubebuilder:validation:XValidation:rule="!( (has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)) )",message="static JWT token and generated JWT configuration cannot be combined"
-// +kubebuilder:validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != ”",message="algorithm must be specified when generating a JWT"
+// +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
+// +kubebuilder:validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != \"\"",message="algorithm must be specified when generating a JWT"
 type JWTAuthSpec struct {
 	// Static pre-generated JWT
 	Token          string                    `json:"token,omitempty"`
