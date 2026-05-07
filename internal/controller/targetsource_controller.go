@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/gin-gonic/gin"
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
 	discoveryTypes "github.com/gnmic/operator/internal/controller/discovery/core"
@@ -53,6 +54,8 @@ type TargetSourceReconciler struct {
 		types.NamespacedName,
 		discoveryTypes.DiscoveryRegistryValue,
 	]
+
+	APIRouter *gin.Engine
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete

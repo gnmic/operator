@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -21,6 +22,7 @@ type DiscoveryRegistryValue struct {
 type CommonLoaderConfig struct {
 	TargetsourceNN types.NamespacedName
 	ChunkSize      int
+	Router         *gin.Engine
 	AcceptPush     bool
 }
 
