@@ -5,7 +5,7 @@ metadata:
 spec:
   provider:
     http:
-      url: http://targets.default.svc/targets.json
+      url: http://http-svc.default.svc/targets.json
   targetLabels:
-    integration-test: http
-  targetProfile: http-default
+    integrationtest: http
+  targetProfile: default
