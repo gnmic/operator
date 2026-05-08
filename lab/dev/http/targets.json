@@ -1,0 +1,13 @@
+[
+  {
+    "address": "10.0.0.1:57000",
+    "name": "router1"
+  },
+  {
+    "address": "10.0.0.2:57000",
+    "name": "router2",
+    "labels": {
+        "test": "asdf"
+    }
+  }
+]

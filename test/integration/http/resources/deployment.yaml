@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: targets-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: targets-server
+  template:
+    metadata:
+      labels:
+        app: targets-server
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: data
+        configMap:
+          name: targets-config
