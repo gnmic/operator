@@ -12,6 +12,8 @@ spec:
     - matchLabels:
         vendor: nokia_srlinux
         role: spine
+    - matchLabels:
+        operator.gnmic.dev/targetsource: http-ts
   subscriptionSelectors:
     - matchLabels:
         vendor: nokia_srlinux

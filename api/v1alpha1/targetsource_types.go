@@ -24,7 +24,8 @@ import (
 // +kubebuilder:validation:Required
 type TargetSourceSpec struct {
 	Provider *ProviderSpec `json:"provider"`
-	//
+
+	// +kubebuilder:validation:Optional
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
 	// +kubebuilder:validation:MinLength=1
@@ -39,7 +40,10 @@ type ProviderSpec struct {
 
 type HTTPConfig struct {
 	// +kubebuilder:validation:MinLength=1
-	URL string `json:"url"`
+	URL   string `json:"url"`
+	Token string `json:"token,omitempty"`
+	// +kubebuilder:validation:Optional
+	AcceptPush bool `json:"acceptPush,omitempty"`
 }
 
 type ConsulConfig struct {
@@ -49,9 +53,10 @@ type ConsulConfig struct {
 
 // TargetSourceStatus defines the observed state of TargetSource
 type TargetSourceStatus struct {
-	Status       string      `json:"status"`
-	TargetsCount int32       `json:"targetsCount"`
-	LastSync     metav1.Time `json:"lastSync"`
+	Status             string      `json:"status,omitempty"`
+	ObservedGeneration int64       `json:"observedGeneration"`
+	TargetsCount       int32       `json:"targetsCount,omitempty"`
+	LastSync           metav1.Time `json:"lastSync,omitempty"`
 }
 
 //+kubebuilder:object:root=true
