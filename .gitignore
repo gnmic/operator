@@ -39,3 +39,4 @@ test/integration/clab-*
 # To be removed after development of targetsource
 # ignored in order to not add unnecassary logging messages
 lab/dev/resources/targetsources
+.scannerwork/
