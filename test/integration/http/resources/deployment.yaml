@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: targets-server
+  name: http-target-inv
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: targets-server
+      app: http-target-inv
   template:
     metadata:
       labels:
-        app: targets-server
+        app: http-target-inv
     spec:
       containers:
       - name: nginx
@@ -21,4 +21,4 @@ spec:
       volumes:
       - name: data
         configMap:
-          name: targets-config
+          name: http-target-cfg
