@@ -86,41 +86,6 @@ spec:
                               rule: (has(self.credentialsSecretRef) && !has(self.username)
                                 && !has(self.password)) || (!has(self.credentialsSecretRef)
                                 && has(self.username) && has(self.password))
-                          bearer:
-                            properties:
-                              token:
-                                type: string
-                              tokenSecretRef:
-                                description: SecretKeySelector selects a key of a
-                                  Secret.
-                                properties:
-                                  key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
-                                    type: string
-                                  name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    type: string
-                                  optional:
-                                    description: Specify whether the Secret or its
-                                      key must be defined
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                            type: object
-                            x-kubernetes-validations:
-                            - message: exactly one of the fields in [token tokenSecretRef]
-                                must be set
-                              rule: '[has(self.token),has(self.tokenSecretRef)].filter(x,x==true).size()
-                                == 1'
                           jwt:
                             properties:
                               algorithm:
@@ -241,9 +206,9 @@ spec:
                               rule: has(self.token) != has(self.tokenSecretRef)
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [basic bearer jwt
-                            token] must be set
-                          rule: '[has(self.basic),has(self.bearer),has(self.jwt),has(self.token)].filter(x,x==true).size()
+                        - message: exactly one of the fields in [basic jwt token]
+                            must be set
+                          rule: '[has(self.basic),has(self.jwt),has(self.token)].filter(x,x==true).size()
                             == 1'
                       interval:
                         type: string
@@ -266,16 +231,12 @@ spec:
                         type: object
                       pagination:
                         properties:
-                          enabled:
-                            type: boolean
                           itemsField:
                             description: 'Example: "results"'
                             type: string
                           nextField:
                             description: 'Example: "next"'
                             type: string
-                        required:
-                        - enabled
                         type: object
                       timeout:
                         type: string
@@ -309,11 +270,13 @@ spec:
                             type: boolean
                         type: object
                       url:
-                        minLength: 1
                         type: string
-                    required:
-                    - url
                     type: object
+                    x-kubernetes-validations:
+                    - message: at least one of the fields in [url acceptPush] must
+                        be set
+                      rule: '[has(self.url),has(self.acceptPush)].filter(x,x==true).size()
+                        >= 1'
                 type: object
                 x-kubernetes-validations:
                 - message: exactly one of the fields in [http] must be set

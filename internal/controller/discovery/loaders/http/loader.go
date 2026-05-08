@@ -16,20 +16,15 @@ import (
 	loaderUtils "github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
 )
 
-const (
-	defaultPollInterval   = 30 * time.Second
-	defaultTimeoutSeconds = 30
-)
-
 // Loader implements the HTTP pull discovery mechanism
 type Loader struct {
-	commonCfg core.CommonLoaderConfig
+	loaderCfg core.CommonLoaderConfig
 	spec      *gnmicv1alpha1.HTTPConfig
 }
 
 // New instantiates the http loader with the provided config
 func New(cfg core.CommonLoaderConfig, httpConfig gnmicv1alpha1.HTTPConfig) core.Loader {
-	return &Loader{commonCfg: cfg, spec: &httpConfig}
+	return &Loader{loaderCfg: cfg, spec: &httpConfig}
 }
 
 func (l *Loader) Name() string {
@@ -37,16 +32,20 @@ func (l *Loader) Name() string {
 }
 
 func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) error {
+	if l.spec.URL == "" {
+		return nil
+	}
+
 	logger := log.FromContext(ctx).WithValues(
 		"component", "loader",
 		"name", l.Name(),
-		"targetsource", l.commonCfg.TargetsourceNN,
+		"targetsource", l.loaderCfg.TargetsourceNN,
 	)
 
 	logger.Info(
 		"HTTP loader started",
-		"targetsource", l.commonCfg.TargetsourceNN.Name,
-		"namespace", l.commonCfg.TargetsourceNN.Namespace,
+		"targetsource", l.loaderCfg.TargetsourceNN.Name,
+		"namespace", l.loaderCfg.TargetsourceNN.Namespace,
 	)
 
 	logger.Info("HTTP loader started")
@@ -57,9 +56,9 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	// }
 
 	client := &http.Client{
-		Timeout: defaultTimeoutSeconds * time.Second,
+		Timeout: l.spec.Timeout.Duration,
 	}
-	interval := defaultPollInterval
+	interval := l.spec.PollInterval.Duration
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -87,8 +86,8 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			return
 		}
 
-		snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
-		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
+		snapshotID := fmt.Sprintf("%s-%s-%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name, uuid.NewString())
+		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.loaderCfg.ChunkSize); err != nil {
 			logger.Error(
 				err,
 				"Failed to send discovery snapshot",
