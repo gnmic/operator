@@ -100,7 +100,7 @@ deploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Deploy 
 deploy-test-netbox-instance: NETBOX_PASSWORD=Netbox123
 deploy-test-netbox-instance: netbox-setup
 
-.PHONY: deploy-test-netbox-instance
+.PHONY: deploy-test-netbox-topology
 deploy-test-netbox-topology: ## Deploy the netbox test topology for testing
 	sudo containerlab deploy -t test/integration/netbox/netbox.clab.yaml -c
 	kubectl port-forward svc/netbox $(NETBOX_TEST_PORT):80 -n netbox --context kind-$(TEST_CLUSTER_NAME) --address=0.0.0.0 >/dev/null 2>&1 &
