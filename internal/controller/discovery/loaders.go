@@ -9,14 +9,14 @@ import (
 )
 
 // NewLoader creates a loader by name
-func NewLoader(cfg core.CommonLoaderConfig, spec *gnmicv1alpha1.TargetSourceSpec) (core.Loader, core.CommonLoaderConfig, error) {
+func NewLoader(cfg *core.CommonLoaderConfig, spec gnmicv1alpha1.TargetSourceSpec) (core.Loader, error) {
 
 	switch {
 	case spec.Provider.HTTP != nil:
 		cfg.AcceptPush = *spec.Provider.HTTP.AcceptPush
-		return http.New(cfg, *spec.Provider.HTTP), cfg, nil
+		return http.New(*cfg, *spec.Provider.HTTP), nil
 	default:
-		return nil, cfg, fmt.Errorf("unknown targetsource loader, check TargetSource CRD for %s", cfg.TargetsourceNN)
+		return nil, fmt.Errorf("unknown targetsource provider, check TargetSource CRD for %s", cfg.TargetsourceNN)
 	}
 
 }
