@@ -181,7 +181,7 @@ func (m *MessageProcessor) collectSnapshot(ctx context.Context, chunk core.Disco
 			"Snapshot chunk index out of range",
 			"chunkIndex", chunk.ChunkIndex,
 		)
-		m.activeSnapshot = nil
+		m.resetSnapshot()
 		return fmt.Errorf("invalid chunk index")
 	}
 	if _, exists := snapshot.received[chunk.ChunkIndex]; exists {
@@ -190,7 +190,7 @@ func (m *MessageProcessor) collectSnapshot(ctx context.Context, chunk core.Disco
 			"Duplicate snapshot chunk received",
 			"chunkIndex", chunk.ChunkIndex,
 		)
-		m.activeSnapshot = nil
+		m.resetSnapshot()
 		return fmt.Errorf("duplicate snapshot chunk")
 	}
 
@@ -207,7 +207,7 @@ func (m *MessageProcessor) collectSnapshot(ctx context.Context, chunk core.Disco
 func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
-		m.activeSnapshot = nil
+		m.resetSnapshot()
 		return nil
 	default:
 	}
@@ -216,7 +216,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 	for i := 0; i < snapshot.totalChunks; i++ {
 		select {
 		case <-ctx.Done():
-			m.activeSnapshot = nil
+			m.resetSnapshot()
 			return nil
 		default:
 		}
@@ -228,7 +228,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 				"Missing snapshot chunk",
 				"chunkIndex", i,
 			)
-			m.activeSnapshot = nil
+			m.resetSnapshot()
 			return fmt.Errorf("missing snapshot chunk %d", i)
 		}
 		allTargets = append(allTargets, chunk...)
@@ -255,7 +255,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 
-	m.activeSnapshot = nil
+	m.resetSnapshot()
 	m.deferredEvents = nil
 	return nil
 }
@@ -289,4 +289,8 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 		)
 	}
 	return nil
+}
+
+func (m *MessageProcessor) resetSnapshot() {
+	m.activeSnapshot = nil
 }
