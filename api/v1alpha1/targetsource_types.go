@@ -63,7 +63,7 @@ type HTTPConfig struct {
 }
 
 type ClientTLSConfig struct {
-	InsecureSkipVerify *bool                     `json:"insecureSkipVerify,omitempty"`
+	InsecureSkipVerify bool                     `json:"insecureSkipVerify,omitempty"`
 	CASecretRef        *corev1.SecretKeySelector `json:"caSecretRef,omitempty"`
 }
 
