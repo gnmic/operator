@@ -16,9 +16,9 @@ func NewLoader(cfg *core.CommonLoaderConfig, spec gnmicv1alpha1.TargetSourceSpec
 		cfg.AcceptPush = spec.Provider.HTTP.AcceptPush
 		return http.New(*cfg), nil
 	case spec.Provider.Consul != nil:
-		return nil, fmt.Errorf("unknown targetsource loader, check TargetSource CRD for %s", cfg.TargetsourceNN)
+		return nil, fmt.Errorf("Unimplemented targetsource provider, check TargetSource CRD for %s", cfg.TargetsourceNN)
 	default:
-		return nil, fmt.Errorf("unknown targetsource loader, check TargetSource CRD for %s", cfg.TargetsourceNN)
+		return nil, fmt.Errorf("unknown targetsource provider, check TargetSource CRD for %s", cfg.TargetsourceNN)
 	}
 
 }
