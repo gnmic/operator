@@ -19,12 +19,12 @@ import (
 // Loader implements the HTTP pull discovery mechanism
 type Loader struct {
 	loaderCfg core.CommonLoaderConfig
-	spec      *gnmicv1alpha1.HTTPConfig
+	spec      gnmicv1alpha1.HTTPConfig
 }
 
 // New instantiates the http loader with the provided config
 func New(cfg core.CommonLoaderConfig, httpConfig gnmicv1alpha1.HTTPConfig) core.Loader {
-	return &Loader{loaderCfg: cfg, spec: &httpConfig}
+	return &Loader{loaderCfg: cfg, spec: httpConfig}
 }
 
 func (l *Loader) Name() string {
@@ -74,8 +74,8 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			ctx,
 			client,
 			l.spec.URL,
-			l.spec.Authorization.Token.Scheme,
-			l.spec.Authorization.Token.Token,
+			*l.spec.Authorization.Token.Scheme,
+			*l.spec.Authorization.Token.Token,
 		)
 		if err != nil {
 			logger.Error(
