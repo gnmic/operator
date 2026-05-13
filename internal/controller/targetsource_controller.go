@@ -177,7 +177,6 @@ func (r *TargetSourceReconciler) startDiscovery(
 	cleanup := func() {
 		cancel()
 		r.DiscoveryRegistry.Unregister(key)
-		close(targetChannel)
 	}
 
 	messageProcessor := discovery.NewMessageProcessor(
@@ -225,9 +224,6 @@ func (r *TargetSourceReconciler) startDiscovery(
 		} else {
 			logger.Error(nil, "Target loader exited unexpectedly without error")
 		}
-
-		// Any exit is considered a bug that should stop the discovery runtime
-		cleanup()
 	}()
 
 	return nil
