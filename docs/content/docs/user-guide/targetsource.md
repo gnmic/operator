@@ -10,15 +10,11 @@ The `TargetSource` resource enables dynamic discovery of network devices from ex
 
 ## Discovery Sources
 
-TargetSource supports multiple discovery backends:
+TargetSource supports the following discovery providers:
 
 | Source | Description |
 |--------|-------------|
 | `http` | Fetch targets from an HTTP endpoint |
-| `consul` | Discover targets from Consul service registry |
-| `configMap` | Read targets from a Kubernetes ConfigMap |
-| `podSelector` | Create targets from Kubernetes Pods |
-| `serviceSelector` | Create targets from Kubernetes Services |
 
 ## HTTP Discovery
 
@@ -30,92 +26,55 @@ kind: TargetSource
 metadata:
   name: http-discovery
 spec:
-  http:
-    url: http://inventory-service:8080/targets
-  labels:
+  provider:
+    http:
+      url: http://inventory-service:8080/targets
+  targetProfile: default
+  targetLabels:
     source: inventory
 ```
 
-The HTTP endpoint should return a JSON array of target objects.
+The HTTP endpoint should return a JSON array of target objects. The following is an example for a valid JSON array:
 
-## Consul Discovery
-
-Discover targets from Consul service registry:
-
-```yaml
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: consul-discovery
-spec:
-  consul:
-    url: http://consul:8500
-  labels:
-    source: consul
-    datacenter: dc1
+```json
+[
+  {
+    "address": "spine1:57400",
+    "name": "spine1",
+    "labels": {
+      "role": "spine"
+    }
+  },
+  {
+    "address": "leaf1:57400",
+    "name": "leaf1",
+    "labels": {
+      "role": "leaf"
+    }
+  },
+  {
+    "address": "leaf2:57400",
+    "name": "leaf2",
+    "labels": {
+      "role": "leaf"
+    }
+  }
+]
 ```
 
-## ConfigMap Discovery
+## TargetProfile Inheritance
 
-Read targets from a Kubernetes ConfigMap:
-
-```yaml
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: configmap-targets
-spec:
-  configMap: network-devices
-  labels:
-    source: configmap
-```
-
-The ConfigMap should contain target definitions in a structured format.
-
-## Kubernetes Pod Discovery
-
-Create targets from Kubernetes Pods matching a label selector:
-
-```yaml
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: pod-discovery
-spec:
-  podSelector:
-    matchLabels:
-      app: network-simulator
-      gnmi: enabled
-  labels:
-    source: kubernetes
-    type: simulator
-```
-
-This is useful for:
-- Containerized network simulators
-- Virtual network functions (VNFs)
-- Development/testing environments
-
-## Kubernetes Service Discovery
-
-Create targets from Kubernetes Services matching a label selector:
-
-```yaml
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: service-discovery
-spec:
-  serviceSelector:
-    matchLabels:
-      protocol: gnmi
-  labels:
-    source: kubernetes
-```
+Within the `TargetSource`, the default `TargetProfile` for all targets can be defined using `targetProfile`. Each target discovered inherits the defined value.
 
 ## Label Inheritance
 
-Labels defined in the `TargetSource.spec.labels` field are applied to all discovered targets:
+Each discovered target has a label defined to identify the owning `TargetSource`:
+- `operator.gnmic.dev/targetsource: datacenter-a`
+
+
+This label is needed to identify all targets owned by this resource and determine which devices get applied or removed. This label takes precedence over all other labels on the target.
+
+Labels defined in the `TargetSource.spec.targetLabels` field are applied to all discovered targets:
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
@@ -123,20 +82,32 @@ kind: TargetSource
 metadata:
   name: datacenter-a
 spec:
-  consul:
-    url: http://consul-dc-a:8500
-  labels:
+  provider:
+    http:
+      url: http://datacenter-a:8080/targets
+  targetLabels:
     datacenter: dc-a
     environment: production
-    source: consul
 ```
 
 All targets discovered from this source will have:
 - `datacenter: dc-a`
 - `environment: production`
-- `source: consul`
 
 This enables using label selectors in Pipelines to select targets by their discovery source.
+
+## Labels from Source of Truth
+
+Targets can also have labels defined by the external system. These get directly applied to the target with their original key/value pair. 
+
+The gNMIc Operator has a reserved namespace for labels which alter the behavior of the target:
+- `gnmic_operator_`
+
+Following are all supported operator-specific labels:
+
+| Label | Description |
+|--------|-------------|
+| `gnmic_operator_target_profile` | Overwrite the `TargetProfile` which is defined in the `TargetSource` |
 
 ## Status
 
@@ -155,7 +126,7 @@ status:
 | `targetsCount` | Number of targets discovered |
 | `lastSync` | Timestamp of last successful sync |
 
-## Example: Multi-Source Discovery
+<!-- ## Example: Multi-Source Discovery
 
 Combine multiple TargetSources for different environments:
 
@@ -211,7 +182,7 @@ spec:
     - matchLabels:
         environment: production
   # ... subscriptions, outputs
-```
+``` -->
 
 ## Lifecycle
 
@@ -219,12 +190,13 @@ spec:
 
 When a TargetSource discovers a new device:
 1. A new `Target` resource is created
-2. Labels from `spec.labels` are applied
-3. Owner reference is set to the TargetSource
+2. The `Profile` gets specified from `spec.targetProfile`
+3. Labels from `spec.targetLabels` are applied
+4. Owner reference is set to the TargetSource
 
 ### Target Updates
 
-When a discovered device's properties change:
+Discovered devices get reapplied each time the target gets discovered, overwriting any changes manually made:
 1. The corresponding `Target` is updated
 2. Clusters using that target are reconciled
 
