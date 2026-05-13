@@ -87,12 +87,20 @@ deploy-test-topology: ## Deploy a test topology for testing
 undeploy-test-topology: ## Undeploy a test topology for testing
 	sudo containerlab destroy -t test/integration/t1.clab.yaml -c
 
+.PHONY: deploy-test-http-server
+deploy-test-http-server: ## Deploy a test http pod with a static file inventory for testing
+	kubectl apply -f test/integration/http/resources/
+
+.PHONY: undeploy-test-http-server
+undeploy-test-http-server: ## Undeploy the http pod for testing
+	kubectl delete -f test/integration/http/resources/
+
 .PHONY: deploy-test-netbox-instance
 deploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Deploy the test netbox instance for testing
 deploy-test-netbox-instance: NETBOX_PASSWORD=Netbox123
 deploy-test-netbox-instance: netbox-setup
 
-.PHONY: deploy-test-netbox-instance
+.PHONY: deploy-test-netbox-topology
 deploy-test-netbox-topology: ## Deploy the netbox test topology for testing
 	sudo containerlab deploy -t test/integration/netbox/netbox.clab.yaml -c
 	kubectl port-forward svc/netbox $(NETBOX_TEST_PORT):80 -n netbox --context kind-$(TEST_CLUSTER_NAME) --address=0.0.0.0 >/dev/null 2>&1 &
