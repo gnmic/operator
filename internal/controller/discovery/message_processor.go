@@ -53,7 +53,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 
 	logger.Info("Message processor started")
 
-	for ctx.Err() == nil {
+	for {
 		select {
 		case batch, ok := <-m.in:
 			if !ok {
