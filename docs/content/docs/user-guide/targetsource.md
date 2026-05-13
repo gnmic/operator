@@ -8,53 +8,86 @@ description: >
 
 The `TargetSource` resource enables dynamic discovery of network devices from external sources. The operator automatically creates, updates, and deletes `Target` resources based on discovered devices.
 
-## Discovery Sources
-
-TargetSource supports the following discovery providers:
-
-| Source | Description |
-|--------|-------------|
-| `http` | Fetch targets from an HTTP endpoint |
-
-## HTTP Discovery
-
-Discover targets from an HTTP endpoint that returns a JSON list of targets:
+## Basic Configuration
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
-  name: http-discovery
+  name: targetsource-1
 spec:
   provider:
-    http:
-      url: http://inventory-service:8080/targets
+    # see Discovery Providers section
   targetProfile: default
   targetLabels:
     source: inventory
 ```
 
-The HTTP endpoint should return a JSON array of target objects. The following is an example for a valid JSON array:
+## Spec Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `provider` | object | Yes | Provider-specific discovery configuration. Exactly one provider must be configured |
+| `targetProfile` | string | Yes | Reference to `TargetProfile` applied to all targets |
+| `targetLabels` | map[string]string | No | Labels added to all discovered targets |
+
+
+## Discovery Providers
+
+`TargetSource` supports the following discovery providers:
+
+| Provider | Description |
+|----------|-------------|
+| `http` | Discover targets from an HTTP JSON endpoint |
+
+### HTTP Provider
+
+The HTTP provider discovers targets from an HTTP endpoint returning a JSON array of target definitions.
+
+```yaml
+spec:
+  provider:
+    http:
+      url: http://inventory-service:8080/targets
+```
+
+#### HTTP Spec Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | Yes | URL pointing to the inventory server |
+
+#### Response Format
+
+The endpoint must return a JSON array of objects with the following structure:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Name of the generated `Target` resource |
+| `address` | string | Yes | Device address in `host:port` format |
+| `labels` | map[string]string | No | Labels added to the generated `Target` resource |
+
+Example response:
 
 ```json
 [
   {
-    "address": "spine1:57400",
     "name": "spine1",
+    "address": "spine1:57400",
     "labels": {
       "role": "spine"
     }
   },
   {
-    "address": "leaf1:57400",
     "name": "leaf1",
+    "address": "leaf1:57400",
     "labels": {
       "role": "leaf"
     }
   },
   {
-    "address": "leaf2:57400",
     "name": "leaf2",
+    "address": "leaf2:57400",
     "labels": {
       "role": "leaf"
     }
@@ -62,29 +95,32 @@ The HTTP endpoint should return a JSON array of target objects. The following is
 ]
 ```
 
-## TargetProfile Inheritance
-
-Within the `TargetSource`, the default `TargetProfile` for all targets can be defined using `targetProfile`. Each target discovered inherits the defined value.
-
 ## Label Inheritance
 
-Each discovered target has a label defined to identify the owning `TargetSource`:
-- `operator.gnmic.dev/targetsource: datacenter-a`
+Each generated `Target` receives an ownership label identifying the originating `TargetSource`:
+```yaml
+operator.gnmic.dev/targetsource: targetsource-1
+```
 
+This label is automatically managed by the operator and is used to:
+- Identify targets owned by a specific `TargetSource`
+- Determine which targets should be updated or deleted during reconciliation
 
-This label is needed to identify all targets owned by this resource and determine which devices get applied or removed. This label takes precedence over all other labels on the target.
+The `operator.gnmic.dev/targetsource` label is reserved and always takes precedence over any provider-supplied labels.
 
-Labels defined in the `TargetSource.spec.targetLabels` field are applied to all discovered targets:
+### TargetSource Labels
+
+Additional labels can be applied to all generated targets using `spec.targetLabels`:
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
-  name: datacenter-a
+  name: targetsource-1
 spec:
   provider:
     http:
-      url: http://datacenter-a:8080/targets
+      url: http://targetsource-1:8080/targets
   targetLabels:
     datacenter: dc-a
     environment: production
@@ -94,20 +130,27 @@ All targets discovered from this source will have:
 - `datacenter: dc-a`
 - `environment: production`
 
-This enables using label selectors in Pipelines to select targets by their discovery source.
+This enables Pipelines to select targets using label selectors.
 
-## Labels from Source of Truth
+### Labels from Discovery Providers
 
-Targets can also have labels defined by the external system. These get directly applied to the target with their original key/value pair. 
+Discovery providers may return additional labels for each target. These labels are applied directly to the generated `Target` resource.
 
-The gNMIc Operator has a reserved namespace for labels which alter the behavior of the target:
-- `gnmic_operator_`
+The `gnmic_operator_` label prefix is reserved for operator-specific behavior. Labels using this prefix are interpreted by the operator and are not applied directly to the generated `Target` resource.
 
-Following are all supported operator-specific labels:
+Supported operator labels:
 
 | Label | Description |
 |--------|-------------|
-| `gnmic_operator_target_profile` | Overwrite the `TargetProfile` which is defined in the `TargetSource` |
+| `gnmic_operator_target_profile` | Overrides the `TargetProfile` configured in the `TargetSource` |
+
+### Label Precedence
+
+If the same label key is defined in multiple places, labels are applied in the following order (highest precedence first):
+
+1. `TargetSource` ownership label (`operator.gnmic.dev/targetsource`)
+2. Labels from `TargetSource.spec.targetLabels`
+3. Labels returned by the discovery provider
 
 ## Status
 
@@ -188,27 +231,33 @@ spec:
 
 ### Target Creation
 
-When a TargetSource discovers a new device:
+When a `TargetSource` discovers a new device:
+
 1. A new `Target` resource is created
-2. The `Profile` gets specified from `spec.targetProfile`
+2. The `TargetProfile` referenced in `spec.targetProfile` is assigned
 3. Labels from `spec.targetLabels` are applied
-4. Owner reference is set to the TargetSource
+4. The `TargetSource` is set as the owner reference
 
 ### Target Updates
 
-Discovered devices get reapplied each time the target gets discovered, overwriting any changes manually made:
-1. The corresponding `Target` is updated
-2. Clusters using that target are reconciled
+On each discovery cycle, existing `Target` resources are reconciled with the latest discovered state:
+
+1. The corresponding `Target` resource is updated and overwritten
+2. Clusters consuming the target are reconciled automatically
+
+> Manual changes to `Target` resources managed by a `TargetSource` are overwritten on every reconciliation cycle.
 
 ### Target Deletion
 
-When a device is no longer discovered:
-1. The `Target` resource is deleted
-2. Clusters stop collecting from that target
+When a device is no longer returned by the discovery provider:
+
+1. The corresponding `Target` resource is deleted
+2. Clusters automatically stop using the target
 
 ### TargetSource Deletion
 
-When a TargetSource is deleted:
-1. All Targets owned by it are deleted (via owner references)
-2. Clusters are reconciled to remove those targets
+When a `TargetSource` is deleted:
+
+1. All `Target` resources owned by it are deleted via owner references
+2. Clusters are reconciled and remove the deleted targets
 
