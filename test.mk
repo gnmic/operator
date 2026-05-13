@@ -4,6 +4,8 @@ GNMIC_VERSION ?= 0.44.1
 KUBECTL_VERSION ?= v1.31.0
 TEST_CLUSTER_NAME ?= test-kind
 CERT_MANAGER_VERSION ?= v1.19.3
+NETBOX_TEST_PORT ?= 8082
+
 
 .PHONY: install-kubectl
 install-kubectl: ## Install kubectl if not present
@@ -84,6 +86,34 @@ deploy-test-topology: ## Deploy a test topology for testing
 .PHONY: undeploy-test-topology
 undeploy-test-topology: ## Undeploy a test topology for testing
 	sudo containerlab destroy -t test/integration/t1.clab.yaml -c
+
+.PHONY: deploy-test-netbox-instance
+deploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Deploy the test netbox instance for testing
+deploy-test-netbox-instance: NETBOX_PASSWORD=Netbox123
+deploy-test-netbox-instance: netbox-setup
+
+.PHONY: deploy-test-netbox-instance
+deploy-test-netbox-topology: ## Deploy the netbox test topology for testing
+	sudo containerlab deploy -t test/integration/netbox/netbox.clab.yaml -c
+	kubectl port-forward svc/netbox $(NETBOX_TEST_PORT):80 -n netbox --context kind-$(TEST_CLUSTER_NAME) --address=0.0.0.0 >/dev/null 2>&1 &
+
+.PHONY: sync-netbox-test-data
+sync-test-netbox-data: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Sync the netbox instance with the test topology for testing
+sync-test-netbox-data: NETBOX_URL=http://localhost:$(NETBOX_TEST_PORT)
+sync-test-netbox-data: NETBOX_INIT=test/integration/netbox/initializers
+sync-test-netbox-data: netbox-sync-data
+
+.PHONY: undeploy-test-netbox-instance
+undeploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Undeploy the netbox instance from the test cluster
+undeploy-test-netbox-instance: netbox-delete
+
+.PHONY: undeploy-test-netbox-topology
+undeploy-test-netbox-topology: ## Undeploy the netbox test topology for testing
+	sudo containerlab destroy -t test/integration/netbox/netbox.clab.yaml -c
+
+.PHONY: apply-test-targetsources
+apply-test-targetsources: ## Apply the test targetsources for testing
+	kubectl apply -f test/integration/resources/targetsources
 
 .PHONY: apply-test-targets
 apply-test-targets: ## Apply the test targets for testing
