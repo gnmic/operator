@@ -79,15 +79,15 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 			if err := m.processMessage(ctx, msg, logger); err != nil {
 				// Returning error lets the supervisor (controller)
 				// tear down and restart the pipeline via reconciliation
-				// Q: when to return an error vs just log and continue?
-				return err
+				logger.Info(
+					"Could not process the message",
+					"error", err,
+				)
+				return nil
 			}
 
 		}
 	}
-
-	logger.Info("Message processor stopped")
-	return nil
 }
 
 func (m *MessageProcessor) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
