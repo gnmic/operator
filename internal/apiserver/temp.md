@@ -2,7 +2,7 @@ curl -X POST "http://localhost:8082/api/v1/default/target-source/http-discovery/
   -H "Content-Type: application/json" \
   -d '[
     {
-      "address": "1.1.1.1",
+      "address": "1.1.1.1:123",
       "name": "Router1",
       "operation": "created",
       "profile": "defaultProfile",

@@ -263,3 +263,33 @@ func TestParseURIMissingName(t *testing.T) {
 		t.Errorf("parseURI(ctx) status code = %d; want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
+
+func TestVerifyAddress(t *testing.T) {
+	address := "10.10.10.10:57400"
+	expected := "10.10.10.10:57400"
+	convertedAddress, _ := validateAddress(address)
+	if !reflect.DeepEqual(convertedAddress, expected) {
+		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
+	}
+}
+
+func TestVerifyAddressIPv6(t *testing.T) {
+	address := "[2345:0425:2CA1:0000:0000:0567:5673:23b5]:57400"
+	expected := "2345:0425:2CA1:0000:0000:0567:5673:23b5:57400"
+	convertedAddress, _ := validateAddress(address)
+	if !reflect.DeepEqual(convertedAddress, expected) {
+		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
+	}
+}
+
+func TestVerifyAddressNoPort(t *testing.T) {
+	address := "10.10.10.10:"
+	expected := "10.10.10.10:57400"
+	convertedAddress, err := validateAddress(address)
+	if err != nil {
+		t.Errorf("addDefaultPortIfEmpty(address) threw unexpected error: %s", err)
+	}
+	if !reflect.DeepEqual(convertedAddress, expected) {
+		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
+	}
+}
