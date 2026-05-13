@@ -21,14 +21,12 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	httpDefaults "github.com/gnmic/operator/internal/controller/discovery/loaders/http"
 )
 
 // nolint:unused
@@ -67,20 +65,7 @@ func (d *TargetSourceCustomDefaulter) Default(_ context.Context, obj runtime.Obj
 	}
 	targetsourcelog.Info("Defaulting for TargetSource", "name", targetsource.GetName())
 
-	// HTTP Config Defaulting
-	if targetsource.Spec.Provider.HTTP != nil {
-		http := targetsource.Spec.Provider.HTTP
-
-		if http.PollInterval == nil {
-			http.PollInterval.Duration = httpDefaults.DefaultPollInterval
-		}
-		if http.Timeout == nil {
-			http.Timeout.Duration = httpDefaults.DefaultTimeout
-		}
-		if http.AcceptPush == nil {
-			http.AcceptPush = pointer.Bool(httpDefaults.DefaultAcceptPush)
-		}
-	}
+	// TODO(user): fill in your defaulting logic.
 
 	return nil
 }

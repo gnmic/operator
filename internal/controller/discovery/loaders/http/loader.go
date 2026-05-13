@@ -74,8 +74,8 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			ctx,
 			client,
 			l.spec.URL,
-			*l.spec.Authorization.Token.Scheme,
-			*l.spec.Authorization.Token.Token,
+			l.spec.Authorization.Token.Scheme,
+			l.spec.Authorization.Token.Token,
 		)
 		if err != nil {
 			logger.Error(

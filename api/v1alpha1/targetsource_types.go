@@ -44,8 +44,11 @@ type HTTPConfig struct {
 	URL string `json:"url,omitempty"`
 	// +kubebuilder:validation:Optional
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+	// TODO: increase default value
+	// +kubebuilder:default="30s"
 	// +kubebuilder:validation:Optional
 	PollInterval *metav1.Duration `json:"interval,omitempty"`
+	// +kubebuilder:default="10s"
 	// +kubebuilder:validation:Optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 	// +kubebuilder:validation:Optional
@@ -54,8 +57,9 @@ type HTTPConfig struct {
 	Pagination *PaginationSpec `json:"pagination,omitempty"`
 	// +kubebuilder:validation:Optional
 	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
+	// +kubebuilder:default=false
 	// +kubebuilder:validation:Optional
-	AcceptPush *bool `json:"acceptPush,omitempty"`
+	AcceptPush bool `json:"acceptPush,omitempty"`
 }
 
 type ClientTLSConfig struct {
@@ -73,16 +77,16 @@ type AuthorizationSpec struct {
 // Enforce EITHER inline creds OR secret ref
 // +kubebuilder:validation:XValidation:rule="(has(self.credentialsSecretRef) && !has(self.username) && !has(self.password)) || (!has(self.credentialsSecretRef) && has(self.username) && has(self.password))",message="either credentialsSecretRef OR both username and password must be set, but not a mix"
 type BasicAuthSpec struct {
-	Username             *string                   `json:"username,omitempty"`
-	Password             *string                   `json:"password,omitempty"`
+	Username             string                    `json:"username,omitempty"`
+	Password             string                    `json:"password,omitempty"`
 	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
 }
 
 // +kubebuilder:validation:XValidation:rule="has(self.token) != has(self.tokenSecretRef)",message="either token or tokenSecretRef must be set, but not both"
 type TokenAuthSpec struct {
 	// +kubebuilder:validation:MinLength=1
-	Scheme         *string                   `json:"scheme"`
-	Token          *string                   `json:"token,omitempty"`
+	Scheme         string                    `json:"scheme"`
+	Token          string                    `json:"token,omitempty"`
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
@@ -91,35 +95,35 @@ type TokenAuthSpec struct {
 // +kubebuilder:validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != \"\"",message="algorithm must be specified when generating a JWT"
 type JWTAuthSpec struct {
 	// Static pre-generated JWT
-	Token          *string                   `json:"token,omitempty"`
+	Token          string                    `json:"token,omitempty"`
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 	// Optional: generate JWT dynamically
 	Claims              map[string]string         `json:"claims,omitempty"`
 	SigningKeySecretRef *corev1.SecretKeySelector `json:"signingKeySecretRef,omitempty"`
 	// HS256, RS256, ES256, etc.
-	Algorithm *string          `json:"algorithm,omitempty"`
+	Algorithm string           `json:"algorithm,omitempty"`
 	TTL       *metav1.Duration `json:"ttl,omitempty"`
 }
 
 type PaginationSpec struct {
 	// Example: "results"
-	ItemsField *string `json:"itemsField,omitempty"`
+	ItemsField string `json:"itemsField,omitempty"`
 	// Example: "next"
-	NextField *string `json:"nextField,omitempty"`
+	NextField string `json:"nextField,omitempty"`
 }
 
 // JSONPath-style expressions
 type ResponseMappingSpec struct {
-	Name    *string           `json:"name"`
-	Address *string           `json:"address"`
-	Port    *string           `json:"port,omitempty"`
+	Name    string            `json:"name"`
+	Address string            `json:"address"`
+	Port    string            `json:"port,omitempty"`
 	Labels  map[string]string `json:"labels,omitempty"`
 }
 
 // TargetSourceStatus defines the observed state of TargetSource
 type TargetSourceStatus struct {
-	Status       *string     `json:"status"`
-	TargetsCount *int32      `json:"targetsCount"`
+	Status       string      `json:"status"`
+	TargetsCount int32       `json:"targetsCount"`
 	LastSync     metav1.Time `json:"lastSync"`
 }
 
