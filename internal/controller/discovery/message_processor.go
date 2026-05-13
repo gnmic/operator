@@ -127,8 +127,7 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 // processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
 func (m *MessageProcessor) processSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	if m.activeSnapshot == nil {
-		m.startNewSnapshot(chunk, logger)
-		return nil
+		return m.startNewSnapshot(ctx, chunk, logger)
 	}
 
 	snapshot := m.activeSnapshot
@@ -149,14 +148,13 @@ func (m *MessageProcessor) processSnapshot(ctx context.Context, chunk core.Disco
 		}
 
 		// Start collecting the new snapshot
-		m.startNewSnapshot(chunk, logger)
-		return nil
+		return m.startNewSnapshot(ctx, chunk, logger)
 	}
 
-	return m.collectSnapshot(chunk, logger)
+	return m.collectSnapshot(ctx, chunk, logger)
 }
 
-func (m *MessageProcessor) startNewSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) {
+func (m *MessageProcessor) startNewSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	m.activeSnapshot = &snapshotBuffer{
 		snapshotID:  chunk.SnapshotID,
 		totalChunks: chunk.TotalChunks,
@@ -166,10 +164,10 @@ func (m *MessageProcessor) startNewSnapshot(chunk core.DiscoverySnapshot, logger
 	// Delete buffered events that will be current with new snapshot
 	m.deferredEvents = nil
 
-	m.collectSnapshot(chunk, logger)
+	return m.collectSnapshot(ctx, chunk, logger)
 }
 
-func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) error {
+func (m *MessageProcessor) collectSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	snapshot := m.activeSnapshot
 
 	if chunk.TotalChunks != snapshot.totalChunks {
@@ -178,6 +176,7 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 			"Snapshot totalChunks mismatch",
 			"snapshotID", snapshot.snapshotID,
 		)
+		return fmt.Errorf("snapshot totalChunks mismatch")
 	}
 	if chunk.ChunkIndex < 0 || chunk.ChunkIndex >= snapshot.totalChunks {
 		logger.Error(
@@ -186,7 +185,7 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 			"chunkIndex", chunk.ChunkIndex,
 		)
 		m.activeSnapshot = nil
-		return nil
+		return fmt.Errorf("invalid chunk index")
 	}
 	if _, exists := snapshot.received[chunk.ChunkIndex]; exists {
 		logger.Error(
@@ -195,13 +194,14 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 			"chunkIndex", chunk.ChunkIndex,
 		)
 		m.activeSnapshot = nil
-		return nil
+		return fmt.Errorf("duplicate snapshot chunk")
 	}
 
 	snapshot.received[chunk.ChunkIndex] = chunk.Targets
 
 	if len(snapshot.received) == snapshot.totalChunks {
 		snapshot.complete = true
+		return m.applySnapshot(ctx, snapshot, logger)
 	}
 
 	return nil
@@ -232,7 +232,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 				"chunkIndex", i,
 			)
 			m.activeSnapshot = nil
-			return nil
+			return fmt.Errorf("missing snapshot chunk %d", i)
 		}
 		allTargets = append(allTargets, chunk...)
 	}
@@ -243,7 +243,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		"targets", len(allTargets),
 	)
 
-	// apply all targets
+	// todo: apply all targets
 	// a.applyTargets
 
 	// Replay deferred events
