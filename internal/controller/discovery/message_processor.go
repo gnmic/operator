@@ -22,7 +22,6 @@ type snapshotBuffer struct {
 
 // MessageProcessor consumes discovery messages and applies them to Kubernetes
 type MessageProcessor struct {
-	ctx            context.Context
 	client         client.Client
 	scheme         *runtime.Scheme
 	targetSource   *gnmicv1alpha1.TargetSource
@@ -46,8 +45,6 @@ func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.T
 // Run is a long‑running loop that receives target snapshots
 // and reconciles Target CRs accordingly
 func (m *MessageProcessor) Run(ctx context.Context) error {
-	m.ctx = ctx
-
 	logger := log.FromContext(ctx).WithValues(
 		"component", "message-processor",
 		"targetsource", m.targetSource.Name,
@@ -56,7 +53,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 
 	logger.Info("Message processor started")
 
-	for m.ctx.Err() == nil {
+	for ctx.Err() == nil {
 		select {
 		case batch, ok := <-m.in:
 			if !ok {
@@ -79,7 +76,7 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 			msg := m.queue[0]
 			m.queue = m.queue[1:]
 
-			if err := m.processMessage(m.ctx, msg, logger); err != nil {
+			if err := m.processMessage(ctx, msg, logger); err != nil {
 				// Returning error lets the supervisor (controller)
 				// tear down and restart the pipeline via reconciliation
 				// Q: when to return an error vs just log and continue?
