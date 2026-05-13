@@ -349,7 +349,7 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 	case core.EventApply:
 		target, unknownLabels := generateTargetResource(event.Target, m.targetSource)
 		for k, v := range unknownLabels {
-			logger.V(1).Info("unknown operator label for target",
+			logger.Info("unknown operator label for target",
 				"target", event.Target.Name,
 				"label", k,
 				"value", v,
