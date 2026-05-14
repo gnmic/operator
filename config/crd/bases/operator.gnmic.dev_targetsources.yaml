@@ -40,33 +40,258 @@ spec:
             description: TargetSourceSpec defines the desired state of TargetSource
             properties:
               provider:
+                description: |-
+                  Provider defines the source of targets for this TargetSource
+                  Only one provider can be specified per TargetSource
                 properties:
-                  consul:
-                    properties:
-                      url:
-                        minLength: 1
-                        type: string
-                    type: object
                   http:
+                    description: HTTP defines the configuration for a HTTP provider
                     properties:
                       acceptPush:
+                        default: false
+                        description: |-
+                          If true, the loader will accept pushed target updates to the controller endpoint
+                          The endpoint will be /{namespace}/{targetsource}/<todo>
                         type: boolean
-                      url:
-                        minLength: 1
+                      authorization:
+                        description: Optional authorization configuration for accessing
+                          the HTTP endpoint
+                        properties:
+                          basic:
+                            description: Basic authentication configuration
+                            properties:
+                              credentialsSecretRef:
+                                description: |-
+                                  Reference to a Secret containing "username" and "password" keys to use for
+                                  basic authentication when connecting to the Provider.
+                                  Mutually exclusive with Username and Password.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              password:
+                                description: |-
+                                  Password for basic auth
+                                  Mutually exclusive with CredentialsSecretRef.
+                                type: string
+                              username:
+                                description: |-
+                                  Username for basic auth
+                                  Mutually exclusive with CredentialsSecretRef.
+                                type: string
+                            type: object
+                            x-kubernetes-validations:
+                            - message: either credentialsSecretRef OR both username
+                                and password must be set, but not a mix
+                              rule: (has(self.credentialsSecretRef) && !has(self.username)
+                                && !has(self.password)) || (!has(self.credentialsSecretRef)
+                                && has(self.username) && has(self.password))
+                          token:
+                            description: Token-based authentication configuration
+                            properties:
+                              scheme:
+                                description: Scheme for the token, e.g. "Bearer"
+                                minLength: 1
+                                type: string
+                              token:
+                                description: |-
+                                  Token value for authentication
+                                  Mutually exclusive with TokenSecretRef.
+                                type: string
+                              tokenSecretRef:
+                                description: |-
+                                  Reference to a Secret containing a key with the token value to use for
+                                  authentication when connecting to the Provider.
+                                  Mutually exclusive with Token.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            required:
+                            - scheme
+                            type: object
+                            x-kubernetes-validations:
+                            - message: either token or tokenSecretRef must be set,
+                                but not both
+                              rule: has(self.token) != has(self.tokenSecretRef)
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of the fields in [basic token] must
+                            be set
+                          rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
+                            == 1'
+                      interval:
+                        default: 30s
+                        description: Optional interval for polling the HTTP endpoint
+                          for targets
                         type: string
-                    required:
-                    - url
+                      mapping:
+                        description: Optional mapping configuration for parsing responses
+                          from the HTTP endpoint
+                        properties:
+                          address:
+                            description: JSONPath expression to extract the target
+                              address from the response
+                            type: string
+                          labels:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              JSONPath expression to extract the target labels from the response
+                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+                              with values from the response taking precedence in case of conflicts.
+                            type: object
+                          name:
+                            description: JSONPath expression to extract the target
+                              name from the response
+                            type: string
+                          port:
+                            description: JSONPath expression to extract the target
+                              port from the response
+                            type: string
+                        required:
+                        - address
+                        - name
+                        type: object
+                      pagination:
+                        description: Optional pagination configuration for parsing
+                          responses from the HTTP endpoint
+                        properties:
+                          itemsField:
+                            description: |-
+                              JSONPath-style expression to extract the list of targets from the response
+                              Example: "results"
+                            type: string
+                          nextField:
+                            description: |-
+                              JSONPath-style expression to extract the next page token or URL from the response for pagination
+                              Example: "next"
+                            type: string
+                        type: object
+                        x-kubernetes-validations:
+                        - message: static JWT token and generated JWT configuration
+                            cannot be combined
+                          rule: '!((has(self.token) || has(self.tokenSecretRef)) &&
+                            ((has(self.key) || has(self.signingKeySecretRef) || has(self.claims)))'
+                        - message: algorithm must be specified when generating a JWT
+                          rule: '!has(self.signingKeySecretRef) || self.algorithm
+                            != ""'
+                      timeout:
+                        default: 10s
+                        description: Optional timeout for HTTP requests to the endpoint
+                        type: string
+                      tls:
+                        description: Optional TLS configuration for connecting to
+                          the HTTP endpoint
+                        properties:
+                          caBundle:
+                            description: |-
+                              Base64-encoded bundle of PEM CAs which will be used to validate the certificate
+                              chain presented by the Provider. Only used if using HTTPS to connect to Provider and
+                              ignored for HTTP connections.
+                              Mutually exclusive with CABundleSecretRef.
+                            format: byte
+                            type: string
+                          caBundleSecretRef:
+                            description: |-
+                              Reference to a Secret containing a bundle of PEM-encoded CAs to use when
+                              verifying the certificate chain presented by the Provider when using HTTPS.
+                              Mutually exclusive with CABundle.
+                            properties:
+                              key:
+                                description: The key of the secret to select from.  Must
+                                  be a valid secret key.
+                                type: string
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the Secret or its key
+                                  must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          insecureSkipVerify:
+                            default: false
+                            description: Skip TLS verification of the Provider's certificate.
+                            type: boolean
+                        type: object
+                        x-kubernetes-validations:
+                        - message: caBundle and caBundleSecretRef are mutually exclusive
+                          rule: '!(has(self.caBundle) && has(self.caBundleSecretRef))'
+                      url:
+                        description: |-
+                          URL of the HTTP endpoint to pull targets from
+                          If defined, the loader will periodically poll this endpoint for targets
+                        type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: at least one of the fields in [url acceptPush] must
+                        be set
+                      rule: '[has(self.url),has(self.acceptPush)].filter(x,x==true).size()
+                        >= 1'
                 type: object
                 x-kubernetes-validations:
-                - message: exactly one of the fields in [http consul] must be set
-                  rule: '[has(self.http),has(self.consul)].filter(x,x==true).size()
-                    == 1'
+                - message: exactly one of the fields in [http] must be set
+                  rule: '[has(self.http)].filter(x,x==true).size() == 1'
               targetLabels:
                 additionalProperties:
                   type: string
+                description: Optional labels to apply to all targets discovered by
+                  this TargetSource
                 type: object
+              targetPort:
+                description: Optional port to use for discovered targets if not specified
+                  by the provider
+                format: int32
+                type: integer
               targetProfile:
+                description: The TargetProfile to use for targets discovered by this
+                  TargetSource
                 minLength: 1
                 type: string
             required:
