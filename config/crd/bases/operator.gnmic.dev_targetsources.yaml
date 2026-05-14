@@ -40,23 +40,31 @@ spec:
             description: TargetSourceSpec defines the desired state of TargetSource
             properties:
               provider:
+                description: |-
+                  Provider defines the source of targets for this TargetSource
+                  Only one provider can be specified per TargetSource
                 properties:
                   http:
+                    description: HTTP defines the configuration for a HTTP provider
                     properties:
                       acceptPush:
                         default: false
+                        description: |-
+                          If true, the loader will accept pushed target updates to the controller endpoint
+                          The endpoint will be /{namespace}/{targetsource}/<todo>
                         type: boolean
                       authorization:
+                        description: Optional authorization configuration for accessing
+                          the HTTP endpoint
                         properties:
                           basic:
-                            description: Enforce EITHER inline creds OR secret ref
+                            description: Basic authentication configuration
                             properties:
                               credentialsSecretRef:
                                 description: |-
-                                  CredentialsSecretRef references a secret containing:
-                                  - username
-                                  - password
-                                  NOTE: key field is ignored; fixed keys are used instead
+                                  Reference to a Secret containing "username" and "password" keys to use for
+                                  basic authentication when connecting to the Provider.
+                                  Mutually exclusive with Username and Password.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -80,8 +88,14 @@ spec:
                                 type: object
                                 x-kubernetes-map-type: atomic
                               password:
+                                description: |-
+                                  Password for basic auth
+                                  Mutually exclusive with CredentialsSecretRef.
                                 type: string
                               username:
+                                description: |-
+                                  Username for basic auth
+                                  Mutually exclusive with CredentialsSecretRef.
                                 type: string
                             type: object
                             x-kubernetes-validations:
@@ -91,15 +105,22 @@ spec:
                                 && !has(self.password)) || (!has(self.credentialsSecretRef)
                                 && has(self.username) && has(self.password))
                           token:
+                            description: Token-based authentication configuration
                             properties:
                               scheme:
+                                description: Scheme for the token, e.g. "Bearer"
                                 minLength: 1
                                 type: string
                               token:
+                                description: |-
+                                  Token value for authentication
+                                  Mutually exclusive with TokenSecretRef.
                                 type: string
                               tokenSecretRef:
-                                description: SecretKeySelector selects a key of a
-                                  Secret.
+                                description: |-
+                                  Reference to a Secret containing a key with the token value to use for
+                                  authentication when connecting to the Provider.
+                                  Mutually exclusive with Token.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -137,31 +158,50 @@ spec:
                             == 1'
                       interval:
                         default: 30s
+                        description: Optional interval for polling the HTTP endpoint
+                          for targets
                         type: string
                       mapping:
-                        description: JSONPath-style expressions
+                        description: Optional mapping configuration for parsing responses
+                          from the HTTP endpoint
                         properties:
                           address:
+                            description: JSONPath expression to extract the target
+                              address from the response
                             type: string
                           labels:
                             additionalProperties:
                               type: string
+                            description: |-
+                              JSONPath expression to extract the target labels from the response
+                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+                              with values from the response taking precedence in case of conflicts.
                             type: object
                           name:
+                            description: JSONPath expression to extract the target
+                              name from the response
                             type: string
                           port:
+                            description: JSONPath expression to extract the target
+                              port from the response
                             type: string
                         required:
                         - address
                         - name
                         type: object
                       pagination:
+                        description: Optional pagination configuration for parsing
+                          responses from the HTTP endpoint
                         properties:
                           itemsField:
-                            description: 'Example: "results"'
+                            description: |-
+                              JSONPath-style expression to extract the list of targets from the response
+                              Example: "results"
                             type: string
                           nextField:
-                            description: 'Example: "next"'
+                            description: |-
+                              JSONPath-style expression to extract the next page token or URL from the response for pagination
+                              Example: "next"
                             type: string
                         type: object
                         x-kubernetes-validations:
@@ -174,11 +214,25 @@ spec:
                             != ""'
                       timeout:
                         default: 10s
+                        description: Optional timeout for HTTP requests to the endpoint
                         type: string
                       tls:
+                        description: Optional TLS configuration for connecting to
+                          the HTTP endpoint
                         properties:
-                          caSecretRef:
-                            description: SecretKeySelector selects a key of a Secret.
+                          caBundle:
+                            description: |-
+                              Base64-encoded bundle of PEM CAs which will be used to validate the certificate
+                              chain presented by the Provider. Only used if using HTTPS to connect to Provider and
+                              ignored for HTTP connections.
+                              Mutually exclusive with CABundleSecretRef.
+                            format: byte
+                            type: string
+                          caBundleSecretRef:
+                            description: |-
+                              Reference to a Secret containing a bundle of PEM-encoded CAs to use when
+                              verifying the certificate chain presented by the Provider when using HTTPS.
+                              Mutually exclusive with CABundle.
                             properties:
                               key:
                                 description: The key of the secret to select from.  Must
@@ -203,9 +257,16 @@ spec:
                             x-kubernetes-map-type: atomic
                           insecureSkipVerify:
                             default: false
+                            description: Skip TLS verification of the Provider's certificate.
                             type: boolean
                         type: object
+                        x-kubernetes-validations:
+                        - message: caBundle and caBundleSecretRef are mutually exclusive
+                          rule: '!(has(self.caBundle) && has(self.caBundleSecretRef))'
                       url:
+                        description: |-
+                          URL of the HTTP endpoint to pull targets from
+                          If defined, the loader will periodically poll this endpoint for targets
                         type: string
                     type: object
                     x-kubernetes-validations:
@@ -220,8 +281,17 @@ spec:
               targetLabels:
                 additionalProperties:
                   type: string
+                description: Optional labels to apply to all targets discovered by
+                  this TargetSource
                 type: object
+              targetPort:
+                description: Optional port to use for discovered targets if not specified
+                  by the provider
+                format: int32
+                type: integer
               targetProfile:
+                description: The TargetProfile to use for targets discovered by this
+                  TargetSource
                 minLength: 1
                 type: string
             required:
