@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -55,8 +57,9 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	// 	return errors.New("HTTP loader requires spec.provider.http to be set")
 	// }
 
-	client := &http.Client{
-		Timeout: l.spec.Timeout.Duration,
+	client, err := l.buildHTTPClient()
+	if err != nil {
+		return fmt.Errorf("failed to build HTTP client: %w", err)
 	}
 	interval := l.spec.PollInterval.Duration
 	ticker := time.NewTicker(interval)
@@ -112,6 +115,27 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			fetchAndEmit()
 		}
 	}
+}
+
+func (l *Loader) buildHTTPClient() (*http.Client, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: l.spec.TLS != nil && l.spec.TLS.InsecureSkipVerify,
+	}
+
+	if l.spec.TLS != nil && len(l.spec.TLS.CABundle) > 0 {
+		certPool := x509.NewCertPool()
+		if ok := certPool.AppendCertsFromPEM(l.spec.TLS.CABundle); !ok {
+			return nil, fmt.Errorf("Failed to parse CA bundle for TargetSource %s/%s\n", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
+		}
+		tlsConfig.RootCAs = certPool
+	}
+
+	return &http.Client{
+		Timeout: l.spec.Timeout.Duration,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsConfig,
+		},
+	}, nil
 }
 
 func (l *Loader) fetchTargetsFromHTTPEndpoint(

@@ -30,12 +30,21 @@ func NewLoader(ctx context.Context, c client.Client, cfg *core.CommonLoaderConfi
 				return nil, err
 			}
 		}
+		if httpSpec.TLS != nil {
+			if err := resolveTLSIntoSpec(
+				ctx,
+				c,
+				cfg.TargetsourceNN.Namespace,
+				httpSpec.TLS,
+			); err != nil {
+				return nil, err
+			}
+		}
 
 		return http.New(*cfg, httpSpec), nil
 	default:
 		return nil, fmt.Errorf("unknown targetsource provider, check TargetSource CRD for %s", cfg.TargetsourceNN)
 	}
-
 }
 
 func resolveAuthorizationIntoSpec(
@@ -118,6 +127,39 @@ func resolveAuthorizationIntoSpec(
 		// 		jwt.Key = values[jwt.SigningKeySecretRef.Key]
 
 		// 	}
+	}
+
+	return nil
+}
+
+func resolveTLSIntoSpec(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	tlsSpec *gnmicv1alpha1.ClientTLSConfig,
+) error {
+	if tlsSpec == nil {
+		return nil
+	}
+	tls := tlsSpec
+
+	if tls.CABundleSecretRef != nil {
+		key := "ca.crt"
+		if tls.CABundleSecretRef.Key != "" {
+			key = tls.CABundleSecretRef.Key
+		}
+		values, err := GetSecretValues(
+			ctx,
+			c,
+			namespace,
+			tls.CABundleSecretRef.Name,
+			key,
+		)
+		if err != nil {
+			return err
+		}
+		// convert string to []byte
+		tls.CABundle = []byte(values[key])
 	}
 
 	return nil
