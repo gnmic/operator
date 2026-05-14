@@ -52,8 +52,11 @@ spec:
                             description: Enforce EITHER inline creds OR secret ref
                             properties:
                               credentialsSecretRef:
-                                description: SecretKeySelector selects a key of a
-                                  Secret.
+                                description: |-
+                                  CredentialsSecretRef references a secret containing:
+                                  - username
+                                  - password
+                                  NOTE: key field is ignored; fixed keys are used instead
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -87,85 +90,6 @@ spec:
                               rule: (has(self.credentialsSecretRef) && !has(self.username)
                                 && !has(self.password)) || (!has(self.credentialsSecretRef)
                                 && has(self.username) && has(self.password))
-                          jwt:
-                            properties:
-                              algorithm:
-                                description: HS256, RS256, ES256, etc.
-                                type: string
-                              claims:
-                                additionalProperties:
-                                  type: string
-                                description: 'Optional: generate JWT dynamically'
-                                type: object
-                              signingKeySecretRef:
-                                description: SecretKeySelector selects a key of a
-                                  Secret.
-                                properties:
-                                  key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
-                                    type: string
-                                  name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    type: string
-                                  optional:
-                                    description: Specify whether the Secret or its
-                                      key must be defined
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              token:
-                                description: Static pre-generated JWT
-                                type: string
-                              tokenSecretRef:
-                                description: SecretKeySelector selects a key of a
-                                  Secret.
-                                properties:
-                                  key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
-                                    type: string
-                                  name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    type: string
-                                  optional:
-                                    description: Specify whether the Secret or its
-                                      key must be defined
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              ttl:
-                                type: string
-                            type: object
-                            x-kubernetes-validations:
-                            - message: static JWT token and generated JWT configuration
-                                cannot be combined
-                              rule: '!((has(self.token) || has(self.tokenSecretRef))
-                                && (has(self.signingKeySecretRef) || has(self.claims)))'
-                            - message: static JWT token and generated JWT configuration
-                                cannot be combined
-                              rule: '!((has(self.token) || has(self.tokenSecretRef))
-                                && (has(self.signingKeySecretRef) || has(self.claims)))'
-                            - message: algorithm must be specified when generating
-                                a JWT
-                              rule: '!has(self.signingKeySecretRef) || self.algorithm
-                                != ""'
                           token:
                             properties:
                               scheme:
@@ -240,6 +164,14 @@ spec:
                             description: 'Example: "next"'
                             type: string
                         type: object
+                        x-kubernetes-validations:
+                        - message: static JWT token and generated JWT configuration
+                            cannot be combined
+                          rule: '!((has(self.token) || has(self.tokenSecretRef)) &&
+                            ((has(self.key) || has(self.signingKeySecretRef) || has(self.claims)))'
+                        - message: algorithm must be specified when generating a JWT
+                          rule: '!has(self.signingKeySecretRef) || self.algorithm
+                            != ""'
                       timeout:
                         default: 10s
                         type: string
@@ -270,6 +202,7 @@ spec:
                             type: object
                             x-kubernetes-map-type: atomic
                           insecureSkipVerify:
+                            default: false
                             type: boolean
                         type: object
                       url:

@@ -70,13 +70,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
-		targets, err := l.fetchTargetsFromHTTPEndpoint(
-			ctx,
-			client,
-			l.spec.URL,
-			l.spec.Authorization.Token.Scheme,
-			l.spec.Authorization.Token.Token,
-		)
+		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client)
 		if err != nil {
 			logger.Error(
 				err,
@@ -123,18 +117,14 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	ctx context.Context,
 	client *http.Client,
-	url string,
-	scheme string,
-	token string,
 ) ([]core.DiscoveredTarget, error) {
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, l.spec.URL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP request failed: %w", err)
 	}
 
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("%s %s", scheme, token))
+	l.applyAuthorization(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -152,4 +142,36 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	}
 
 	return targets, nil
+}
+
+func (l *Loader) applyAuthorization(req *http.Request) {
+	auth := l.spec.Authorization
+	if auth == nil {
+		return
+	}
+
+	switch {
+	case auth.Basic != nil:
+		req.SetBasicAuth(
+			auth.Basic.Username,
+			auth.Basic.Password,
+		)
+
+	case auth.Token != nil:
+		req.Header.Set(
+			"Authorization",
+			fmt.Sprintf("%s %s",
+				auth.Token.Scheme,
+				auth.Token.Token,
+			),
+		)
+
+		// case auth.JWT != nil:
+		// 	if auth.JWT.Token != "" {
+		// 		req.Header.Set(
+		// 			"Authorization",
+		// 			fmt.Sprintf("Bearer %s", auth.JWT.Token),
+		// 		)
+		// 	}
+	}
 }

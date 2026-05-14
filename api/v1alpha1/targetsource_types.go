@@ -63,7 +63,8 @@ type HTTPConfig struct {
 }
 
 type ClientTLSConfig struct {
-	InsecureSkipVerify bool                     `json:"insecureSkipVerify,omitempty"`
+	// +kubebuilder:default:=false
+	InsecureSkipVerify bool                      `json:"insecureSkipVerify,omitempty"`
 	CASecretRef        *corev1.SecretKeySelector `json:"caSecretRef,omitempty"`
 }
 
@@ -71,14 +72,18 @@ type ClientTLSConfig struct {
 type AuthorizationSpec struct {
 	Basic *BasicAuthSpec `json:"basic,omitempty"`
 	Token *TokenAuthSpec `json:"token,omitempty"`
-	JWT   *JWTAuthSpec   `json:"jwt,omitempty"`
+	// JWT   *JWTAuthSpec   `json:"jwt,omitempty"`
 }
 
 // Enforce EITHER inline creds OR secret ref
 // +kubebuilder:validation:XValidation:rule="(has(self.credentialsSecretRef) && !has(self.username) && !has(self.password)) || (!has(self.credentialsSecretRef) && has(self.username) && has(self.password))",message="either credentialsSecretRef OR both username and password must be set, but not a mix"
 type BasicAuthSpec struct {
-	Username             string                    `json:"username,omitempty"`
-	Password             string                    `json:"password,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	// CredentialsSecretRef references a secret containing:
+	// - username
+	// - password
+	// NOTE: key field is ignored; fixed keys are used instead
 	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
 }
 
@@ -90,20 +95,20 @@ type TokenAuthSpec struct {
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
-// +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && (has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
+// +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && ((has(self.key) || has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
 // +kubebuilder:validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != \"\"",message="algorithm must be specified when generating a JWT"
-type JWTAuthSpec struct {
-	// Static pre-generated JWT
-	Token          string                    `json:"token,omitempty"`
-	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
-	// Optional: generate JWT dynamically
-	Claims              map[string]string         `json:"claims,omitempty"`
-	SigningKeySecretRef *corev1.SecretKeySelector `json:"signingKeySecretRef,omitempty"`
-	// HS256, RS256, ES256, etc.
-	Algorithm string           `json:"algorithm,omitempty"`
-	TTL       *metav1.Duration `json:"ttl,omitempty"`
-}
+// type JWTAuthSpec struct {
+// 	// Static pre-generated JWT
+// 	Token          string                    `json:"token,omitempty"`
+// 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+// 	// Optional: generate JWT dynamically
+// 	Claims              map[string]string         `json:"claims,omitempty"`
+// 	Key                 string                    `json:"key,omitempty"`
+// 	SigningKeySecretRef *corev1.SecretKeySelector `json:"signingKeySecretRef,omitempty"`
+// 	// HS256, RS256, ES256, etc.
+// 	Algorithm string           `json:"algorithm,omitempty"`
+// 	TTL       *metav1.Duration `json:"ttl,omitempty"`
+// }
 
 type PaginationSpec struct {
 	// Example: "results"
