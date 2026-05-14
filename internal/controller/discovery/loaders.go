@@ -72,17 +72,21 @@ func resolveAuthorizationIntoSpec(
 	case auth.Token != nil:
 		t := auth.Token
 		if t.TokenSecretRef != nil {
+			key := "token"
+			if t.TokenSecretRef.Key != "" {
+				key = t.TokenSecretRef.Key
+			}
 			values, err := GetSecretValues(
 				ctx,
 				c,
 				namespace,
 				t.TokenSecretRef.Name,
-				"token",
+				key,
 			)
 			if err != nil {
 				return err
 			}
-			t.Token = values["token"]
+			t.Token = values[key]
 		}
 
 		// case auth.JWT != nil:
