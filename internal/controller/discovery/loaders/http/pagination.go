@@ -5,12 +5,20 @@ import (
 	"net/url"
 )
 
-func (l *Loader) extractNextPageInfo(raw map[string]interface{}) (string, error) {
+// extractNextPageInfo extracts pagination information from a response
+func (l *Loader) extractNextPageInfo(raw interface{}) (string, error) {
 	if l.spec.Pagination == nil || l.spec.Pagination.NextField == "" {
 		return "", nil
 	}
 
-	val, ok := raw[l.spec.Pagination.NextField]
+	// Only objects can have "next" fields
+	obj, ok := raw.(map[string]interface{})
+	if !ok {
+		// array case -> no pagination
+		return "", nil
+	}
+
+	val, ok := obj[l.spec.Pagination.NextField]
 	if !ok {
 		return "", fmt.Errorf("nextField '%s' not found in response", l.spec.Pagination.NextField)
 	}
@@ -23,6 +31,7 @@ func (l *Loader) extractNextPageInfo(raw map[string]interface{}) (string, error)
 	return next, nil
 }
 
+// buildNextURL constructs the URL for the next page based on the current URL and pagination info
 func (l *Loader) buildNextURL(currentURL, nextVal string) (string, error) {
 	// nextVal is a full URL -> return as is
 	if parsed, err := url.Parse(nextVal); err == nil && parsed.Scheme != "" {

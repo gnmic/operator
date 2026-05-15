@@ -172,7 +172,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 		}
 
 		// Decode response into raw map for pagination support
-		var raw map[string]interface{}
+		var raw interface{}
 		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 			return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
 		}
@@ -204,30 +204,33 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 
 // extractTargetsFromResponse extracts items from the response
 // and maps each item into a DiscoveredTarget
-func (l *Loader) extractTargetsFromResponse(raw map[string]interface{}) ([]core.DiscoveredTarget, error) {
+func (l *Loader) extractTargetsFromResponse(raw interface{}) ([]core.DiscoveredTarget, error) {
 	var items []interface{}
 
-	if l.spec.Pagination != nil && l.spec.Pagination.ItemsField != "" {
-		// Extract items array from response using itemsField
-		val, ok := raw[l.spec.Pagination.ItemsField]
-		if !ok {
-			return nil, fmt.Errorf("itemsField '%s' not found", l.spec.Pagination.ItemsField)
-		}
+	switch v := raw.(type) {
+	// Top-level array response
+	case []interface{}:
+		items = v
+	// Object with itemsField containing the array
+	case map[string]interface{}:
+		if l.spec.Pagination != nil && l.spec.Pagination.ItemsField != "" {
+			// Extract items array from response using itemsField
+			val, ok := v[l.spec.Pagination.ItemsField]
+			if !ok {
+				return nil, fmt.Errorf("itemsField '%s' not found", l.spec.Pagination.ItemsField)
+			}
 
-		arr, ok := val.([]interface{})
-		if !ok {
-			return nil, fmt.Errorf("itemsField '%s' is not an array", l.spec.Pagination.ItemsField)
-		}
+			arr, ok := val.([]interface{})
+			if !ok {
+				return nil, fmt.Errorf("itemsField '%s' is not an array", l.spec.Pagination.ItemsField)
+			}
 
-		items = arr
-	} else {
-		// fallback: whole response is array
-		data, _ := json.Marshal(raw)
-		var out []interface{}
-		if err := json.Unmarshal(data, &out); err != nil {
-			return nil, fmt.Errorf("failed to interpret response as list")
+			items = arr
+		} else {
+			return nil, fmt.Errorf("response is an object but no itemsField specified for TargetSource %s/%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
 		}
-		items = out
+	default:
+		return nil, fmt.Errorf("unexpected response format")
 	}
 
 	// Map items to targets
