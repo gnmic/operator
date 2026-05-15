@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -195,38 +194,6 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	return allTargets, nil
 }
 
-func (l *Loader) applyAuthorization(req *http.Request) {
-	auth := l.spec.Authorization
-	if auth == nil {
-		return
-	}
-
-	switch {
-	case auth.Basic != nil:
-		req.SetBasicAuth(
-			auth.Basic.Username,
-			auth.Basic.Password,
-		)
-
-	case auth.Token != nil:
-		req.Header.Set(
-			"Authorization",
-			fmt.Sprintf("%s %s",
-				auth.Token.Scheme,
-				auth.Token.Token,
-			),
-		)
-
-		// case auth.JWT != nil:
-		// 	if auth.JWT.Token != "" {
-		// 		req.Header.Set(
-		// 			"Authorization",
-		// 			fmt.Sprintf("Bearer %s", auth.JWT.Token),
-		// 		)
-		// 	}
-	}
-}
-
 func (l *Loader) extractTargetsFromResponse(raw map[string]interface{}) ([]core.DiscoveredTarget, error) {
 	var targets []core.DiscoveredTarget
 
@@ -260,40 +227,4 @@ func (l *Loader) extractTargetsFromResponse(raw map[string]interface{}) ([]core.
 	}
 
 	return targets, nil
-}
-
-func (l *Loader) extractNextPageInfo(raw map[string]interface{}) (string, error) {
-	if l.spec.Pagination == nil || l.spec.Pagination.NextField == "" {
-		return "", nil
-	}
-
-	val, ok := raw[l.spec.Pagination.NextField]
-	if !ok {
-		return "", fmt.Errorf("nextField '%s' not found in response", l.spec.Pagination.NextField)
-	}
-
-	next, ok := val.(string)
-	if !ok {
-		return "", fmt.Errorf("nextField '%s' is not a string in response", l.spec.Pagination.NextField)
-	}
-
-	return next, nil
-}
-
-func (l *Loader) buildNextURL(currentURL, nextVal string) (string, error) {
-	// nextVal is a full URL -> return as is
-	if parsed, err := url.Parse(nextVal); err == nil && parsed.Scheme != "" {
-		return nextVal, nil
-	}
-
-	// nextVal is a token -> append as query parameter
-	parsedURL, err := url.Parse(currentURL)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse current URL in order to build next URL: %w", err)
-	}
-	q := parsedURL.Query()
-	q.Set(l.spec.Pagination.NextField, nextVal)
-	parsedURL.RawQuery = q.Encode()
-
-	return parsedURL.String(), nil
 }
