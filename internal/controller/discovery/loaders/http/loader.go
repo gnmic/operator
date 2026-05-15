@@ -195,35 +195,45 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 }
 
 func (l *Loader) extractTargetsFromResponse(raw map[string]interface{}) ([]core.DiscoveredTarget, error) {
+	var items []interface{}
+
+	if l.spec.Pagination != nil && l.spec.Pagination.ItemsField != "" {
+		// Extract items array from response using itemsField
+		val, ok := raw[l.spec.Pagination.ItemsField]
+		if !ok {
+			return nil, fmt.Errorf("itemsField '%s' not found", l.spec.Pagination.ItemsField)
+		}
+
+		arr, ok := val.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("itemsField '%s' is not an array", l.spec.Pagination.ItemsField)
+		}
+
+		items = arr
+	} else {
+		// fallback: whole response is array
+		data, _ := json.Marshal(raw)
+		var out []interface{}
+		if err := json.Unmarshal(data, &out); err != nil {
+			return nil, fmt.Errorf("failed to interpret response as list")
+		}
+		items = out
+	}
+
+	// Map items to targets
 	var targets []core.DiscoveredTarget
+	for _, item := range items {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
 
-	if l.spec.Pagination == nil || l.spec.Pagination.ItemsField == "" {
-		// No pagination config, assume entire response is the target list
-		data, err := json.Marshal(raw)
+		target, err := l.mapItem(obj)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal response: %w", err)
+			return nil, err
 		}
 
-		if err := json.Unmarshal(data, &targets); err != nil {
-			return nil, fmt.Errorf("failed to decode targets: %w", err)
-		}
-
-		return targets, nil
-	}
-
-	// Extract from field
-	items, ok := raw[l.spec.Pagination.ItemsField]
-	if !ok {
-		return nil, fmt.Errorf("itemsField '%s' not found in response", l.spec.Pagination.ItemsField)
-	}
-
-	data, err := json.Marshal(items)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(data, &targets); err != nil {
-		return nil, fmt.Errorf("failed to decode targets from itemsField: %w", err)
+		targets = append(targets, target)
 	}
 
 	return targets, nil

@@ -283,7 +283,8 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 		logger.Info(
 			"Applying Target",
 			"target", event.Target.Name,
-			"address", event.Target.Address,
+			"port", event.Target.Port,
+			"ip", event.Target.IP,
 			"labels", event.Target.Labels,
 			"targetsource", m.targetSource.Name,
 		)

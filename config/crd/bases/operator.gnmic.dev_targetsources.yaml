@@ -165,9 +165,9 @@ spec:
                         description: Optional mapping configuration for parsing responses
                           from the HTTP endpoint
                         properties:
-                          address:
+                          ip:
                             description: JSONPath expression to extract the target
-                              address from the response
+                              IP from the response
                             type: string
                           labels:
                             additionalProperties:
@@ -186,7 +186,7 @@ spec:
                               port from the response
                             type: string
                         required:
-                        - address
+                        - ip
                         - name
                         type: object
                       pagination:
