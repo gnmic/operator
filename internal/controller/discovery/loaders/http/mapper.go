@@ -1,6 +1,7 @@
 package http
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/gnmic/operator/internal/controller/discovery/core"
@@ -68,9 +69,12 @@ func (l *Loader) mapItem(item map[string]interface{}) (core.DiscoveredTarget, er
 func extractPort(val interface{}) int32 {
 	switch v := val.(type) {
 	case float64:
+		if v < 0 || v > math.MaxInt32 {
+			return 0
+		}
 		return int32(v)
 	case string:
-		p, err := strconv.Atoi(v)
+		p, err := strconv.ParseInt(v, 10, 32)
 		if err != nil {
 			return 0
 		}
