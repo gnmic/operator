@@ -12,6 +12,7 @@ type valueGetter interface {
 	GetIP() (string, error)
 	GetPort() int32
 	GetLabels() map[string]string
+	GetTargetProfile() string
 }
 
 // getGetter selects the extraction strategy based on the spec
@@ -46,12 +47,14 @@ func (l *Loader) mapItem(item map[string]interface{}) (core.DiscoveredTarget, er
 
 	port := getter.GetPort()
 	labels := getter.GetLabels()
+	targetProfile := getter.GetTargetProfile()
 
 	return core.DiscoveredTarget{
-		Name:   name,
-		IP:     ip,
-		Port:   port,
-		Labels: labels,
+		Name:          name,
+		IP:            ip,
+		Port:          port,
+		Labels:        labels,
+		TargetProfile: targetProfile,
 	}, nil
 }
 

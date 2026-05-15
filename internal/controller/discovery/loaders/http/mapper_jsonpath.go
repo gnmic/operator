@@ -78,10 +78,29 @@ func (g *jsonPathGetter) GetLabels() map[string]string {
 	labels := make(map[string]string)
 
 	for key, expr := range g.spec.Labels {
-		if val, err := jsonpath.Get(expr, g.item); err == nil {
+		if val, err := g.get(expr); err == nil {
 			labels[key] = fmt.Sprintf("%v", val)
 		}
 	}
 
 	return labels
+}
+
+// GetTargetProfile extracts the target profile using JSONPath
+//
+// Behavior:
+// - returns "" if no target profile mapping defined
+// - returns "" if extraction fails or value invalid
+func (g *jsonPathGetter) GetTargetProfile() string {
+	val, err := g.get(g.spec.TargetProfile)
+	if err != nil {
+		return ""
+	}
+
+	str, ok := val.(string)
+	if !ok {
+		return ""
+	}
+
+	return str
 }

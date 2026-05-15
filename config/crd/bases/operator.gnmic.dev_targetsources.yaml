@@ -185,6 +185,10 @@ spec:
                             description: JSONPath expression to extract the target
                               port from the response
                             type: string
+                          targetProfile:
+                            description: JSONPath expression to extract the target
+                              profile from the response
+                            type: string
                         required:
                         - ip
                         - name

@@ -208,6 +208,10 @@ type ResponseMappingSpec struct {
 	// with values from the response taking precedence in case of conflicts.
 	// +kubebuilder:validation:Optional
 	Labels map[string]string `json:"labels,omitempty"`
+
+	// JSONPath expression to extract the target profile from the response
+	// +kubebuilder:validation:Optional
+	TargetProfile string `json:"targetProfile,omitempty"`
 }
 
 // TargetSourceStatus defines the observed state of TargetSource

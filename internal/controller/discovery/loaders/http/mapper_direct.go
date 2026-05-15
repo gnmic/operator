@@ -11,7 +11,8 @@ import (
 //	  "name": "router1",
 //	  "ip": "10.0.0.1",
 //	  "port": 57400,
-//	  "labels": { ... }
+//	  "labels": { ... },
+//	  "targetProfile": "profile1"
 //	}
 type directGetter struct {
 	item map[string]interface{}
@@ -67,4 +68,15 @@ func (g *directGetter) GetLabels() map[string]string {
 	}
 
 	return labels
+}
+
+// GetTargetProfile extracts the "targetProfile" field directly
+//
+// Behavior:
+// - returns "" if value is missing or invalid
+func (g *directGetter) GetTargetProfile() string {
+	if val, ok := g.item["targetProfile"].(string); ok {
+		return val
+	}
+	return ""
 }
