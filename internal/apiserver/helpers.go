@@ -2,6 +2,7 @@ package apiserver
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -26,11 +27,15 @@ func createDiscoveryEvent(payloadTargets []target) ([]core.DiscoveryEvent, error
 			if err != nil {
 				return nil, err
 			}
+			verifiedAddress, err := validateAddress(target.Address)
+			if err != nil {
+				return nil, err
+			}
 
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:    target.Name,
-					Address: target.Address,
+					Address: verifiedAddress,
 					Labels:  convertTargetLabelsToMap(target),
 				},
 				Event: event,
@@ -38,6 +43,18 @@ func createDiscoveryEvent(payloadTargets []target) ([]core.DiscoveryEvent, error
 		}
 	}
 	return targets, nil
+}
+
+// validateAddress checks if the address is of format IPv4 or IPv6 and adds default port 57400 if empty.
+func validateAddress(address string) (string, error) {
+	address, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return "", err
+	}
+	if port == "" {
+		port = "57400"
+	}
+	return address + ":" + port, nil
 }
 
 // getKey returns key for used to identify correct channel in DiscoveryRegistry

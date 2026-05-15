@@ -6,6 +6,18 @@ package apiserver
 
 // kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
 
+// kubectl get svc on different branch
+// NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)     AGE
+// gnmic-c1                            ClusterIP   None            <none>        7890/TCP    30h
+// gnmic-c1-prom-cpipe1-prom-output1   ClusterIP   10.96.202.243   <none>        9916/TCP    30h
+// gnmic-c1-prom-p1-prom-output1       ClusterIP   10.96.191.84    <none>        10344/TCP   30h
+// kubernetes                          ClusterIP   10.96.0.1       <none>        443/TCP     27d
+// in this branch, the prometheus output is gone -> bug to 
+// kubectl get svc
+// NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
+// gnmic-c1     ClusterIP   None         <none>        7890/TCP   5m14s
+// kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP    29d
+
 import (
 	"context"
 	"fmt"
