@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
@@ -142,30 +143,56 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	ctx context.Context,
 	client *http.Client,
 ) ([]core.DiscoveredTarget, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, l.spec.URL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating HTTP request failed: %w", err)
+	var allTargets []core.DiscoveredTarget
+	currentUrl := l.spec.URL
+
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentUrl, nil)
+		if err != nil {
+			return nil, fmt.Errorf("creating HTTP request failed: %w", err)
+		}
+
+		req.Header.Set("Accept", "application/json")
+		l.applyAuthorization(req)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
+		}
+
+		// Decode response into raw map for pagination support
+		var raw map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
+		}
+
+		// Extract targets from response
+		targets, err := l.extractTargetsFromResponse(raw)
+		if err != nil {
+			return nil, err
+		}
+		allTargets = append(allTargets, targets...)
+
+		// Check for pagination
+		nextPageInfo, err := l.extractNextPageInfo(raw)
+		if err != nil {
+			return nil, err
+		}
+		if nextPageInfo == "" {
+			break
+		}
+		nextURL, err := l.buildNextURL(currentUrl, nextPageInfo)
+		if err != nil {
+			return nil, err
+		}
+		currentUrl = nextURL
 	}
 
-	req.Header.Set("Accept", "application/json")
-	l.applyAuthorization(req)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
-	}
-
-	var targets []core.DiscoveredTarget
-	if err := json.NewDecoder(resp.Body).Decode(&targets); err != nil {
-		return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
-	}
-
-	return targets, nil
+	return allTargets, nil
 }
 
 func (l *Loader) applyAuthorization(req *http.Request) {
@@ -198,4 +225,75 @@ func (l *Loader) applyAuthorization(req *http.Request) {
 		// 		)
 		// 	}
 	}
+}
+
+func (l *Loader) extractTargetsFromResponse(raw map[string]interface{}) ([]core.DiscoveredTarget, error) {
+	var targets []core.DiscoveredTarget
+
+	if l.spec.Pagination == nil || l.spec.Pagination.ItemsField == "" {
+		// No pagination config, assume entire response is the target list
+		data, err := json.Marshal(raw)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal response: %w", err)
+		}
+
+		if err := json.Unmarshal(data, &targets); err != nil {
+			return nil, fmt.Errorf("failed to decode targets: %w", err)
+		}
+
+		return targets, nil
+	}
+
+	// Extract from field
+	items, ok := raw[l.spec.Pagination.ItemsField]
+	if !ok {
+		return nil, fmt.Errorf("itemsField '%s' not found in response", l.spec.Pagination.ItemsField)
+	}
+
+	data, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, &targets); err != nil {
+		return nil, fmt.Errorf("failed to decode targets from itemsField: %w", err)
+	}
+
+	return targets, nil
+}
+
+func (l *Loader) extractNextPageInfo(raw map[string]interface{}) (string, error) {
+	if l.spec.Pagination == nil || l.spec.Pagination.NextField == "" {
+		return "", nil
+	}
+
+	val, ok := raw[l.spec.Pagination.NextField]
+	if !ok {
+		return "", fmt.Errorf("nextField '%s' not found in response", l.spec.Pagination.NextField)
+	}
+
+	next, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("nextField '%s' is not a string in response", l.spec.Pagination.NextField)
+	}
+
+	return next, nil
+}
+
+func (l *Loader) buildNextURL(currentURL, nextVal string) (string, error) {
+	// nextVal is a full URL -> return as is
+	if parsed, err := url.Parse(nextVal); err == nil && parsed.Scheme != "" {
+		return nextVal, nil
+	}
+
+	// nextVal is a token -> append as query parameter
+	parsedURL, err := url.Parse(currentURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse current URL in order to build next URL: %w", err)
+	}
+	q := parsedURL.Query()
+	q.Set(l.spec.Pagination.NextField, nextVal)
+	parsedURL.RawQuery = q.Encode()
+
+	return parsedURL.String(), nil
 }

@@ -173,12 +173,18 @@ type TokenAuthSpec struct {
 
 // PaginationSpec defines the configuration for paginating through responses from providers
 type PaginationSpec struct {
-	// JSONPath-style expression to extract the list of targets from the response
+	// Field name in the JSON response that contains the list of items (targets).
+	// Must refer to a top-level key in the response object.
 	// Example: "results"
 	ItemsField string `json:"itemsField,omitempty"`
 
-	// JSONPath-style expression to extract the next page token or URL from the response for pagination
-	// Example: "next"
+	// Field name in the JSON response that contains the next page reference.
+	// The value can be either:
+	// - a full URL (used directly for the next request), or
+	// - a pagination token (appended as a query parameter using this field name as the key).
+	//
+	// Must refer to a top-level key in the response object.
+	// Example: "next" or "nextToken"
 	NextField string `json:"nextField,omitempty"`
 }
 
