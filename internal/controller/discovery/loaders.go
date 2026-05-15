@@ -47,6 +47,8 @@ func NewLoader(ctx context.Context, c client.Client, cfg *core.CommonLoaderConfi
 	}
 }
 
+// resolveAuthorizationIntoSpec fetches credentials from Kubernetes Secrets
+// and populates the AuthorizationSpec accordingly
 func resolveAuthorizationIntoSpec(
 	ctx context.Context,
 	c client.Client,
@@ -132,6 +134,8 @@ func resolveAuthorizationIntoSpec(
 	return nil
 }
 
+// resolveTLSIntoSpec fetches TLS credentials from Kubernetes Secrets
+// and populates the ClientTLSConfig accordingly
 func resolveTLSIntoSpec(
 	ctx context.Context,
 	c client.Client,

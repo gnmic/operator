@@ -19,20 +19,26 @@ import (
 )
 
 // Loader implements the HTTP pull discovery mechanism
+// It periodically polls an HTTP endpoint, extracts targets from the response,
+// and emits discovery snapshots downstream
 type Loader struct {
 	loaderCfg core.CommonLoaderConfig
 	spec      gnmicv1alpha1.HTTPConfig
 }
 
-// New instantiates the http loader with the provided config
+// New creates a new HTTP loader instance with the provided configuration.
+// The loader is stateless apart from its config and spec
 func New(cfg core.CommonLoaderConfig, httpConfig gnmicv1alpha1.HTTPConfig) core.Loader {
 	return &Loader{loaderCfg: cfg, spec: httpConfig}
 }
 
+// Name returns the loader's name, used for logging and metrics
 func (l *Loader) Name() string {
 	return "http"
 }
 
+// Run starts the HTTP discovery loop
+// It performs an immediate fetch and then continues polling at a fixed interval
 func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) error {
 	if l.spec.URL == "" {
 		return nil
@@ -52,11 +58,6 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	logger.Info("HTTP loader started")
 
-	// Input Validation of spec
-	// if l.spec.URL == "nil" {
-	// 	return errors.New("HTTP loader requires spec.provider.http to be set")
-	// }
-
 	client, err := l.buildHTTPClient()
 	if err != nil {
 		return fmt.Errorf("failed to build HTTP client: %w", err)
@@ -73,6 +74,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
+		// Fetch targets from HTTP endpoint
 		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client)
 		if err != nil {
 			logger.Error(
@@ -83,6 +85,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			return
 		}
 
+		// Emit discovery snapshot downstream
 		snapshotID := fmt.Sprintf("%s-%s-%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name, uuid.NewString())
 		if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.loaderCfg.ChunkSize); err != nil {
 			logger.Error(
@@ -117,11 +120,13 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	}
 }
 
+// buildHTTPClient constructs an HTTP client with optional configuration
 func (l *Loader) buildHTTPClient() (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: l.spec.TLS != nil && l.spec.TLS.InsecureSkipVerify,
 	}
 
+	// If a CA bundle is provided, add it to the TLS config
 	if l.spec.TLS != nil && len(l.spec.TLS.CABundle) > 0 {
 		certPool := x509.NewCertPool()
 		if ok := certPool.AppendCertsFromPEM(l.spec.TLS.CABundle); !ok {
@@ -130,6 +135,7 @@ func (l *Loader) buildHTTPClient() (*http.Client, error) {
 		tlsConfig.RootCAs = certPool
 	}
 
+	// Build the HTTP client with the specified timeout and TLS config
 	return &http.Client{
 		Timeout: l.spec.Timeout.Duration,
 		Transport: &http.Transport{
@@ -138,6 +144,7 @@ func (l *Loader) buildHTTPClient() (*http.Client, error) {
 	}, nil
 }
 
+// fetchTargetsFromHTTPEndpoint retrieves targets from the configured HTTP endpoint
 func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	ctx context.Context,
 	client *http.Client,
@@ -146,14 +153,15 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	currentUrl := l.spec.URL
 
 	for {
+		// Create HTTP request with context
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentUrl, nil)
 		if err != nil {
 			return nil, fmt.Errorf("creating HTTP request failed: %w", err)
 		}
-
 		req.Header.Set("Accept", "application/json")
 		l.applyAuthorization(req)
 
+		// Execute HTTP request
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("HTTP request failed: %w", err)
@@ -194,6 +202,8 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	return allTargets, nil
 }
 
+// extractTargetsFromResponse extracts items from the response
+// and maps each item into a DiscoveredTarget
 func (l *Loader) extractTargetsFromResponse(raw map[string]interface{}) ([]core.DiscoveredTarget, error) {
 	var items []interface{}
 
