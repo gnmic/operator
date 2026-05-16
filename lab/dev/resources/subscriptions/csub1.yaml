@@ -3,10 +3,12 @@ kind: Subscription
 metadata:
   name: csub1
   labels:
+    vendor: labRouters
     type: interfaces
 spec:
   paths:
-    - /interfaces
-    - /network-instances
+    - /interface/statistics
+    - /network-instance
   mode: STREAM/SAMPLE
-  sampleInterval: 10s
+  sampleInterval: 1s
+  encoding: PROTO
