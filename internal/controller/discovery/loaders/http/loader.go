@@ -51,6 +51,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			return nil
 
 		case <-ticker.C:
+			// Switch case + i only needed to test behavior for messages with different values.
 			switch i {
 			case 1:
 				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
