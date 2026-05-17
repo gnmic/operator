@@ -18,7 +18,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +43,8 @@ import (
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/controller/discovery"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
@@ -64,6 +69,8 @@ func main() {
 	var probeAddr string
 	var devMode bool
 	var apiAddr string
+	var discoveryChunkSize int
+	var discoveryBufferSize int
 	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -71,6 +78,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.IntVar(&discoveryChunkSize, "discovery-chunk-size", 100, "Maximum number of targets/events sent in a single discovery message.")
+	flag.IntVar(&discoveryBufferSize, "discovery-buffer-size", 10, "Amount of discovery messages that can be queued in the channel buffer.")
 	opts := zap.Options{
 		Development: devMode,
 	}
@@ -78,6 +87,8 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	discoveryRegistry := discovery.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -116,9 +127,22 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)
 	}
+
+	var api *apiserver.APIServer
+	if apiAddr != "" {
+		api, err = apiserver.New(apiAddr, clusterReconciler, discoveryRegistry, discoveryChunkSize, os.Getenv("API_BEARER_TOKEN"))
+		if err != nil {
+			setupLog.Error(err, "unable to initialize API server")
+			os.Exit(1)
+		}
+	}
 	if err := (&controller.TargetSourceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		BufferSize:        discoveryBufferSize,
+		ChunkSize:         discoveryChunkSize,
+		DiscoveryRegistry: discoveryRegistry,
+		APIRouter:         api.Router(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetSource")
 		os.Exit(1)
@@ -218,20 +242,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	if apiAddr != "" {
-		apiServer := apiserver.New(apiAddr, clusterReconciler)
+	if api != nil {
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+			if err := api.InitializeAuthToken(ctx); err != nil {
+				return err
+			}
+
 			errCh := make(chan error)
 			go func() {
-				errCh <- apiServer.Server.ListenAndServe()
+				err := api.Server.ListenAndServe()
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					errCh <- err
+				}
+				close(errCh)
 			}()
+
 			select {
-			case err := <-errCh:
+			case err, ok := <-errCh:
+				if !ok {
+					return nil
+				}
 				return err
 			case <-ctx.Done():
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				return apiServer.Server.Shutdown(ctx)
+				return api.Server.Shutdown(ctx)
 			}
 		}))
 		if err != nil {
