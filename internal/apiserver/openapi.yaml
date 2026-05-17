@@ -14,6 +14,8 @@ paths:
     post:
       summary: "Create targets in the gNMIc Operator"
       operationId: "createTargets"
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -27,13 +29,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Targets'
+        '401':
+          description: Access token is missing or invalid
+
 components:
   schemas:
     Targets:
       type: array
       items:
         $ref: '#/components/schemas/Target'
-
     Label:
       type: object
       properties:
@@ -41,7 +45,6 @@ components:
           type: string
         value:
           type: string
-
     Target:
       type: object
       required:
@@ -65,4 +68,8 @@ components:
             - created
             - updated
             - deleted
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
       

@@ -6,22 +6,12 @@ package apiserver
 
 // kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
 
-// kubectl get svc on different branch
-// NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)     AGE
-// gnmic-c1                            ClusterIP   None            <none>        7890/TCP    30h
-// gnmic-c1-prom-cpipe1-prom-output1   ClusterIP   10.96.202.243   <none>        9916/TCP    30h
-// gnmic-c1-prom-p1-prom-output1       ClusterIP   10.96.191.84    <none>        10344/TCP   30h
-// kubernetes                          ClusterIP   10.96.0.1       <none>        443/TCP     27d
-// in this branch, the prometheus output is gone -> bug to 
-// kubectl get svc
-// NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
-// gnmic-c1     ClusterIP   None         <none>        7890/TCP   5m14s
-// kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP    29d
-
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
@@ -41,8 +31,9 @@ type APIServer struct {
 		types.NamespacedName,
 		core.DiscoveryRegistryValue,
 	]
-	chunzSize int
-	logger    logr.Logger
+	chunzSize   int
+	logger      logr.Logger
+	bearerToken string
 }
 
 type urlStruct struct {
@@ -58,10 +49,15 @@ func New(
 		core.DiscoveryRegistryValue,
 	],
 	discoveryChunksize int,
+	bearerToken string,
 ) (*APIServer, error) {
-	gin.SetMode(gin.ReleaseMode) // To double-check 
+	gin.SetMode(gin.ReleaseMode) // To double-check
 	router := gin.Default()
 	logger := log.Log.WithValues("component", "api-server")
+	if bearerToken == "" {
+		return nil, fmt.Errorf("api bearer token cannot be empty")
+	}
+
 	a := &APIServer{
 		Server: &http.Server{
 			Addr:    addr,
@@ -72,6 +68,7 @@ func New(
 		DiscoveryRegistry: discoveryRegistry,
 		chunzSize:         discoveryChunksize,
 		logger:            logger,
+		bearerToken:       bearerToken,
 	}
 	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	a.routes()
@@ -116,6 +113,11 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	)
 	logger.Info("Received POST request for CreateTargets")
 
+	if !a.checkBearerToken(c) {
+		logger.Info("Unauthorized request for CreateTargets")
+		return
+	}
+
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		logger.Error(err, "Failed to bind request payload")
@@ -139,4 +141,26 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	}
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
 	c.JSON(http.StatusOK, payloadTargets)
+}
+
+func (a *APIServer) checkBearerToken(ctx *gin.Context) bool {
+	const bearerPrefix = "Bearer "
+	authHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
+	if !strings.HasPrefix(authHeader, bearerPrefix) {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid authorization header"})
+		return false
+	}
+
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+	if token == "" {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+		return false
+	}
+
+	if subtle.ConstantTimeCompare([]byte(token), []byte(a.bearerToken)) != 1 {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
+		return false
+	}
+
+	return true
 }

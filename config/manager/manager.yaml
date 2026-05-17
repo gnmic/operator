@@ -82,6 +82,11 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['app.kubernetes.io/name']
+        - name: API_BEARER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gnmic-api-auth
+              key: bearer-token
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

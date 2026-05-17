@@ -12,7 +12,7 @@ import (
 )
 
 // createDiscoveryEvent creates object of type core.DiscoveryEvent
-func createDiscoveryEvent(payloadTargets []target) ([]core.DiscoveryEvent, error) {
+func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error) {
 	targets := []core.DiscoveryEvent{}
 
 	if len(payloadTargets) > 0 {
@@ -67,7 +67,7 @@ func getKey(u urlStruct) types.NamespacedName {
 }
 
 // convertTargetLabelsToMap converts target.Labels to map.
-func convertTargetLabelsToMap(target target) map[string]string {
+func convertTargetLabelsToMap(target Target) map[string]string {
 	labelToMap := make(map[string]string)
 	if target.Labels != nil {
 		for _, tag := range *target.Labels {
@@ -81,7 +81,7 @@ func convertTargetLabelsToMap(target target) map[string]string {
 }
 
 // getEvent converts target.Operation to core.Operation.
-func getEvent(target target, index int) (core.EventAction, error) {
+func getEvent(target Target, index int) (core.EventAction, error) {
 	event := core.EventApply
 	switch target.Operation {
 	case Created:

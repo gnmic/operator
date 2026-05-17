@@ -13,7 +13,7 @@ import (
 )
 
 func TestGetEventApply(t *testing.T) {
-	target := target{
+	target := Target{
 		Address:   "1.1.1.1",
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -29,7 +29,7 @@ func TestGetEventApply(t *testing.T) {
 }
 
 func TestGetEventDelete(t *testing.T) {
-	target := target{
+	target := Target{
 		Address:   "1.1.1.1",
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -45,7 +45,7 @@ func TestGetEventDelete(t *testing.T) {
 }
 
 func TestGetEventEmptyOperation(t *testing.T) {
-	target := target{
+	target := Target{
 		Address:   "1.1.1.1",
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -58,7 +58,7 @@ func TestGetEventEmptyOperation(t *testing.T) {
 }
 
 func TestGetEventUpdate(t *testing.T) {
-	target := target{
+	target := Target{
 		Address:   "1.1.1.1",
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -89,7 +89,7 @@ func TestGetKey(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMapEmpty(t *testing.T) {
-	target := target{}
+	target := Target{}
 	result := convertTargetLabelsToMap(target)
 	if len(result) != 0 {
 		t.Errorf("convertTargetLabelsToMap(target) = %v; want empty map", result)
@@ -103,7 +103,7 @@ func TestConvertTargetLabelsToMap(t *testing.T) {
 		Key:   &key,
 		Value: &value,
 	}
-	target := target{
+	target := Target{
 		Labels: &[]Label{label},
 	}
 	expected := map[string]string{
@@ -122,7 +122,7 @@ func TestConvertTargetLabelsToMapEmptyKey(t *testing.T) {
 		Key:   &key,
 		Value: &value,
 	}
-	target := target{
+	target := Target{
 		Labels: &[]Label{label},
 	}
 	result := convertTargetLabelsToMap(target)
@@ -144,7 +144,7 @@ func TestConvertTargetLabelsToMapTwoEntries(t *testing.T) {
 		Key:   &key2,
 		Value: &value2,
 	}
-	target := target{
+	target := Target{
 		Labels: &[]Label{label, label2},
 	}
 	expected := map[string]string{
@@ -158,7 +158,7 @@ func TestConvertTargetLabelsToMapTwoEntries(t *testing.T) {
 }
 
 func TestCreateDiscoveryEvent(t *testing.T) {
-	targets := []target{{
+	targets := []Target{{
 		Address:   "1.1.1.1",
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -181,7 +181,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 }
 
 func TestCreateDiscoveryEventEmptyName(t *testing.T) {
-	targets := []target{{
+	targets := []Target{{
 		Address:   "1.1.1.1",
 		Name:      "",
 		Labels:    &[]Label{},
@@ -194,7 +194,7 @@ func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 }
 
 func TestCreateDiscoveryEventEmptyAddress(t *testing.T) {
-	targets := []target{{
+	targets := []Target{{
 		Address:   "",
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -207,7 +207,7 @@ func TestCreateDiscoveryEventEmptyAddress(t *testing.T) {
 }
 
 func TestCreateDiscoveryEventWrongEvent(t *testing.T) {
-	targets := []target{{
+	targets := []Target{{
 		Address:   "1.1.1.1",
 		Name:      "",
 		Labels:    &[]Label{},
