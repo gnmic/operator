@@ -1,5 +1,39 @@
 package core
 
+import (
+	"context"
+
+	"k8s.io/apimachinery/pkg/types"
+)
+
+// DiscoveryRegistryValue represents the controller-owned runtime state
+// with its configuration for a single TargetSource
+type DiscoveryRegistryValue struct {
+	// Channel is the outbound communication channel used by discovery
+	// components (loaders, webhooks, etc.) to emit discovery messages
+	Channel chan<- []DiscoveryMessage
+	// Stop cancels the discovery context associated with this registry entry
+	Stop context.CancelFunc
+
+	CommonLoaderConfig *CommonLoaderConfig
+}
+
+type CommonLoaderConfig struct {
+	TargetsourceNN types.NamespacedName
+	ChunkSize      int
+	AcceptPush     bool
+}
+
+// EventAction represents the type of a discovery event
+type EventAction int
+
+const (
+	// EventDelete indicates that a target should be removed
+	EventDelete EventAction = iota
+	// EventApply indicates that a target should be applied (created or updated)
+	EventApply
+)
+
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
@@ -8,15 +42,14 @@ type DiscoveredTarget struct {
 	Labels  map[string]string
 }
 
-const (
-	DELETE DiscoveryEvent = 0
-	CREATE DiscoveryEvent = 1
-	UPDATE DiscoveryEvent = 2
-)
-
-type DiscoveryEvent int
-
-type DiscoveryMessage struct {
+type DiscoveryEvent struct {
 	Target DiscoveredTarget
-	Event  DiscoveryEvent
+	Event  EventAction
+}
+
+type DiscoverySnapshot struct {
+	SnapshotID  string
+	ChunkIndex  int
+	TotalChunks int
+	Targets     []DiscoveredTarget
 }

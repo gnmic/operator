@@ -24,7 +24,8 @@ import (
 // +kubebuilder:validation:Required
 type TargetSourceSpec struct {
 	Provider *ProviderSpec `json:"provider"`
-	//
+
+	// +kubebuilder:validation:Optional
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
 	// +kubebuilder:validation:MinLength=1
@@ -40,6 +41,8 @@ type ProviderSpec struct {
 type HTTPConfig struct {
 	// +kubebuilder:validation:MinLength=1
 	URL string `json:"url"`
+	// +kubebuilder:validation:Optional
+	AcceptPush bool `json:"acceptPush,omitempty"`
 }
 
 type ConsulConfig struct {
