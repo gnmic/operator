@@ -103,6 +103,8 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 					return err
 				}
 			}
+
+			i++
 		}
 	}
 }
