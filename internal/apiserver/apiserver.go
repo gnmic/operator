@@ -8,7 +8,6 @@ package apiserver
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,9 +53,6 @@ func New(
 	gin.SetMode(gin.ReleaseMode) // To double-check
 	router := gin.Default()
 	logger := log.Log.WithValues("component", "api-server")
-	if bearerToken == "" {
-		return nil, fmt.Errorf("api bearer token cannot be empty")
-	}
 
 	a := &APIServer{
 		Server: &http.Server{
@@ -68,7 +64,7 @@ func New(
 		DiscoveryRegistry: discoveryRegistry,
 		chunzSize:         discoveryChunksize,
 		logger:            logger,
-		bearerToken:       bearerToken,
+		bearerToken:       strings.TrimSpace(bearerToken),
 	}
 	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	a.routes()
@@ -141,26 +137,4 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	}
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
 	c.JSON(http.StatusOK, payloadTargets)
-}
-
-func (a *APIServer) checkBearerToken(ctx *gin.Context) bool {
-	const bearerPrefix = "Bearer "
-	authHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
-	if !strings.HasPrefix(authHeader, bearerPrefix) {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid authorization header"})
-		return false
-	}
-
-	token := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
-	if token == "" {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
-		return false
-	}
-
-	if subtle.ConstantTimeCompare([]byte(token), []byte(a.bearerToken)) != 1 {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
-		return false
-	}
-
-	return true
 }

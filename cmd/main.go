@@ -130,13 +130,7 @@ func main() {
 
 	var api *apiserver.APIServer
 	if apiAddr != "" {
-		apiBearerToken := os.Getenv("API_BEARER_TOKEN")
-		if apiBearerToken == "" {
-			setupLog.Error(errors.New("missing API_BEARER_TOKEN"), "unable to initialize API server")
-			os.Exit(1)
-		}
-
-		api, err = apiserver.New(apiAddr, clusterReconciler, discoveryRegistry, discoveryChunkSize, apiBearerToken)
+		api, err = apiserver.New(apiAddr, clusterReconciler, discoveryRegistry, discoveryChunkSize, os.Getenv("API_BEARER_TOKEN"))
 		if err != nil {
 			setupLog.Error(err, "unable to initialize API server")
 			os.Exit(1)
@@ -250,6 +244,10 @@ func main() {
 
 	if api != nil {
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+			if err := api.InitializeAuthToken(ctx); err != nil {
+				return err
+			}
+
 			errCh := make(chan error)
 			go func() {
 				err := api.Server.ListenAndServe()

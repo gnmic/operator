@@ -87,6 +87,7 @@ spec:
             secretKeyRef:
               name: gnmic-api-auth
               key: bearer-token
+              optional: true
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
