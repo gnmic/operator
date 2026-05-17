@@ -152,8 +152,8 @@ func TestGenerateEvents_AllDiscoveredTargetsBecomeApplyEvents(t *testing.T) {
 		if event.Event != core.EventApply {
 			t.Fatalf(
 				"expected all events to be %s, got %s",
-				core.EventApply.ToString(),
-				event.Event.ToString(),
+				core.EventApply.String(),
+				event.Event.String(),
 			)
 		}
 	}
@@ -175,8 +175,8 @@ func TestGenerateEvents_AllExistingTargetsBecomeDeleteEvents(t *testing.T) {
 		if event.Event != core.EventDelete {
 			t.Fatalf(
 				"expected all events to be %s, got %s",
-				core.EventDelete.ToString(),
-				event.Event.ToString(),
+				core.EventDelete.String(),
+				event.Event.String(),
 			)
 		}
 	}
