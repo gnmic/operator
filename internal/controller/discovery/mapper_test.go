@@ -19,8 +19,9 @@ func mockDiscoveredTargetList(len int) []core.DiscoveredTarget {
 
 	for i := range len {
 		targets[i] = core.DiscoveredTarget{
-			Address: fmt.Sprintf("192.168.1.%d", i+1),
-			Name:    fmt.Sprintf("router%d", i+1),
+			IP:   fmt.Sprintf("192.168.1.%d", i+1),
+			Port: 57400,
+			Name: fmt.Sprintf("router%d", i+1),
 		}
 	}
 
@@ -29,9 +30,10 @@ func mockDiscoveredTargetList(len int) []core.DiscoveredTarget {
 
 func mockDiscoveryTarget(opts ...func(*core.DiscoveredTarget)) core.DiscoveredTarget {
 	t := core.DiscoveredTarget{
-		Name:    "target1",
-		Address: "10.0.0.1",
-		Labels:  map[string]string{},
+		Name:   "target1",
+		IP:     "10.0.0.1",
+		Port:   57400,
+		Labels: map[string]string{},
 	}
 
 	for _, opt := range opts {
@@ -47,9 +49,9 @@ func withDiscoveredTargetName(name string) func(*core.DiscoveredTarget) {
 	}
 }
 
-func withDiscoveredTargetAddress(address string) func(*core.DiscoveredTarget) {
+func withDiscoveredTargetIP(ip string) func(*core.DiscoveredTarget) {
 	return func(t *core.DiscoveredTarget) {
-		t.Address = address
+		t.IP = ip
 	}
 }
 
@@ -413,14 +415,14 @@ func TestNormalizeTarget_PrefixesTargetName(t *testing.T) {
 
 func TestNormalizeTarget_PreservesTargetAddress(t *testing.T) {
 	target := mockDiscoveryTarget(
-		withDiscoveredTargetAddress("192.168.1.10"),
+		withDiscoveredTargetIP("192.168.1.10"),
 	)
 
 	normalized := normalizeTarget(target, "ts1")
 
-	if got := normalized.Address; got != "192.168.1.10" {
+	if got := normalized.IP; got != "192.168.1.10" {
 		t.Fatalf(
-			"expected address %q, got %q",
+			"expected IP %q, got %q",
 			"192.168.1.10",
 			got,
 		)

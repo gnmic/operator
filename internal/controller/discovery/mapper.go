@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"fmt"
 	"maps"
 	"strings"
 
@@ -24,7 +25,7 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 	unknownLabels := make(map[string]string)
 
 	// Add Address from DiscoveredTarget
-	t.Spec.Address = d.Address
+	t.Spec.Address = fmt.Sprintf("%s:%d", d.IP, d.Port)
 	// Add default Target Profile from the TargetSource Spec TargetProfile
 	t.Spec.Profile = ts.Spec.TargetProfile
 

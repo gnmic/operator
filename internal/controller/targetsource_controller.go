@@ -100,7 +100,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	if err := r.startDiscovery(req.NamespacedName, targetSource, logger); err != nil {
+	if err := r.startDiscovery(ctx, req.NamespacedName, targetSource, logger); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -173,6 +173,7 @@ func (r *TargetSourceReconciler) ensureFinalizer(ctx context.Context, targetSour
 // - MessageProcessor and Loader must run for the lifetime of the TargetSource
 // - Any unexpected exit is treated as a bug and triggers full shutdown
 func (r *TargetSourceReconciler) startDiscovery(
+	reconcileCtx context.Context,
 	key types.NamespacedName,
 	targetSource *gnmicv1alpha1.TargetSource,
 	logger logr.Logger,
@@ -196,7 +197,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 		targetSource,
 		targetChannel,
 	)
-	loader, err := discovery.NewLoader(&loaderConfig, targetSource.Spec)
+	loader, err := discovery.NewLoader(reconcileCtx, r.Client, &loaderConfig, targetSource.Spec)
 	if err != nil {
 		logger.Error(err, "Target loader could not be created")
 		cleanup()
