@@ -93,7 +93,7 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if r.DiscoveryRegistry.Exists(req.NamespacedName) {
 		if targetSource.Generation != targetSource.Status.ObservedGeneration {
-			r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
+			return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
 		} else {
 			logger.Info("Discovery runtime already running; reconciliation completed")
 			return ctrl.Result{}, nil
