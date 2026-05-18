@@ -28,9 +28,6 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 	// Add default Target Profile from the TargetSource Spec TargetProfile
 	t.Spec.Profile = ts.Spec.TargetProfile
 
-	// Copy TargetLabels from TargetSource Spec
-	maps.Copy(t.Labels, ts.Spec.TargetLabels)
-
 	// Handle labels from Source of Truth
 	for k, v := range d.Labels {
 		if strings.HasPrefix(k, ExternalLabelPrefix) {
@@ -44,6 +41,9 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 			t.Labels[k] = v
 		}
 	}
+
+	// Copy TargetLabels from TargetSource Spec
+	maps.Copy(t.Labels, ts.Spec.TargetLabels)
 
 	// Add TargetSource Label to the Target (precedence over all labels)
 	t.Labels[LabelTargetSourceName] = ts.Name
