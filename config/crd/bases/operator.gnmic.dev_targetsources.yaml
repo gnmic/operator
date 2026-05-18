@@ -79,15 +79,16 @@ spec:
               lastSync:
                 format: date-time
                 type: string
+              observedGeneration:
+                format: int64
+                type: integer
               status:
                 type: string
               targetsCount:
                 format: int32
                 type: integer
             required:
-            - lastSync
-            - status
-            - targetsCount
+            - observedGeneration
             type: object
         type: object
     served: true
