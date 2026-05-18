@@ -320,7 +320,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 			return nil
 		default:
 		}
-		if err := m.applyEvent(ctx, event, logger); err != nil {
+		if err := m.processEvent(ctx, event, logger); err != nil {
 			return err
 		}
 	}
