@@ -387,7 +387,7 @@ func TestGenerateTargetResource_TargetSourceLabelsOverrideDiscoveredLabels(t *te
 
 	target, _ := generateTargetResource(d, &ts)
 
-	if got := target.Labels["sharedLabel"]; got != "discoveredValue" {
+	if got := target.Labels["sharedLabel"]; got != "targetSourceValue" {
 		t.Fatalf(
 			"expected target source label to override discovered label, got %q",
 			got,
