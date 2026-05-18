@@ -341,6 +341,7 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			logger.Error(err, "error deleting target",
 				"targetName", event.Target.Name,
 			)
+			return err
 		} else {
 			logger.Info("deleted target object",
 				"name", event.Target.Name,
@@ -360,6 +361,7 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)
+			return err
 		} else {
 			logger.Info("applied target object",
 				"name", event.Target.Name,
