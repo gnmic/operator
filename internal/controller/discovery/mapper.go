@@ -10,8 +10,9 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
-// generateTargetResource converts a DiscoveredTarget into a Kubernetes Target Object based on the TargetSource Spec
-func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) *gnmicv1alpha1.Target {
+// generateTargetResource converts a DiscoveredTarget into a Kubernetes Target Object based on the TargetSource Spec.
+// Returns the Target Resource and a map of unknown operator labels.
+func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) (*gnmicv1alpha1.Target, map[string]string) {
 	// Create object instance
 	t := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
@@ -20,14 +21,12 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 			Labels:    make(map[string]string),
 		},
 	}
+	unknownLabels := make(map[string]string)
 
 	// Add Address from DiscoveredTarget
 	t.Spec.Address = d.Address
 	// Add default Target Profile from the TargetSource Spec TargetProfile
 	t.Spec.Profile = ts.Spec.TargetProfile
-
-	// Copy TargetLabels from TargetSource Spec
-	maps.Copy(t.Labels, ts.Spec.TargetLabels)
 
 	// Handle labels from Source of Truth
 	for k, v := range d.Labels {
@@ -36,17 +35,20 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 			case ExternalLabelTargetProfile: // Overwrite TargetProfile if specified by SoT
 				t.Spec.Profile = v
 			default:
-				// TODO: handle unknown label
+				unknownLabels[k] = v
 			}
 		} else { // Copy all other labels into the Target
 			t.Labels[k] = v
 		}
 	}
 
+	// Copy TargetLabels from TargetSource Spec
+	maps.Copy(t.Labels, ts.Spec.TargetLabels)
+
 	// Add TargetSource Label to the Target (precedence over all labels)
 	t.Labels[LabelTargetSourceName] = ts.Name
 
-	return t
+	return t, unknownLabels
 }
 
 // generateEvents returns a list of DiscoveryEvents. Needed for snapshot handling to determine which devices get deleted and which applied.

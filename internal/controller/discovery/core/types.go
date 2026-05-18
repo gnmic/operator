@@ -47,7 +47,7 @@ type DiscoveryEvent struct {
 	Event  EventAction
 }
 
-func (e EventAction) ToString() string {
+func (e EventAction) String() string {
 	switch e {
 	case EventDelete:
 		return "DELETE"
