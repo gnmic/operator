@@ -6,7 +6,8 @@ data:
   targets.json: |
     [
       {
-        "address": "clab-t1-spine1:57400",
+        "ip": "clab-t1-spine1",
+        "port": 57400,
         "name": "spine1",
         "labels": {
           "vendor": "nokia_srlinux",
@@ -14,7 +15,8 @@ data:
         }
       },
       {
-        "address": "clab-t1-leaf1:57400",
+        "ip": "clab-t1-leaf1",
+        "port": 57400,
         "name": "leaf1",
         "labels": {
           "vendor": "nokia_srlinux",
@@ -22,7 +24,8 @@ data:
         }
       },
       {
-        "address": "clab-t1-leaf2:57400",
+        "ip": "clab-t1-leaf2",
+        "port": 57400,
         "name": "leaf2",
         "labels": {
           "vendor": "nokia_srlinux",
