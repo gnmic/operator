@@ -1,4 +1,4 @@
-- address: 172.18.1.10/32
+- address: clab-t1-spine1
   assigned_object:
     device:
       name: spine1
@@ -6,7 +6,7 @@
   status: active
   primary: true
   dns_name: t2-nodes-spine1
-- address: 172.18.1.11/32
+- address: clab-t1-leaf1
   assigned_object:
     device:
       name: leaf1
@@ -14,7 +14,7 @@
   status: active
   primary: true
   dns_name: t2-nodes-leaf1
-- address: 172.18.1.12/32
+- address: clab-t1-leaf2
   assigned_object:
     device:
       name: leaf2

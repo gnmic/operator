@@ -39,9 +39,11 @@ const (
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
-	Name    string
-	Address string
-	Labels  map[string]string
+	Name          string
+	IP            string
+	Port          int32
+	Labels        map[string]string
+	TargetProfile string
 }
 
 type DiscoveryEvent struct {
@@ -49,7 +51,7 @@ type DiscoveryEvent struct {
 	Event  EventAction
 }
 
-func (e EventAction) ToString() string {
+func (e EventAction) String() string {
 	switch e {
 	case EventDelete:
 		return "DELETE"
