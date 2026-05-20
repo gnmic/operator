@@ -284,7 +284,7 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			"Applying Target",
 			"target", event.Target.Name,
 			"port", event.Target.Port,
-			"ip", event.Target.IP,
+			"ip", event.Target.Address,
 			"labels", event.Target.Labels,
 			"targetsource", m.targetSource.Name,
 		)

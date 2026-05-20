@@ -189,9 +189,9 @@ type ResponseMappingSpec struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// JSONPath expression to extract the target IP from the response
+	// JSONPath expression to extract the target address from the response
 	// +kubebuilder:validation:Required
-	IP string `json:"ip"`
+	Address string `json:"address"`
 
 	// JSONPath expression to extract the target port from the response
 	// +kubebuilder:validation:Optional
