@@ -2,7 +2,6 @@ package discovery
 
 import (
 	"maps"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -28,22 +27,9 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 	// Add default Target Profile from the TargetSource Spec TargetProfile
 	t.Spec.Profile = ts.Spec.TargetProfile
 
-	// Handle labels from Source of Truth
-	for k, v := range d.Labels {
-		if strings.HasPrefix(k, ExternalLabelPrefix) {
-			switch k {
-			case ExternalLabelTargetProfile: // Overwrite TargetProfile if specified by SoT
-				t.Spec.Profile = v
-			default:
-				unknownLabels[k] = v
-			}
-		} else { // Copy all other labels into the Target
-			t.Labels[k] = v
-		}
-	}
-
-	// Copy TargetLabels from TargetSource Spec
+	// Copy TargetLabels from TargetSource Spec & DiscoveredTarget. Discovered labels take precedence over TargetSource labels.
 	maps.Copy(t.Labels, ts.Spec.TargetLabels)
+	maps.Copy(t.Labels, d.Labels)
 
 	// Add TargetSource Label to the Target (precedence over all labels)
 	t.Labels[LabelTargetSourceName] = ts.Name
