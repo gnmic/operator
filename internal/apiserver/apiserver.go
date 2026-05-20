@@ -6,18 +6,6 @@ package apiserver
 
 // kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
 
-// kubectl get svc on different branch
-// NAME                                TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)     AGE
-// gnmic-c1                            ClusterIP   None            <none>        7890/TCP    30h
-// gnmic-c1-prom-cpipe1-prom-output1   ClusterIP   10.96.202.243   <none>        9916/TCP    30h
-// gnmic-c1-prom-p1-prom-output1       ClusterIP   10.96.191.84    <none>        10344/TCP   30h
-// kubernetes                          ClusterIP   10.96.0.1       <none>        443/TCP     27d
-// in this branch, the prometheus output is gone -> bug to 
-// kubectl get svc
-// NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
-// gnmic-c1     ClusterIP   None         <none>        7890/TCP   5m14s
-// kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP    29d
-
 import (
 	"context"
 	"fmt"
@@ -41,8 +29,9 @@ type APIServer struct {
 		types.NamespacedName,
 		core.DiscoveryRegistryValue,
 	]
-	chunzSize int
-	logger    logr.Logger
+	chunzSize   int
+	logger      logr.Logger
+	bearerToken bool
 }
 
 type urlStruct struct {
@@ -58,9 +47,10 @@ func New(
 		core.DiscoveryRegistryValue,
 	],
 	discoveryChunksize int,
+	bearerToken string,
 ) (*APIServer, error) {
-	gin.SetMode(gin.ReleaseMode) // To double-check 
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
 	logger := log.Log.WithValues("component", "api-server")
 	a := &APIServer{
 		Server: &http.Server{
@@ -73,8 +63,8 @@ func New(
 		chunzSize:         discoveryChunksize,
 		logger:            logger,
 	}
-	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	a.routes()
+	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	return a, nil
 }
 
@@ -116,6 +106,11 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	)
 	logger.Info("Received POST request for CreateTargets")
 
+	if !a.verifyBearerToken(c, a.clusterReconciler) {
+		logger.Info("Unauthorized request for CreateTargets")
+		return
+	}
+
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		logger.Error(err, "Failed to bind request payload")
@@ -130,7 +125,8 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
 		return
 	}
-	// make sure channel is not closed if targetsource in registry is deleted
+	// WROMA: both of these things are not relevant here, but instead in utils.send. TODO, check with Daniel if and how this can be implemented
+	// make sure channel is not closed if targetsource in registry is deleted ->
 	// timeout for sending to the channel
 	targets, err := createDiscoveryEvent(payloadTargets)
 	if err != nil {
