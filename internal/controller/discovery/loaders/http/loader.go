@@ -53,14 +53,16 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
 			targets := []core.DiscoveredTarget{
 				{
-					Name:    "ceos1",
-					Address: "clab-3-nodes-ceos1:6030",
-					Labels:  map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
+					Name:   "ceos1",
+					IP:     "clab-3-nodes-ceos1",
+					Port:   57400,
+					Labels: map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
 				},
 				{
-					Name:    "leaf1",
-					Address: "clab-3-nodes-leaf1:57400",
-					Labels:  map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
+					Name:   "leaf1",
+					IP:     "clab-3-nodes-leaf1",
+					Port:   57400,
+					Labels: map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
 				},
 			}
 
