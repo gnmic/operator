@@ -204,14 +204,6 @@ spec:
                               Example: "next"
                             type: string
                         type: object
-                        x-kubernetes-validations:
-                        - message: static JWT token and generated JWT configuration
-                            cannot be combined
-                          rule: '!((has(self.token) || has(self.tokenSecretRef)) &&
-                            ((has(self.key) || has(self.signingKeySecretRef) || has(self.claims)))'
-                        - message: algorithm must be specified when generating a JWT
-                          rule: '!has(self.signingKeySecretRef) || self.algorithm
-                            != ""'
                       timeout:
                         default: 10s
                         description: Optional timeout for HTTP requests to the endpoint
