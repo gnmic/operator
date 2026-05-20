@@ -14,7 +14,7 @@ import (
 
 func TestGetEventApply(t *testing.T) {
 	target := Target{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "routername",
 		Labels:    &[]Label{},
 		Operation: "created",
@@ -30,7 +30,7 @@ func TestGetEventApply(t *testing.T) {
 
 func TestGetEventDelete(t *testing.T) {
 	target := Target{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "routername",
 		Labels:    &[]Label{},
 		Operation: "deleted",
@@ -46,7 +46,7 @@ func TestGetEventDelete(t *testing.T) {
 
 func TestGetEventEmptyOperation(t *testing.T) {
 	target := Target{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "routername",
 		Labels:    &[]Label{},
 		Operation: "",
@@ -59,7 +59,7 @@ func TestGetEventEmptyOperation(t *testing.T) {
 
 func TestGetEventUpdate(t *testing.T) {
 	target := Target{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "routername",
 		Labels:    &[]Label{},
 		Operation: "updated",
@@ -159,7 +159,7 @@ func TestConvertTargetLabelsToMapTwoEntries(t *testing.T) {
 
 func TestCreateDiscoveryEvent(t *testing.T) {
 	targets := []Target{{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "routername",
 		Labels:    &[]Label{},
 		Operation: "updated"}}
@@ -168,7 +168,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 		{
 			Target: core.DiscoveredTarget{
 				Name:    "routername",
-				Address: "1.1.1.1",
+				Address: "1.1.1.1:22",
 				Labels:  map[string]string{},
 			},
 			Event: core.EventApply,
@@ -182,7 +182,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 
 func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 	targets := []Target{{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "",
 		Labels:    &[]Label{},
 		Operation: "updated"}}
@@ -208,7 +208,7 @@ func TestCreateDiscoveryEventEmptyAddress(t *testing.T) {
 
 func TestCreateDiscoveryEventWrongEvent(t *testing.T) {
 	targets := []Target{{
-		Address:   "1.1.1.1",
+		Address:   "1.1.1.1:22",
 		Name:      "",
 		Labels:    &[]Label{},
 		Operation: "wrongOperation"}}
@@ -291,5 +291,13 @@ func TestVerifyAddressNoPort(t *testing.T) {
 	}
 	if !reflect.DeepEqual(convertedAddress, expected) {
 		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
+	}
+}
+
+func TestVerifyWrongAddressFormat(t *testing.T) {
+	address := "10.10.10.10"
+	result, err := validateAddress(address)
+	if err == nil {
+		t.Errorf("TestVerifyWrongAddressFormat expected error due to wrong address format(missing port), instead got: %s", result)
 	}
 }
