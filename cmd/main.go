@@ -244,7 +244,7 @@ func main() {
 
 	if api != nil {
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-			if err := api.InitializeAuthToken(ctx); err != nil {
+			if err := api.InitializeBearerToken(ctx); err != nil {
 				return err
 			}
 

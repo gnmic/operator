@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gnmic/operator/internal/controller"
@@ -32,7 +31,7 @@ type APIServer struct {
 	]
 	chunzSize   int
 	logger      logr.Logger
-	bearerToken string
+	bearerToken bool
 }
 
 type urlStruct struct {
@@ -64,7 +63,6 @@ func New(
 		DiscoveryRegistry: discoveryRegistry,
 		chunzSize:         discoveryChunksize,
 		logger:            logger,
-		bearerToken:       strings.TrimSpace(bearerToken),
 	}
 	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	a.routes()
@@ -109,7 +107,7 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 	)
 	logger.Info("Received POST request for CreateTargets")
 
-	if !a.checkBearerToken(c) {
+	if !a.verifyBearerToken(c, a.clusterReconciler) {
 		logger.Info("Unauthorized request for CreateTargets")
 		return
 	}

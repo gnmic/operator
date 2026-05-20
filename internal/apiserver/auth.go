@@ -17,6 +17,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -24,50 +25,31 @@ const (
 	apiAuthSecretKey  = "bearer-token"
 )
 
-func (a *APIServer) InitializeAuthToken(ctx context.Context) error {
-	if a.bearerToken != "" {
+// InitializeBearerToken creates a new bearer token in form of a Kubernetes secret, only if it doesn't exist yet.
+func (a *APIServer) InitializeBearerToken(ctx context.Context) error {
+	if bearerTokenExists(a.clusterReconciler) {
 		return nil
 	}
-
-	bearerToken, err := ensureBearerToken(ctx, a.clusterReconciler, "")
+	err := createBearerToken(ctx, a.clusterReconciler)
 	if err != nil {
 		return err
 	}
-	a.bearerToken = bearerToken
 	return nil
 }
 
-func ensureBearerToken(ctx context.Context, clusterReconciler *controller.ClusterReconciler, providedToken string) (string, error) {
-	if strings.TrimSpace(providedToken) != "" {
-		return strings.TrimSpace(providedToken), nil
-	}
-
+// createBearerToken creates a new Opaque kubernetes secret
+func createBearerToken(ctx context.Context, clusterReconciler *controller.ClusterReconciler) error {
+	logger := log.FromContext(ctx).WithValues("component", "apiserver")
 	namespace := strings.TrimSpace(os.Getenv("POD_NAMESPACE"))
-	if namespace == "" {
-		namespace = "gnmic-system"
-	}
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-
-	secretKey := types.NamespacedName{Name: apiAuthSecretName, Namespace: namespace}
-	secret := &corev1.Secret{}
-	if err := clusterReconciler.Get(ctx, secretKey, secret); err == nil {
-		token := strings.TrimSpace(string(secret.Data[apiAuthSecretKey]))
-		if token == "" {
-			return "", fmt.Errorf("secret %s/%s exists but %q is empty", namespace, apiAuthSecretName, apiAuthSecretKey)
-		}
-		return token, nil
-	} else if !apierrors.IsNotFound(err) {
-		return "", fmt.Errorf("failed to get secret %s/%s: %w", namespace, apiAuthSecretName, err)
-	}
-
-	token, err := generateBearerToken()
+	token, err := getStringForBearerToken()
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	toCreate := &corev1.Secret{
+	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      apiAuthSecretName,
 			Namespace: namespace,
@@ -78,38 +60,26 @@ func ensureBearerToken(ctx context.Context, clusterReconciler *controller.Cluste
 		},
 	}
 
-	if err := clusterReconciler.Create(ctx, toCreate); err != nil {
+	if err := clusterReconciler.Create(ctx, secret); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
-			return "", fmt.Errorf("failed to create secret %s/%s: %w", namespace, apiAuthSecretName, err)
-		}
-
-		if err := clusterReconciler.Get(ctx, secretKey, secret); err != nil {
-			return "", fmt.Errorf("failed to get existing secret %s/%s after create race: %w", namespace, apiAuthSecretName, err)
-		}
-		token = strings.TrimSpace(string(secret.Data[apiAuthSecretKey]))
-		if token == "" {
-			return "", fmt.Errorf("secret %s/%s exists but %q is empty", namespace, apiAuthSecretName, apiAuthSecretKey)
+			return fmt.Errorf("failed to create secret %s/%s: %w", namespace, apiAuthSecretName, err)
 		}
 	}
-
-	return token, nil
+	logger.Info("Created %s / %s as kubernetes secret in namespace %s", apiAuthSecretName, apiAuthSecretKey, namespace)
+	return nil
 }
 
-func generateBearerToken() (string, error) {
+// getStringForBearerToken returns a base64 encoded string used for the bearer token.
+func getStringForBearerToken() (string, error) {
 	b := make([]byte, 48)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("failed to generate bearer token: %w", err)
 	}
-
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func (a *APIServer) checkBearerToken(ctx *gin.Context) bool {
-	if a.bearerToken == "" {
-		ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "api authentication is not initialized"})
-		return false
-	}
-
+// verifyBearerToken verifies bearer token from authorization header with value stored in kubernetes secret.
+func (a *APIServer) verifyBearerToken(ctx *gin.Context, clusterReconciler *controller.ClusterReconciler) bool {
 	const bearerPrefix = "Bearer "
 	authHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
 	if !strings.HasPrefix(authHeader, bearerPrefix) {
@@ -117,16 +87,42 @@ func (a *APIServer) checkBearerToken(ctx *gin.Context) bool {
 		return false
 	}
 
-	token := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
-	if token == "" {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+	tokenSecret, err := getBearerToken(clusterReconciler)
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, err)
 		return false
 	}
 
-	if subtle.ConstantTimeCompare([]byte(token), []byte(a.bearerToken)) != 1 {
+	tokenHeader := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+	if subtle.ConstantTimeCompare([]byte(tokenHeader), tokenSecret) != 1 {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
 		return false
 	}
-
 	return true
+}
+
+// bearerTokenExists returns true if the bearerToken exists and false if it doesn't.
+func bearerTokenExists(clusterReconciler *controller.ClusterReconciler) bool {
+	_, err := getBearerToken(clusterReconciler)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+// getBearerToken returns bearer token stored as kubernetes secret.
+func getBearerToken(clusterReconciler *controller.ClusterReconciler) ([]byte, error) {
+	namespace := strings.TrimSpace(os.Getenv("POD_NAMESPACE"))
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	var secret corev1.Secret
+	if err := clusterReconciler.Get(ctx, types.NamespacedName{Name: apiAuthSecretName, Namespace: namespace}, &secret); err != nil {
+		return nil, fmt.Errorf("failed to get secret %s/%s: %w", namespace, apiAuthSecretName, err)
+	}
+	token, ok := secret.Data[apiAuthSecretKey]
+	if !ok {
+		return nil, fmt.Errorf("secret %s/%s does not contain key %q", namespace, apiAuthSecretName, apiAuthSecretKey)
+	}
+	return token, nil
 }

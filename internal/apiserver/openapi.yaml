@@ -54,8 +54,8 @@ components:
       properties:
         name:
           type: string
-        address:
-          type: string # in the format "IP:port"
+        ip:
+          type: string # in the format "IP:port". To split up into different 
         profile:
           type: string
         labels:

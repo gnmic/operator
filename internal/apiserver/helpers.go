@@ -27,6 +27,7 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 			if err != nil {
 				return nil, err
 			}
+			// validate, problem while applying
 			verifiedAddress, err := validateAddress(target.Address)
 			if err != nil {
 				return nil, err
@@ -35,7 +36,7 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:    target.Name,
-					Address: verifiedAddress,
+					Address: verifiedAddress, // FQDN, Hostname oder IP	
 					Labels:  convertTargetLabelsToMap(target),
 				},
 				Event: event,
@@ -45,7 +46,7 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 	return targets, nil
 }
 
-// validateAddress checks if the address is of format IPv4 or IPv6 and adds default port 57400 if empty.
+// validateAddress
 func validateAddress(address string) (string, error) {
 	address, port, err := net.SplitHostPort(address)
 	if err != nil {
@@ -63,6 +64,7 @@ func getKey(u urlStruct) types.NamespacedName {
 		Namespace: u.Namespace,
 		Name:      u.Name,
 	}
+	// or kubectl get secret -n gnmic-system gnmic-api-auth -o jsonpath="{.data.bearer-token}" | base64 --decode
 	return key
 }
 
