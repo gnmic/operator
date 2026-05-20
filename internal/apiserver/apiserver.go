@@ -49,10 +49,9 @@ func New(
 	discoveryChunksize int,
 	bearerToken string,
 ) (*APIServer, error) {
-	gin.SetMode(gin.ReleaseMode) // To double-check
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
 	logger := log.Log.WithValues("component", "api-server")
-
 	a := &APIServer{
 		Server: &http.Server{
 			Addr:    addr,
@@ -64,8 +63,8 @@ func New(
 		chunzSize:         discoveryChunksize,
 		logger:            logger,
 	}
-	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	a.routes()
+	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	return a, nil
 }
 
@@ -126,7 +125,8 @@ func (a *APIServer) CreateTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
 		return
 	}
-	// make sure channel is not closed if targetsource in registry is deleted
+	// WROMA: both of these things are not relevant here, but instead in utils.send. TODO, check with Daniel if and how this can be implemented
+	// make sure channel is not closed if targetsource in registry is deleted ->
 	// timeout for sending to the channel
 	targets, err := createDiscoveryEvent(payloadTargets)
 	if err != nil {

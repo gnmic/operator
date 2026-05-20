@@ -124,5 +124,6 @@ func getBearerToken(clusterReconciler *controller.ClusterReconciler) ([]byte, er
 	if !ok {
 		return nil, fmt.Errorf("secret %s/%s does not contain key %q", namespace, apiAuthSecretName, apiAuthSecretKey)
 	}
+	// kubectl get secret -n gnmic-system gnmic-api-auth -o jsonpath="{.data.bearer-token}" | base64 --decode
 	return token, nil
 }
