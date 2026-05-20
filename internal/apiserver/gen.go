@@ -49,11 +49,12 @@ type Label struct {
 
 // Target defines model for Target.
 type Target struct {
-	Address   string          `json:"address"`
-	Labels    *[]Label        `json:"labels,omitempty"`
-	Name      string          `json:"name"`
-	Operation TargetOperation `json:"operation"`
-	Profile   *string         `json:"profile,omitempty"`
+	Ip            *string         `json:"ip,omitempty"`
+	Labels        *[]Label        `json:"labels,omitempty"`
+	Name          string          `json:"name"`
+	Operation     TargetOperation `json:"operation"`
+	Port          *int            `json:"port,omitempty"`
+	TargetProfile *string         `json:"targetProfile,omitempty"`
 }
 
 // TargetOperation defines model for Target.Operation.
@@ -146,15 +147,15 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7RTTW8aMRD9K9a0xxVL0p72RqMqQupH1OSGOBjvAE68tjseI6Fo/3tle7Owgki59MRg",
-	"z7x57/ntKyjXeWfRcoDmFYLaYydz+UNu0KTCk/NIrDEfv+Ax/fDRIzQQmLTdQV/BQZqIV2766u3EbZ5R",
-	"cep9krRDvsSWbUsYwlV8k+jkK83Y5eIz4RYa+FSfNNSDgLqwPy2XRPKY/lvZ4dUFiYhk7Wy6RRs7aFag",
-	"CCVjCxVE3w5ViwZTta4uQTy5rTbv+ED4N2rCNgFnGtWo+Hz9+l3HPi5/cPhCf19BQBVJ8/ExtRbfNygJ",
-	"aRF5P2YgzZRjGDH2zB76hKHt1mWNmpNY2P36uVTid5bgSPz5/vgkFg9LqOCAFLKnMJ/NZzeD0VZ6DQ18",
-	"md3O5lCBl7zPROri95la70IOymjPsoUG7iZtxVkM/M21OZzKWUab56T3Rqs8WT+H8rjFpI9ZGIrg09Mx",
-	"RcwHwTsbin+385v/s7bFoEj7ksq3EIghlCJEpTCEbTQmR/troTEdWuQewe4FrdBBdDoEbXfCkdD2II1u",
-	"J6mAZjXNw2rdrysIseskHUfrBQ9ctBW8RzENQEasvZFZ9/CpT1/wHvnOxMBID6ntwtD5pZKzfkHIkSwO",
-	"3Edy98hClTaR1/d93/8LAAD//+4Fc3XkBAAA",
+	"H4sIAAAAAAAC/7RUTW/bMAz9KwK3oxGn3U6+dcVQFNhHsfYW5KDITKLWljSSChAU/u+DJDeJkRToZacw",
+	"0hP53uODX8H4PniHThiaV2CzxV7n8odeYZeKQD4gicV8/IL79CP7gNAAC1m3gaGCne4iXrgZqrcTv3pG",
+	"Iwn7pGmDct7bhoutu8SkAAT7XHwmXEMDn+oj/XrkXhfix7maSO/Tf6d7vDggcdBivUu36GIPzQIMoRZs",
+	"oYIY2rFqscNULavzJsGTnHS3TnCDlHlkuQ/k17Z7xyLCv9EStmlwplmBbltCZjilt3zXzI/bM5p/5s9Q",
+	"AaOJZGX/mKBlJSvUhHQTZXuIR3pTjuHQYysSYEg9rFv7rNFKEgubXz/vjfqdJXhSf74/Pqmbh3uoYIfE",
+	"2XOYz+azq3ERTgcLDXyZXc/mUEHQss1E6rKPE7XBczb8YM99Cw3cTmDFWWT55tucW+OdoMvvdAidNfll",
+	"/cxl+cWkj1nIRfBxdUIR8wEH77j4dz2/+j9jW2RDNpTUvoVAjaFVHI1B5nXsuhz9r4XG9NFNxijxL+iU",
+	"ZdVbZus2ypOybqc7205SAc1imofFclhWwLHvNe0P1isZuVinZItqGoDcsQ6dzrrHr8B0g3cot11kQXpI",
+	"sDND5+dKTvCKUCI5HLkfyN2hKFNgKo8fhmH4FwAA//9sa/m1/wQAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

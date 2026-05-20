@@ -55,8 +55,10 @@ components:
         name:
           type: string
         ip:
-          type: string # in the format "IP:port". To split up into different 
-        profile:
+          type: string
+        port:
+          type: integer
+        targetProfile:
           type: string
         labels:
           type: array
