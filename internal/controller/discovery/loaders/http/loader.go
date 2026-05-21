@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -250,4 +251,8 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}) ([]core.DiscoveredT
 	}
 
 	return targets, nil
+}
+
+func (l *Loader) SecretRefs() []types.NamespacedName {
+	return nil
 }

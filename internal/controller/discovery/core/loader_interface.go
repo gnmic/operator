@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Loader defines a pluggable TargetSource loader interface
@@ -13,4 +15,7 @@ type Loader interface {
 	// Run begins discovery and pushes target snapshots or events into the out channel
 	// The loader must stop cleanly when ctx is canceled
 	Run(ctx context.Context, out chan<- []DiscoveryMessage) error
+
+	// SecretRefs returns a list of secrets which should be watched by the TargetSource controller
+	SecretRefs() []types.NamespacedName
 }
