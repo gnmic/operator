@@ -22,7 +22,6 @@ type snapshotBuffer struct {
 
 // MessageProcessor consumes discovery messages and applies them to Kubernetes
 type MessageProcessor struct {
-	ctx            context.Context
 	client         client.Client
 	scheme         *runtime.Scheme
 	targetSource   *gnmicv1alpha1.TargetSource
@@ -31,6 +30,7 @@ type MessageProcessor struct {
 	activeSnapshot *snapshotBuffer
 	// Events are deferred while snapshot is in progress
 	deferredEvents []core.DiscoveryEvent
+	targetCount    int32
 }
 
 // NewMessageProcessor wires a MessageProcessor instance
@@ -46,8 +46,6 @@ func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.T
 // Run is a long‑running loop that receives target snapshots
 // and reconciles Target CRs accordingly
 func (m *MessageProcessor) Run(ctx context.Context) error {
-	m.ctx = ctx
-
 	logger := log.FromContext(ctx).WithValues(
 		"component", "message-processor",
 		"targetsource", m.targetSource.Name,
@@ -56,7 +54,14 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 
 	logger.Info("Message processor started")
 
-	for m.ctx.Err() == nil {
+	// Update internal counter in case of a process restart
+	if existing, err := fetchExistingTargets(ctx, m.client, m.targetSource); err != nil {
+		logger.Error(err, "error fetching existing targets")
+	} else {
+		m.targetCount = int32(len(existing))
+	}
+
+	for {
 		select {
 		case batch, ok := <-m.in:
 			if !ok {
@@ -79,20 +84,21 @@ func (m *MessageProcessor) Run(ctx context.Context) error {
 			msg := m.queue[0]
 			m.queue = m.queue[1:]
 
-			if err := m.processMessage(m.ctx, msg, logger); err != nil {
+			if err := m.processMessage(ctx, msg, logger); err != nil {
 				// Returning error lets the supervisor (controller)
 				// tear down and restart the pipeline via reconciliation
-				// Q: when to return an error vs just log and continue?
-				return err
+				logger.Info(
+					"Could not process the message",
+					"error", err,
+				)
+				return nil
 			}
 
 		}
 	}
-
-	logger.Info("Message processor stopped")
-	return nil
 }
 
+// processMessage handles all of the incoming messages from the channel
 func (m *MessageProcessor) processMessage(ctx context.Context, message core.DiscoveryMessage, logger logr.Logger) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -108,6 +114,11 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 			"chunkIndex", msg.ChunkIndex,
 			"targets", len(msg.Targets),
 		)
+
+		for i := range msg.Targets {
+			msg.Targets[i] = normalizeTarget(msg.Targets[i], m.targetSource.Name)
+		}
+
 		return m.processSnapshot(ctx, msg, logger)
 
 	case core.DiscoveryEvent:
@@ -117,6 +128,8 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 			"event", msg.Event,
 			"target", msg.Target.Name,
 		)
+
+		msg.Target = normalizeTarget(msg.Target, m.targetSource.Name)
 		return m.processEvent(ctx, msg, logger)
 
 	default:
@@ -127,8 +140,7 @@ func (m *MessageProcessor) processMessage(ctx context.Context, message core.Disc
 // processSnapshot takes a complete snapshot of discovered targets and reconciles Target CRs accordingly
 func (m *MessageProcessor) processSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	if m.activeSnapshot == nil {
-		m.startNewSnapshot(chunk, logger)
-		return nil
+		return m.startNewSnapshot(ctx, chunk, logger)
 	}
 
 	snapshot := m.activeSnapshot
@@ -149,14 +161,13 @@ func (m *MessageProcessor) processSnapshot(ctx context.Context, chunk core.Disco
 		}
 
 		// Start collecting the new snapshot
-		m.startNewSnapshot(chunk, logger)
-		return nil
+		return m.startNewSnapshot(ctx, chunk, logger)
 	}
 
-	return m.collectSnapshot(chunk, logger)
+	return m.collectSnapshot(ctx, chunk, logger)
 }
 
-func (m *MessageProcessor) startNewSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) {
+func (m *MessageProcessor) startNewSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	m.activeSnapshot = &snapshotBuffer{
 		snapshotID:  chunk.SnapshotID,
 		totalChunks: chunk.TotalChunks,
@@ -166,10 +177,10 @@ func (m *MessageProcessor) startNewSnapshot(chunk core.DiscoverySnapshot, logger
 	// Delete buffered events that will be current with new snapshot
 	m.deferredEvents = nil
 
-	m.collectSnapshot(chunk, logger)
+	return m.collectSnapshot(ctx, chunk, logger)
 }
 
-func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger logr.Logger) error {
+func (m *MessageProcessor) collectSnapshot(ctx context.Context, chunk core.DiscoverySnapshot, logger logr.Logger) error {
 	snapshot := m.activeSnapshot
 
 	if chunk.TotalChunks != snapshot.totalChunks {
@@ -178,6 +189,7 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 			"Snapshot totalChunks mismatch",
 			"snapshotID", snapshot.snapshotID,
 		)
+		return fmt.Errorf("snapshot totalChunks mismatch")
 	}
 	if chunk.ChunkIndex < 0 || chunk.ChunkIndex >= snapshot.totalChunks {
 		logger.Error(
@@ -185,8 +197,8 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 			"Snapshot chunk index out of range",
 			"chunkIndex", chunk.ChunkIndex,
 		)
-		m.activeSnapshot = nil
-		return nil
+		m.resetSnapshot()
+		return fmt.Errorf("invalid chunk index")
 	}
 	if _, exists := snapshot.received[chunk.ChunkIndex]; exists {
 		logger.Error(
@@ -194,23 +206,49 @@ func (m *MessageProcessor) collectSnapshot(chunk core.DiscoverySnapshot, logger 
 			"Duplicate snapshot chunk received",
 			"chunkIndex", chunk.ChunkIndex,
 		)
-		m.activeSnapshot = nil
-		return nil
+		m.resetSnapshot()
+		return fmt.Errorf("duplicate snapshot chunk")
 	}
 
 	snapshot.received[chunk.ChunkIndex] = chunk.Targets
 
 	if len(snapshot.received) == snapshot.totalChunks {
 		snapshot.complete = true
+		return m.applySnapshot(ctx, snapshot, logger)
 	}
 
 	return nil
 }
 
+// processEvent handles a single DiscoveryEvent message. If a snapshot is in the queue, the events get deferred and applied after.
+func (m *MessageProcessor) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+	// If snapshot collecting is active defer events
+	if m.activeSnapshot != nil {
+		m.deferredEvents = append(m.deferredEvents, event)
+		return nil
+	}
+
+	// Apply events
+	err := m.applyEvent(ctx, event, logger)
+	if err == nil {
+		switch event.Event {
+		case core.EventApply:
+			m.targetCount++
+			m.updateStatus(ctx, logger)
+		case core.EventDelete:
+			m.targetCount--
+			m.updateStatus(ctx, logger)
+		}
+	}
+
+	return err
+}
+
+// applySnapshot is in charge of getting the Events for the discovered targets and applying them through applyEvent
 func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshotBuffer, logger logr.Logger) error {
 	select {
 	case <-ctx.Done():
-		m.activeSnapshot = nil
+		m.resetSnapshot()
 		return nil
 	default:
 	}
@@ -219,7 +257,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 	for i := 0; i < snapshot.totalChunks; i++ {
 		select {
 		case <-ctx.Done():
-			m.activeSnapshot = nil
+			m.resetSnapshot()
 			return nil
 		default:
 		}
@@ -231,8 +269,8 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 				"Missing snapshot chunk",
 				"chunkIndex", i,
 			)
-			m.activeSnapshot = nil
-			return nil
+			m.resetSnapshot()
+			return fmt.Errorf("missing snapshot chunk %d", i)
 		}
 		allTargets = append(allTargets, chunk...)
 	}
@@ -243,8 +281,37 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		"targets", len(allTargets),
 	)
 
-	// apply all targets
-	// a.applyTargets
+	existing, err := fetchExistingTargets(ctx, m.client, m.targetSource)
+	if err != nil {
+		logger.Error(err, "error fetching existing targets")
+	} else {
+		logger.Info("fetched existing targets",
+			"numOfTargets", len(existing),
+		)
+	}
+
+	events := generateEvents(existing, allTargets)
+
+	nApply := 0
+	nDelete := 0
+
+	for _, e := range events {
+		switch e.Event {
+		case core.EventApply:
+			nApply++
+		case core.EventDelete:
+			nDelete++
+		}
+	}
+
+	logger.Info("generated events",
+		"numOfApply", nApply,
+		"numOfDelete", nDelete,
+	)
+
+	for _, e := range events {
+		m.applyEvent(ctx, e, logger)
+	}
 
 	// Replay deferred events
 	for _, event := range m.deferredEvents {
@@ -253,43 +320,68 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 			return nil
 		default:
 		}
-		if err := m.applyEvent(ctx, event, logger); err != nil {
+		if err := m.processEvent(ctx, event, logger); err != nil {
 			return err
 		}
 	}
 
-	m.activeSnapshot = nil
+	// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
+	m.targetCount = int32(len(allTargets))
+	m.updateStatus(ctx, logger)
+
+	m.resetSnapshot()
 	m.deferredEvents = nil
 	return nil
-}
-
-func (m *MessageProcessor) processEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
-	// If snapshot collecting is active defer events
-	if m.activeSnapshot != nil {
-		m.deferredEvents = append(m.deferredEvents, event)
-		return nil
-	}
-
-	// Apply events
-	return m.applyEvent(ctx, event, logger)
 }
 
 func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
 	switch event.Event {
 	case core.EventDelete:
-		logger.Info(
-			"Deleting Target",
-			"target", event.Target.Name,
-			"targetsource", m.targetSource.Name,
-		)
+		if err := deleteTarget(ctx, m.client, event.Target.Name, m.targetSource.Namespace); err != nil {
+			logger.Error(err, "error deleting target",
+				"targetName", event.Target.Name,
+			)
+			return err
+		} else {
+			logger.Info("deleted target object",
+				"name", event.Target.Name,
+			)
+		}
 	case core.EventApply:
-		logger.Info(
-			"Applying Target",
-			"target", event.Target.Name,
-			"address", event.Target.Address,
-			"labels", event.Target.Labels,
-			"targetsource", m.targetSource.Name,
+		target, unknownLabels := generateTargetResource(event.Target, m.targetSource)
+		for k, v := range unknownLabels {
+			logger.Info("unknown operator label for target",
+				"target", event.Target.Name,
+				"label", k,
+				"value", v,
+			)
+		}
+
+		if err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
+			logger.Error(err, "error applying target",
+				"targetName", event.Target.Name,
+			)
+			return err
+		} else {
+			logger.Info("applied target object",
+				"name", event.Target.Name,
+			)
+		}
+	}
+
+	return nil
+}
+
+func (m *MessageProcessor) updateStatus(ctx context.Context, logger logr.Logger) {
+	if err := updateTargetSourceStatus(ctx, m.client, m.targetSource, m.targetCount); err != nil {
+		logger.Error(err, "error updating TargetSource status")
+	} else {
+		logger.Info("updated target source status",
+			"targetCount", m.targetCount,
 		)
 	}
-	return nil
+}
+
+func (m *MessageProcessor) resetSnapshot() {
+	m.activeSnapshot = nil
 }
