@@ -20,7 +20,7 @@ spec:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `url` | string | Yes | URL pointing to the inventory server |
-| `acceptPush` | bool | No | Enable webhook-based target updates. Defaults to `false`. |
+| `acceptPush` | bool | No | Enable webhook-based target updates. Defaults to `false`. See _acceptPush_ section.|
 | `authorization` | object | No | Credentials used to access the HTTP endpoint. See _Authorization_ section. |
 | `pollInterval` | duration | No | Polling interval used to fetch targets from the endpoint. Defaults to `30s`. |
 | `timeout` | duration | No | Timeout for HTTP requests. Defaults to `10s`. |
@@ -222,3 +222,53 @@ spec:
 | `port` | string | No | JSONPath expression extracting the gNMI port |
 | `targetProfile` | string | No | JSONPath expression extracting the `TargetProfile` |
 | `labels` | map[string]string | No | JSONPath expressions extracting target labels |
+
+## AcceptPush
+
+Setting acceptPush `True` to true, will enable an REST API endpoint. This allows real-time target updates from a Webhook (or any other application that can send HTTP requests) using `HTTP POST` requests. The API is defined as an openAPI contract.
+
+### URL
+
+The URL is `http://<clusterAddress>:8082/api/v1/<namespace>/target-source/<name>/createTargets`.
+
+- _clusterAddress_: Address of the kubernetes cluster.
+- _namespace_: namespace the gNMIc Operator runs in
+- _name_: name of the targetSource provider, often `http` .
+
+### Header
+
+These header options are mandatory:
+
+- `-H "Content-Type: application/json"`
+- `H "Authorization: Bearer fEPGF5qwV...`
+
+If acceptPush is enabled, a Kubernetes secret `gnmic-api-auth` is created. It must be passed along in the authorization header, otherwise the POST request is rejected. 
+
+Get `gnmic-api-auth `secret with `kubectl get secret -n gnmic-system gnmic-api-auth -o jsonpath="{.data.bearer-token}" | base64 --decode`.
+
+#### TLS
+
+In production, it is highly recommended to use `TLS` and `HTTPS`! For this it is recommended to use a ingress-router/load-balancer that terminates the TLS connection at the Kubernetes edge.
+
+### Body
+
+Can we use swagger docs here?! See example below
+
+#### Example POST request
+
+```
+curl -X POST "http://localhost:8082/api/v1/default/target-source/http-discovery/createTargets" \
+  -H "Authorization: Bearer fEPGF5qwVfM7vvEw2vYuaPojcda/a78aOtqmW4oEFYZUJF67yXluSjDoTKmey5zU" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "address": "1.1.1.1:123",
+      "name": "Router1",
+      "operation": "created",
+      "profile": "defaultProfile",
+      "labels": [
+        { "key": "tags", "value": "tag1, tag2" }
+      ]
+    }
+  ]'
+```
