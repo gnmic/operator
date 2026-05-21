@@ -60,12 +60,6 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	URL string `json:"url,omitempty"`
 
-	// If true, the loader will accept pushed target updates to the controller endpoint
-	// The endpoint will be /{namespace}/{targetsource}/<todo>
-	// +kubebuilder:default=false
-	// +kubebuilder:validation:Optional
-	AcceptPush bool `json:"acceptPush,omitempty"`
-
 	// Optional authorization configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
@@ -92,6 +86,10 @@ type HTTPConfig struct {
 	// Optional mapping configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
+
+	// Optional configuration to enable webhooks
+	// +kubebuilder:validation:Optional
+	Webhook *WebhookSpec `json:"webhook,omitempty"`
 }
 
 // +kubebuilder:validation:XValidation:rule="!(has(self.caBundle) && has(self.caBundleSecretRef))",message="caBundle and caBundleSecretRef are mutually exclusive"
@@ -206,6 +204,36 @@ type ResponseMappingSpec struct {
 	// JSONPath expression to extract the target profile from the response
 	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile,omitempty"`
+}
+
+// WebhookSpec defines the settings for event-based update mechanism (i.e. push-based)
+type WebhookSpec struct {
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// +kubebuilder:validation:Optional
+	Auth *WebhookAuthSpec `json:"auth,omitempty"`
+}
+
+// +kubebuilder:validation:ExactlyOneOf=bearer;signature
+type WebhookAuthSpec struct {
+	Bearer    *WebhookBearerAuthSpec    `json:"bearer,omitempty"`
+	Signature *WebhookSignatureAuthSpec `json:"signature,omitempty"`
+}
+
+type WebhookBearerAuthSpec struct {
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+}
+
+type WebhookSignatureAuthSpec struct {
+	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
+
+	// Header containing the signature
+	Header string `json:"header,omitempty"`
+
+	// +kubebuilder:default="sha256"
+	// +kubebuilder:validation:Enum=sha1;sha256;sha512
+	Algorithm string `json:"algorithm,omitempty"`
 }
 
 // TargetSourceStatus defines the observed state of TargetSource
