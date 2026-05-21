@@ -10,8 +10,7 @@ import (
 )
 
 // generateTargetResource converts a DiscoveredTarget into a Kubernetes Target Object based on the TargetSource Spec.
-// Returns the Target Resource and a map of unknown operator labels.
-func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) (*gnmicv1alpha1.Target, map[string]string) {
+func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) *gnmicv1alpha1.Target {
 	// Create object instance
 	t := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
@@ -20,7 +19,6 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 			Labels:    make(map[string]string),
 		},
 	}
-	unknownLabels := make(map[string]string)
 
 	// Add Address from DiscoveredTarget
 	t.Spec.Address = d.Address
@@ -34,7 +32,7 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 	// Add TargetSource Label to the Target (precedence over all labels)
 	t.Labels[LabelTargetSourceName] = ts.Name
 
-	return t, unknownLabels
+	return t
 }
 
 // generateEvents returns a list of DiscoveryEvents. Needed for snapshot handling to determine which devices get deleted and which applied.

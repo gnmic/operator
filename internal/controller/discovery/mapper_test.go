@@ -287,7 +287,7 @@ func TestGenerateTargetResource_SetsTargetSourceNameLabel(t *testing.T) {
 	ts := mockTargetSource()
 	d := mockDiscoveryTarget()
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	if got := target.Labels[LabelTargetSourceName]; got != ts.Name {
 		t.Fatalf(
@@ -309,7 +309,7 @@ func TestGenerateTargetResource_CopiesDiscoveredLabels(t *testing.T) {
 
 	ts := mockTargetSource()
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	tests := map[string]string{
 		"discoveredLabel1": "discoveredValue1",
@@ -333,7 +333,7 @@ func TestGenerateTargetResource_CopiesTargetSourceLabels(t *testing.T) {
 
 	d := mockDiscoveryTarget()
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	tests := map[string]string{
 		"targetSourceLabel1": "targetSourceValue1",
@@ -360,7 +360,7 @@ func TestGenerateTargetResource_OverridesReservedTargetSourceNameLabel(t *testin
 		}),
 	)
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	if got := target.Labels[LabelTargetSourceName]; got != ts.Name {
 		t.Fatalf(
@@ -385,7 +385,7 @@ func TestGenerateTargetResource_DiscoveredLabelsOverrideTargetSourceLabels(t *te
 		}),
 	)
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	if got := target.Labels["sharedLabel"]; got != "discoveredValue" {
 		t.Fatalf(
