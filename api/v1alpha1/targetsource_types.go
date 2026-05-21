@@ -123,34 +123,19 @@ type AuthorizationSpec struct {
 }
 
 // BasicAuthSpec defines the configuration for basic authentication
-// Enforce EITHER inline creds OR secret ref
-// +kubebuilder:validation:XValidation:rule="(has(self.credentialsSecretRef) && !has(self.username) && !has(self.password)) || (!has(self.credentialsSecretRef) && has(self.username) && has(self.password))",message="either credentialsSecretRef OR both username and password must be set, but not a mix"
 type BasicAuthSpec struct {
-	// Username for basic auth
-	// Mutually exclusive with CredentialsSecretRef.
-	Username string `json:"username,omitempty"`
-	// Password for basic auth
-	// Mutually exclusive with CredentialsSecretRef.
-	Password string `json:"password,omitempty"`
-
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
-	// Mutually exclusive with Username and Password.
 	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication
-// +kubebuilder:validation:XValidation:rule="has(self.token) != has(self.tokenSecretRef)",message="either token or tokenSecretRef must be set, but not both"
 type TokenAuthSpec struct {
 	// Scheme for the token, e.g. "Bearer"
 	// +kubebuilder:validation:MinLength=1
 	Scheme string `json:"scheme"`
-	// Token value for authentication
-	// Mutually exclusive with TokenSecretRef.
-	Token string `json:"token,omitempty"`
 	// Reference to a Secret containing a key with the token value to use for
 	// authentication when connecting to the Provider.
-	// Mutually exclusive with Token.
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 

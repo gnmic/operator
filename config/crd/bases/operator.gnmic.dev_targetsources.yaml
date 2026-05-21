@@ -58,7 +58,6 @@ spec:
                                 description: |-
                                   Reference to a Secret containing "username" and "password" keys to use for
                                   basic authentication when connecting to the Provider.
-                                  Mutually exclusive with Username and Password.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -81,23 +80,7 @@ spec:
                                 - key
                                 type: object
                                 x-kubernetes-map-type: atomic
-                              password:
-                                description: |-
-                                  Password for basic auth
-                                  Mutually exclusive with CredentialsSecretRef.
-                                type: string
-                              username:
-                                description: |-
-                                  Username for basic auth
-                                  Mutually exclusive with CredentialsSecretRef.
-                                type: string
                             type: object
-                            x-kubernetes-validations:
-                            - message: either credentialsSecretRef OR both username
-                                and password must be set, but not a mix
-                              rule: (has(self.credentialsSecretRef) && !has(self.username)
-                                && !has(self.password)) || (!has(self.credentialsSecretRef)
-                                && has(self.username) && has(self.password))
                           token:
                             description: Token-based authentication configuration
                             properties:
@@ -105,16 +88,10 @@ spec:
                                 description: Scheme for the token, e.g. "Bearer"
                                 minLength: 1
                                 type: string
-                              token:
-                                description: |-
-                                  Token value for authentication
-                                  Mutually exclusive with TokenSecretRef.
-                                type: string
                               tokenSecretRef:
                                 description: |-
                                   Reference to a Secret containing a key with the token value to use for
                                   authentication when connecting to the Provider.
-                                  Mutually exclusive with Token.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -140,10 +117,6 @@ spec:
                             required:
                             - scheme
                             type: object
-                            x-kubernetes-validations:
-                            - message: either token or tokenSecretRef must be set,
-                                but not both
-                              rule: has(self.token) != has(self.tokenSecretRef)
                         type: object
                         x-kubernetes-validations:
                         - message: exactly one of the fields in [basic token] must
