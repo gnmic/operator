@@ -13,10 +13,9 @@ import (
 )
 
 func TestGetEventApply(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	target := Target{
-		Ip:        &ip,
+		Ip:        "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -32,10 +31,9 @@ func TestGetEventApply(t *testing.T) {
 }
 
 func TestGetEventDelete(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	target := Target{
-		Ip:        &ip,
+		Ip:        "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -51,10 +49,9 @@ func TestGetEventDelete(t *testing.T) {
 }
 
 func TestGetEventEmptyOperation(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	target := Target{
-		Ip:        &ip,
+		Ip:        "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -67,10 +64,9 @@ func TestGetEventEmptyOperation(t *testing.T) {
 }
 
 func TestGetEventUpdate(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	target := Target{
-		Ip:        &ip,
+		Ip:        "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -170,12 +166,11 @@ func TestConvertTargetLabelsToMapTwoEntries(t *testing.T) {
 }
 
 func TestCreateDiscoveryEvent(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	targetprofile := ""
 	targets := []Target{{
 		Name:          "router1",
-		Ip:            &ip,
+		Ip:            "1.1.1.1",
 		Port:          &port,
 		Labels:        &[]Label{},
 		TargetProfile: &targetprofile,
@@ -200,10 +195,9 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 }
 
 func TestCreateDiscoveryEventEmptyName(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	targets := []Target{{
-		Ip:        &ip,
+		Ip:        "1.1.1.1",
 		Port:      &port,
 		Labels:    &[]Label{},
 		Operation: "updated"}}
@@ -215,10 +209,9 @@ func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 }
 
 func TestCreateDiscoveryEventEmptyIP(t *testing.T) {
-	ip := ""
 	port := 22
 	targets := []Target{{
-		Ip:        &ip,
+		Ip:        "",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -231,10 +224,9 @@ func TestCreateDiscoveryEventEmptyIP(t *testing.T) {
 }
 
 func TestCreateDiscoveryEventWrongEvent(t *testing.T) {
-	ip := "1.1.1.1"
 	port := 22
 	targets := []Target{{
-		Ip:        &ip,
+		Ip:        "1.1.1.1",
 		Port:      &port,
 		Name:      "",
 		Labels:    &[]Label{},

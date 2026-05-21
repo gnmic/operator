@@ -49,7 +49,7 @@ type Label struct {
 
 // Target defines model for Target.
 type Target struct {
-	Ip            *string         `json:"ip,omitempty"`
+	Ip            string          `json:"ip"`
 	Labels        *[]Label        `json:"labels,omitempty"`
 	Name          string          `json:"name"`
 	Operation     TargetOperation `json:"operation"`
@@ -63,16 +63,16 @@ type TargetOperation string
 // Targets defines model for Targets.
 type Targets = []Target
 
-// CreateTargetsJSONRequestBody defines body for CreateTargets for application/json ContentType.
-type CreateTargetsJSONRequestBody = Targets
+// ApplyTargetsJSONRequestBody defines body for ApplyTargets for application/json ContentType.
+type ApplyTargetsJSONRequestBody = Targets
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Create targets in the gNMIc Operator
-	// (POST /createTargets)
-	CreateTargets(c *gin.Context)
+	// (POST /api/v1/:namespace/target-source/:name/applyTargets)
+	ApplyTargets(c *gin.Context)
 	// Get cluster plan
-	// (GET /plan)
+	// (GET /clusters/:namespace/:name/plan)
 	GetClusterPlan(c *gin.Context)
 }
 
@@ -85,8 +85,8 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(c *gin.Context)
 
-// CreateTargets operation middleware
-func (siw *ServerInterfaceWrapper) CreateTargets(c *gin.Context) {
+// ApplyTargets operation middleware
+func (siw *ServerInterfaceWrapper) ApplyTargets(c *gin.Context) {
 
 	c.Set(BearerAuthScopes, []string{})
 
@@ -97,7 +97,7 @@ func (siw *ServerInterfaceWrapper) CreateTargets(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateTargets(c)
+	siw.Handler.ApplyTargets(c)
 }
 
 // GetClusterPlan operation middleware
@@ -140,22 +140,23 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.POST(options.BaseURL+"/createTargets", wrapper.CreateTargets)
-	router.GET(options.BaseURL+"/plan", wrapper.GetClusterPlan)
+	router.POST(options.BaseURL+"/api/v1/:namespace/target-source/:name/applyTargets", wrapper.ApplyTargets)
+	router.GET(options.BaseURL+"/clusters/:namespace/:name/plan", wrapper.GetClusterPlan)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7RUTW/bMAz9KwK3oxGn3U6+dcVQFNhHsfYW5KDITKLWljSSChAU/u+DJDeJkRToZacw",
-	"0hP53uODX8H4PniHThiaV2CzxV7n8odeYZeKQD4gicV8/IL79CP7gNAAC1m3gaGCne4iXrgZqrcTv3pG",
-	"Iwn7pGmDct7bhoutu8SkAAT7XHwmXEMDn+oj/XrkXhfix7maSO/Tf6d7vDggcdBivUu36GIPzQIMoRZs",
-	"oYIY2rFqscNULavzJsGTnHS3TnCDlHlkuQ/k17Z7xyLCv9EStmlwplmBbltCZjilt3zXzI/bM5p/5s9Q",
-	"AaOJZGX/mKBlJSvUhHQTZXuIR3pTjuHQYysSYEg9rFv7rNFKEgubXz/vjfqdJXhSf74/Pqmbh3uoYIfE",
-	"2XOYz+azq3ERTgcLDXyZXc/mUEHQss1E6rKPE7XBczb8YM99Cw3cTmDFWWT55tucW+OdoMvvdAidNfll",
-	"/cxl+cWkj1nIRfBxdUIR8wEH77j4dz2/+j9jW2RDNpTUvoVAjaFVHI1B5nXsuhz9r4XG9NFNxijxL+iU",
-	"ZdVbZus2ypOybqc7205SAc1imofFclhWwLHvNe0P1isZuVinZItqGoDcsQ6dzrrHr8B0g3cot11kQXpI",
-	"sDND5+dKTvCKUCI5HLkfyN2hKFNgKo8fhmH4FwAA//9sa/m1/wQAAA==",
+	"H4sIAAAAAAAC/7SUTW/bPAzHv4rA5zl6cdrt5FtWDEWBvRRrb0UOqswkam1JI6kARuHvPkhyUwdJgV52",
+	"CiPx5c8fKb+A8X3wDp0wNC/AZoe9zuZ3/YhdMgL5gCQW8/EzDulHhoDQAAtZt4Wxgr3uIp65GavXE//4",
+	"hEaS772mLcppbhvOpu6SkuIg2Gfjf8INNPBf/Sa/nrTXRfhbXU2kh/Tf6R7PFkgatFjv0i262EPzAIZQ",
+	"C7ZQQQztZLXYYbLW1WmS4Elm2a0T3CJlHbndW/Ib272DiPBPtIRtKpxlVgnGXNn6XY4fJzNxP0EzVsBo",
+	"IlkZ7pJrmcYjakJaRdkdNiPFlGM45NiJBBhTDus2PrdnJfUJ258/boz6lVvwpH5/u7tXq9sbqGCPxBk3",
+	"LBfLxcU0A6eDhQY+Ly4XS6ggaNllIbUOtt5f1E0iw0EbrAvST+wjGSwXtQ6hG2ZIguc8kAPDmxYaWM29",
+	"Cnhk+erbvNbGO0GXw1I6a3Jg/cRlNwrIj2HmAuVtskIR8wEH77gwvlxe/JuyLbIhG8pSvy6KysmxVRyN",
+	"QeZN7Lr8Mr4UGcdBq+yjxD+jU5ZVb5mt2ypPyrq97mx7tDnQPBzvzMN6XFfAse81DdDAVX5QSiYt1inZ",
+	"oTpekpyxNl1kQeL5xMuMQ6czkenzcTzaa5SrEnmb3E5QL097nPkrQonkcOrqIPsaRU2CVC4/juP4NwAA",
+	"//9oPXG9OAUAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

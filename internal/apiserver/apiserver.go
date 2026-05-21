@@ -3,8 +3,10 @@ package apiserver
 //go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
 // To generate code, install openapi-codegen from https://github.com/oapi-codegen/oapi-codegen)
 // Then use: go generate ./internal/apiserver
-
+// 
 // kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
+
+// docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/internal/apiserver/openapi.yaml -g markdown -o /local/docs/content/docs/user-guide/rest-api
 
 import (
 	"context"
@@ -49,8 +51,11 @@ func New(
 	discoveryChunksize int,
 	bearerToken string,
 ) (*APIServer, error) {
-	router := gin.New()
-	router.Use(gin.Recovery())
+	// router := gin.New()
+	// router.Use(gin.Recovery())
+	// gin.SetMode(gin.ReleaseMode)
+	router := gin.Default()
+
 	logger := log.Log.WithValues("component", "api-server")
 	a := &APIServer{
 		Server: &http.Server{
@@ -63,18 +68,13 @@ func New(
 		chunzSize:         discoveryChunksize,
 		logger:            logger,
 	}
-	a.routes()
+	RegisterHandlers(router, a)
 	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
 	return a, nil
 }
 
 func (a *APIServer) Router() *gin.Engine {
 	return a.router
-}
-
-func (a *APIServer) routes() {
-	a.router.GET("/clusters/:namespace/:name/plan", a.GetClusterPlan)
-	a.router.POST("/api/v1/:namespace/target-source/:name/createTargets", a.CreateTargets)
 }
 
 // GetClusterPlan returns cluster plan
@@ -97,7 +97,7 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 }
 
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
-func (a *APIServer) CreateTargets(c *gin.Context) {
+func (a *APIServer) ApplyTargets(c *gin.Context) {
 	url := parseURI(c)
 	logger := log.FromContext(c.Request.Context()).WithValues(
 		"component", "apiserver",

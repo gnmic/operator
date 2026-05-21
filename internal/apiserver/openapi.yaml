@@ -1,19 +1,19 @@
-openapi: 3.2.0
+openapi: 3.0.3
 info:
   title: "gNMIc Operator REST API"
   version: "0.0.1"
 paths:
-  /plan:
+  /clusters/:namespace/:name/plan:
     get:
-      summary: "Get cluster plan"
+      summary: "Get cluster plan."
       operationId: "getClusterPlan"
       responses:
         '200':
           description: "ClusterPlan returned"
-  /createTargets:
+  /api/v1/:namespace/target-source/:name/applyTargets:
     post:
-      summary: "Create targets in the gNMIc Operator"
-      operationId: "createTargets"
+      summary: "Targets received are applied in gNMIc Operator."
+      operationId: "applyTargets"
       security:
         - bearerAuth: []
       requestBody:
@@ -24,7 +24,7 @@ paths:
               $ref: '#/components/schemas/Targets'
       responses:
         '201':
-          description: "Targets created successfully"
+          description: "Targets applied successfully"
           content:
             application/json:
               schema:
@@ -39,29 +39,37 @@ components:
       items:
         $ref: '#/components/schemas/Target'
     Label:
+      description: Label must be passed as key:value pair. Multiple values per key possible
       type: object
       properties:
         key:
+          description: key value, e.g. vendor
           type: string
         value:
           type: string
+          description: value, e.g. srlinux
     Target:
       type: object
       required:
         - name
-        - address
+        - ip
         - operation
       properties:
         name:
           type: string
+          description: Routername
         ip:
           type: string
+          description: IPv4 or IPv6
         port:
           type: integer
+          description: gNMIc port
         targetProfile:
           type: string
+          description: TargetProfile applied to specific router
         labels:
           type: array
+          description: Input of labels through key:value pair
           items:
             $ref: '#/components/schemas/Label'
         operation:
@@ -70,6 +78,7 @@ components:
             - created
             - updated
             - deleted
+          description: Either created, updated or deleted. created and updated internally is the same operation (apply)
   securitySchemes:
     bearerAuth:
       type: http
