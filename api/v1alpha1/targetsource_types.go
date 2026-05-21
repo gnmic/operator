@@ -85,7 +85,7 @@ type HTTPConfig struct {
 	// If not specified, the entire response is expected to be a list of items.
 	// Example: "results"
 	// +kubebuilder:validation:Optional
-	ItemsField string `json:"itemsField,omitempty"`
+	TargetsField string `json:"targetsField,omitempty"`
 
 	// Optional pagination configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
