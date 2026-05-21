@@ -3,17 +3,17 @@ info:
   title: "gNMIc Operator REST API"
   version: "0.0.1"
 paths:
-  /plan:
+  /clusters/:namespace/:name/plan:
     get:
       summary: "Get cluster plan"
       operationId: "getClusterPlan"
       responses:
         '200':
           description: "ClusterPlan returned"
-  /createTargets:
+  /api/v1/:namespace/target-source/:name/applyTargets:
     post:
       summary: "Create targets in the gNMIc Operator"
-      operationId: "createTargets"
+      operationId: "applyTargets"
       security:
         - bearerAuth: []
       requestBody:
@@ -24,7 +24,7 @@ paths:
               $ref: '#/components/schemas/Targets'
       responses:
         '201':
-          description: "Targets created successfully"
+          description: "Targets applied successfully"
           content:
             application/json:
               schema:
@@ -49,14 +49,16 @@ components:
       type: object
       required:
         - name
-        - address
+        - ip
         - operation
       properties:
         name:
           type: string
         ip:
-          type: string # in the format "IP:port". To split up into different 
-        profile:
+          type: string
+        port:
+          type: integer
+        targetProfile:
           type: string
         labels:
           type: array

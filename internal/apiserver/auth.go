@@ -65,7 +65,12 @@ func createBearerToken(ctx context.Context, clusterReconciler *controller.Cluste
 			return fmt.Errorf("failed to create secret %s/%s: %w", namespace, apiAuthSecretName, err)
 		}
 	}
-	logger.Info("Created %s / %s as kubernetes secret in namespace %s", apiAuthSecretName, apiAuthSecretKey, namespace)
+	logger.Info(
+		"Created kubernetes auth secret",
+		"secret", fmt.Sprintf("%s/%s", namespace, apiAuthSecretName),
+		"key", apiAuthSecretKey,
+		"namespace", namespace,
+	)
 	return nil
 }
 

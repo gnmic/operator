@@ -49,11 +49,12 @@ type Label struct {
 
 // Target defines model for Target.
 type Target struct {
-	Address   string          `json:"address"`
-	Labels    *[]Label        `json:"labels,omitempty"`
-	Name      string          `json:"name"`
-	Operation TargetOperation `json:"operation"`
-	Profile   *string         `json:"profile,omitempty"`
+	Ip            string          `json:"ip"`
+	Labels        *[]Label        `json:"labels,omitempty"`
+	Name          string          `json:"name"`
+	Operation     TargetOperation `json:"operation"`
+	Port          *int            `json:"port,omitempty"`
+	TargetProfile *string         `json:"targetProfile,omitempty"`
 }
 
 // TargetOperation defines model for Target.Operation.
@@ -62,16 +63,16 @@ type TargetOperation string
 // Targets defines model for Targets.
 type Targets = []Target
 
-// CreateTargetsJSONRequestBody defines body for CreateTargets for application/json ContentType.
-type CreateTargetsJSONRequestBody = Targets
+// ApplyTargetsJSONRequestBody defines body for ApplyTargets for application/json ContentType.
+type ApplyTargetsJSONRequestBody = Targets
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Create targets in the gNMIc Operator
-	// (POST /createTargets)
-	CreateTargets(c *gin.Context)
+	// (POST /api/v1/:namespace/target-source/:name/applyTargets)
+	ApplyTargets(c *gin.Context)
 	// Get cluster plan
-	// (GET /plan)
+	// (GET /clusters/:namespace/:name/plan)
 	GetClusterPlan(c *gin.Context)
 }
 
@@ -84,8 +85,8 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(c *gin.Context)
 
-// CreateTargets operation middleware
-func (siw *ServerInterfaceWrapper) CreateTargets(c *gin.Context) {
+// ApplyTargets operation middleware
+func (siw *ServerInterfaceWrapper) ApplyTargets(c *gin.Context) {
 
 	c.Set(BearerAuthScopes, []string{})
 
@@ -96,7 +97,7 @@ func (siw *ServerInterfaceWrapper) CreateTargets(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateTargets(c)
+	siw.Handler.ApplyTargets(c)
 }
 
 // GetClusterPlan operation middleware
@@ -139,22 +140,23 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.POST(options.BaseURL+"/createTargets", wrapper.CreateTargets)
-	router.GET(options.BaseURL+"/plan", wrapper.GetClusterPlan)
+	router.POST(options.BaseURL+"/api/v1/:namespace/target-source/:name/applyTargets", wrapper.ApplyTargets)
+	router.GET(options.BaseURL+"/clusters/:namespace/:name/plan", wrapper.GetClusterPlan)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7RTTW8aMRD9K9a0xxVL0p72RqMqQupH1OSGOBjvAE68tjseI6Fo/3tle7Owgki59MRg",
-	"z7x57/ntKyjXeWfRcoDmFYLaYydz+UNu0KTCk/NIrDEfv+Ax/fDRIzQQmLTdQV/BQZqIV2766u3EbZ5R",
-	"cep9krRDvsSWbUsYwlV8k+jkK83Y5eIz4RYa+FSfNNSDgLqwPy2XRPKY/lvZ4dUFiYhk7Wy6RRs7aFag",
-	"CCVjCxVE3w5ViwZTta4uQTy5rTbv+ED4N2rCNgFnGtWo+Hz9+l3HPi5/cPhCf19BQBVJ8/ExtRbfNygJ",
-	"aRF5P2YgzZRjGDH2zB76hKHt1mWNmpNY2P36uVTid5bgSPz5/vgkFg9LqOCAFLKnMJ/NZzeD0VZ6DQ18",
-	"md3O5lCBl7zPROri95la70IOymjPsoUG7iZtxVkM/M21OZzKWUab56T3Rqs8WT+H8rjFpI9ZGIrg09Mx",
-	"RcwHwTsbin+385v/s7bFoEj7ksq3EIghlCJEpTCEbTQmR/troTEdWuQewe4FrdBBdDoEbXfCkdD2II1u",
-	"J6mAZjXNw2rdrysIseskHUfrBQ9ctBW8RzENQEasvZFZ9/CpT1/wHvnOxMBID6ntwtD5pZKzfkHIkSwO",
-	"3Edy98hClTaR1/d93/8LAAD//+4Fc3XkBAAA",
+	"H4sIAAAAAAAC/7SUTW/bPAzHv4rA5zl6cdrt5FtWDEWBvRRrb0UOqswkam1JI6kARuHvPkhyUwdJgV52",
+	"CiPx5c8fKb+A8X3wDp0wNC/AZoe9zuZ3/YhdMgL5gCQW8/EzDulHhoDQAAtZt4Wxgr3uIp65GavXE//4",
+	"hEaS772mLcppbhvOpu6SkuIg2Gfjf8INNPBf/Sa/nrTXRfhbXU2kh/Tf6R7PFkgatFjv0i262EPzAIZQ",
+	"C7ZQQQztZLXYYbLW1WmS4Elm2a0T3CJlHbndW/Ib272DiPBPtIRtKpxlVgnGXNn6XY4fJzNxP0EzVsBo",
+	"IlkZ7pJrmcYjakJaRdkdNiPFlGM45NiJBBhTDus2PrdnJfUJ258/boz6lVvwpH5/u7tXq9sbqGCPxBk3",
+	"LBfLxcU0A6eDhQY+Ly4XS6ggaNllIbUOtt5f1E0iw0EbrAvST+wjGSwXtQ6hG2ZIguc8kAPDmxYaWM29",
+	"Cnhk+erbvNbGO0GXw1I6a3Jg/cRlNwrIj2HmAuVtskIR8wEH77gwvlxe/JuyLbIhG8pSvy6KysmxVRyN",
+	"QeZN7Lr8Mr4UGcdBq+yjxD+jU5ZVb5mt2ypPyrq97mx7tDnQPBzvzMN6XFfAse81DdDAVX5QSiYt1inZ",
+	"oTpekpyxNl1kQeL5xMuMQ6czkenzcTzaa5SrEnmb3E5QL097nPkrQonkcOrqIPsaRU2CVC4/juP4NwAA",
+	"//9oPXG9OAUAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
