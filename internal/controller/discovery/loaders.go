@@ -13,7 +13,7 @@ func NewLoader(cfg *core.CommonLoaderConfig, spec gnmicv1alpha1.TargetSourceSpec
 
 	switch {
 	case spec.Provider.HTTP != nil:
-		cfg.AcceptPush = spec.Provider.HTTP.AcceptPush
+		cfg.AcceptPush = spec.Provider.HTTP.Webhook.Enabled
 		return http.New(*cfg), nil
 	default:
 		return nil, fmt.Errorf("unknown targetsource provider, check TargetSource CRD for %s", cfg.TargetsourceNN)
