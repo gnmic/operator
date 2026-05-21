@@ -193,7 +193,7 @@ spec:
       url: https://inventory.example.com/devices
       responseMapping:
         name: "$.hostname"
-        ip: "$.management.ip"
+        address: "$.management.ip"
         port: "$.gnmi.port"
         targetProfile: "$.profile"
         labels:
