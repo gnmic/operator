@@ -37,10 +37,11 @@ const (
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
-	Name    string
-	Address string
-	Port    int32
-	Labels  map[string]string
+	Name          string
+	Address       string
+	Port          int32
+	Labels        map[string]string
+	TargetProfile string
 }
 
 type DiscoveryEvent struct {
