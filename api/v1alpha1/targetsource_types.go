@@ -53,7 +53,7 @@ type ProviderSpec struct {
 }
 
 // HTTPConfig defines the configuration for the HTTP provider
-// +kubebuilder:validation:AtLeastOneOf=url;acceptPush
+// +kubebuilder:validation:AtLeastOneOf=url;webhook
 type HTTPConfig struct {
 	// URL of the HTTP endpoint to pull targets from
 	// If defined, the loader will periodically poll this endpoint for targets
