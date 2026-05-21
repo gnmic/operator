@@ -82,8 +82,16 @@ type HTTPConfig struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 
 	// Optional TLS configuration for connecting to the HTTP endpoint
+	// If it is an HTTP endpoint, this will be ignored
 	// +kubebuilder:validation:Optional
 	TLS *ClientTLSConfig `json:"tls,omitempty"`
+
+	// Field name in the JSON response that contains the list of items (targets).
+	// Must refer to a top-level key in the response object.
+	// If not specified, the entire response is expected to be a list of items.
+	// Example: "results"
+	// +kubebuilder:validation:Optional
+	ItemsField string `json:"itemsField,omitempty"`
 
 	// Optional pagination configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
@@ -173,11 +181,6 @@ type TokenAuthSpec struct {
 
 // PaginationSpec defines the configuration for paginating through responses from providers
 type PaginationSpec struct {
-	// Field name in the JSON response that contains the list of items (targets).
-	// Must refer to a top-level key in the response object.
-	// Example: "results"
-	ItemsField string `json:"itemsField,omitempty"`
-
 	// Field name in the JSON response that contains the next page reference.
 	// The value can be either:
 	// - a full URL (used directly for the next request), or
