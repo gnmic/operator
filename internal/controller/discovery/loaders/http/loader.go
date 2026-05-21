@@ -42,6 +42,8 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	i := 1
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -49,26 +51,61 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			return nil
 
 		case <-ticker.C:
-			// Example snapshot (placeholder)
-			snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
-			targets := []core.DiscoveredTarget{
-				{
-					Name:    "ceos1",
-					Address: "clab-3-nodes-ceos1",
-					Port:    57400,
-					Labels:  map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
-				},
-				{
-					Name:    "leaf1",
-					Address: "clab-3-nodes-leaf1",
-					Port:    57400,
-					Labels:  map[string]string{"TargetSource": l.commonCfg.TargetsourceNN.String()},
-				},
+			// Switch case + i only needed to test behavior for messages with different values.
+			switch i {
+			case 1:
+				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
+				targets := []core.DiscoveredTarget{
+					{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos1:6030",
+						Labels:  map[string]string{},
+					},
+					{
+						Name:    "leaf1",
+						Address: "clab-3-nodes-leaf1:57400",
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+					},
+				}
+
+				if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
+					return err
+				}
+			case 2:
+				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
+				targets := []core.DiscoveredTarget{
+					{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos1:6030",
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+					},
+					{
+						Name:    "leaf2",
+						Address: "clab-3-nodes-leaf2:57400",
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+					},
+				}
+
+				if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
+					return err
+				}
+
+			default:
+				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
+				targets := []core.DiscoveredTarget{
+					{
+						Name:    "ceos1",
+						Address: "clab-3-nodes-ceos2:6030",
+						Labels:  map[string]string{"gnmic_operator_target_profile": "default2"},
+					},
+				}
+
+				if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
+					return err
+				}
 			}
 
-			if err := loaderUtils.SendSnapshot(ctx, out, targets, snapshotID, l.commonCfg.ChunkSize); err != nil {
-				return err
-			}
+			i++
 		}
 	}
 }
