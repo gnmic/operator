@@ -19,6 +19,10 @@ func (l *Loader) extractNextPageInfo(raw interface{}) (string, error) {
 	}
 
 	val, ok := obj[l.spec.Pagination.NextField]
+	if val == nil {
+		// No next page -> end of pagination
+		return "", nil
+	}
 	if !ok {
 		return "", fmt.Errorf("nextField '%s' not found in response", l.spec.Pagination.NextField)
 	}
