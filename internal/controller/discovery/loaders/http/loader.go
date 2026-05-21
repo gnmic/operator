@@ -254,5 +254,30 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}) ([]core.DiscoveredT
 }
 
 func (l *Loader) SecretRefs() []types.NamespacedName {
-	return nil
+	var refs []types.NamespacedName
+
+	if authSpec := l.spec.Authorization; authSpec != nil {
+		if authSpec.Basic != nil && authSpec.Basic.CredentialsSecretRef != nil {
+			refs = append(refs, types.NamespacedName{
+				Namespace: l.loaderCfg.TargetsourceNN.Namespace,
+				Name:      authSpec.Basic.CredentialsSecretRef.Name,
+			})
+		}
+
+		if authSpec.Token != nil && authSpec.Token.TokenSecretRef != nil {
+			refs = append(refs, types.NamespacedName{
+				Namespace: l.loaderCfg.TargetsourceNN.Namespace,
+				Name:      authSpec.Token.TokenSecretRef.Name,
+			})
+		}
+	}
+
+	if tlsSpec := l.spec.TLS; tlsSpec != nil && tlsSpec.CABundleSecretRef != nil {
+		refs = append(refs, types.NamespacedName{
+			Namespace: l.loaderCfg.TargetsourceNN.Namespace,
+			Name:      tlsSpec.CABundleSecretRef.Name,
+		})
+	}
+
+	return refs
 }
