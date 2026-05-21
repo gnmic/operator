@@ -80,13 +80,6 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	TLS *ClientTLSConfig `json:"tls,omitempty"`
 
-	// Field name in the JSON response that contains the list of items (targets).
-	// Must refer to a top-level key in the response object.
-	// If not specified, the entire response is expected to be a list of items.
-	// Example: "results"
-	// +kubebuilder:validation:Optional
-	TargetsField string `json:"targetsField,omitempty"`
-
 	// Optional pagination configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	Pagination *PaginationSpec `json:"pagination,omitempty"`
@@ -177,25 +170,30 @@ type PaginationSpec struct {
 // JSONPath-style expressions to extract target fields from the response
 // and map them to the corresponding Target fields.
 type ResponseMappingSpec struct {
-	// JSONPath expression to extract the target name from the response
+	// Field name in the JSON response that contains the list of items (targets).
+	// If not specified, the entire response is expected to be a list of items.
+	// All subsequent fields are specified relative to this field
+	// Example: "results"
+	// +kubebuilder:validation:Optional
+	TargetsField string `json:"targetsField,omitempty"`
+
+	// JSONPath expression to extract the target name from the response list
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// JSONPath expression to extract the target address from the response
+	// JSONPath expression to extract the target address from the response list
 	// +kubebuilder:validation:Required
 	Address string `json:"address"`
 
-	// JSONPath expression to extract the target port from the response
+	// JSONPath expression to extract the target port from the response list
 	// +kubebuilder:validation:Optional
 	Port string `json:"port,omitempty"`
 
-	// JSONPath expression to extract the target labels from the response
-	// The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
-	// with values from the response taking precedence in case of conflicts.
+	// JSONPath expression to extract the target labels from the response list
 	// +kubebuilder:validation:Optional
 	Labels map[string]string `json:"labels,omitempty"`
 
-	// JSONPath expression to extract the target profile from the response
+	// JSONPath expression to extract the target profile from the response list
 	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile,omitempty"`
 }

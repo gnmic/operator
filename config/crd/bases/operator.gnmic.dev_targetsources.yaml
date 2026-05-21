@@ -134,27 +134,32 @@ spec:
                         properties:
                           address:
                             description: JSONPath expression to extract the target
-                              address from the response
+                              address from the response list
                             type: string
                           labels:
                             additionalProperties:
                               type: string
-                            description: |-
-                              JSONPath expression to extract the target labels from the response
-                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
-                              with values from the response taking precedence in case of conflicts.
+                            description: JSONPath expression to extract the target
+                              labels from the response list
                             type: object
                           name:
                             description: JSONPath expression to extract the target
-                              name from the response
+                              name from the response list
                             type: string
                           port:
                             description: JSONPath expression to extract the target
-                              port from the response
+                              port from the response list
                             type: string
                           targetProfile:
                             description: JSONPath expression to extract the target
-                              profile from the response
+                              profile from the response list
+                            type: string
+                          targetsField:
+                            description: |-
+                              Field name in the JSON response that contains the list of items (targets).
+                              If not specified, the entire response is expected to be a list of items.
+                              All subsequent fields are specified relative to this field
+                              Example: "results"
                             type: string
                         required:
                         - address
@@ -166,17 +171,15 @@ spec:
                         properties:
                           nextField:
                             description: |-
-                              JSONPath-style expression to extract the next page token or URL from the response for pagination
-                              Example: "next"
+                              Field name in the JSON response that contains the next page reference.
+                              The value can be either:
+                              - a full URL (used directly for the next request), or
+                              - a pagination token (appended as a query parameter using this field name as the key).
+
+                              Must refer to a top-level key in the response object.
+                              Example: "next" or "nextToken"
                             type: string
                         type: object
-                      targetsField:
-                        description: |-
-                          Field name in the JSON response that contains the list of items (targets).
-                          Must refer to a top-level key in the response object.
-                          If not specified, the entire response is expected to be a list of items.
-                          Example: "results"
-                        type: string
                       timeout:
                         default: 10s
                         description: Optional timeout for HTTP requests to the endpoint
