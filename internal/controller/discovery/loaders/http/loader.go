@@ -166,37 +166,18 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	currentURL := l.spec.URL
 
 	for {
-		// Build HTTP request
-		req, buildRequestErr := http.NewRequestWithContext(ctx, http.MethodGet, currentURL, nil)
-		if buildRequestErr != nil {
-			return nil, fmt.Errorf("creating HTTP request failed: %w", buildRequestErr)
+		raw, err := l.fetchPage(ctx, client, currentURL)
+		if err != nil {
+			logger.Error(err,
+				"Failed to fetch page from HTTP endpoint",
+				"url", currentURL,
+			)
+			break
 		}
-		req.Header.Set("Accept", "application/json")
-		l.applyAuthorization(req)
-
-		// Execute HTTP request
-		resp, requestErr := client.Do(req)
-		if requestErr != nil {
-			return nil, fmt.Errorf("HTTP request failed: %w", requestErr)
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
-		}
-
-		// Decode HTTP response
-		var raw interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-			resp.Body.Close()
-			return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
-		}
-
-		resp.Body.Close()
 
 		// Extract targets from response
-		targets, extractErr := l.extractTargetsFromResponse(raw, logger)
-		if extractErr != nil {
-			logger.Error(extractErr,
+		if targets, err := l.extractTargetsFromResponse(raw, logger); err != nil {
+			logger.Error(err,
 				"Failed to extract targets from HTTP response",
 				"url", currentURL,
 			)
@@ -204,25 +185,45 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 			allTargets = append(allTargets, targets...)
 		}
 
-		// Extract pagination info
-		nextPageInfo, nextErr := l.extractNextPageInfo(raw)
-		if nextErr != nil {
-			logger.Error(nextErr, "Failed to extract next page info from HTTP response")
-			break
-		}
-		if nextPageInfo == "" {
-			break
-		}
-		// Build next page URL
-		nextURL, buildNextErr := l.buildNextURL(currentURL, nextPageInfo)
-		if buildNextErr != nil {
-			logger.Error(buildNextErr, "Failed to build next URL")
+		// Pagination
+		nextURL, stop := l.getNextURL(raw, currentURL, logger)
+		if stop {
 			break
 		}
 		currentURL = nextURL
 	}
 
 	return allTargets, nil
+}
+
+// fetchPage performs an HTTP GET request to the specified URL and decodes the JSON response
+// and returns the raw response as an interface{}
+func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string) (interface{}, error) {
+	// Build HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating HTTP request failed: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	l.applyAuthorization(req)
+
+	// Execute HTTP request
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
+	}
+
+	// Decode HTTP response
+	var raw interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
+	}
+
+	return raw, nil
 }
 
 // extractTargetsFromResponse extracts items from the response
@@ -292,4 +293,40 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger)
 	}
 
 	return targets, nil
+}
+
+// getNextURL determines the next page URL
+// Returns:
+// - nextURL: next request
+// - stop: whether to terminate loop
+func (l *Loader) getNextURL(
+	raw interface{},
+	currentURL string,
+	logger logr.Logger,
+) (string, bool) {
+	// Extract pagination info
+	nextPageInfo, err := l.extractNextPageInfo(raw)
+	if err != nil {
+		logger.Error(err,
+			"Failed to extract next page info from HTTP response",
+			"url", currentURL,
+		)
+		return "", true
+	}
+
+	if nextPageInfo == "" {
+		return "", true
+	}
+
+	// Build next page URL
+	nextURL, err := l.buildNextURL(currentURL, nextPageInfo)
+	if err != nil {
+		logger.Error(err,
+			"Failed to build next URL",
+			"url", currentURL,
+		)
+		return "", true
+	}
+
+	return nextURL, false
 }
