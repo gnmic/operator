@@ -7,7 +7,7 @@ All URIs are relative to *http://localhost*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *DefaultApi* | [**applyTargets**](Apis/DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Targets received in body are applied in gNMIc Operator. |
+| *DefaultApi* | [**applyTargets**](Apis/DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Targets received are applied in gNMIc Operator. |
 *DefaultApi* | [**getClusterPlan**](Apis/DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
