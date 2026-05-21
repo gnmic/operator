@@ -281,6 +281,7 @@ spec:
                                     type: string
                                   header:
                                     description: Header containing the signature
+                                    minLength: 1
                                     type: string
                                   secretRef:
                                     description: SecretKeySelector selects a key of
@@ -308,6 +309,7 @@ spec:
                                     type: object
                                     x-kubernetes-map-type: atomic
                                 required:
+                                - header
                                 - secretRef
                                 type: object
                             type: object

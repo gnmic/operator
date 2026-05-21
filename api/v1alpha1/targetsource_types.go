@@ -53,7 +53,7 @@ type ProviderSpec struct {
 }
 
 // HTTPConfig defines the configuration for the HTTP provider
-// +kubebuilder:validation:AtLeastOneOf=url;webhook
+// +kubebuilder:validation:AtLeastOneOf:=url;webhook
 type HTTPConfig struct {
 	// URL of the HTTP endpoint to pull targets from
 	// If defined, the loader will periodically poll this endpoint for targets
@@ -207,25 +207,28 @@ type WebhookSpec struct {
 	Auth *WebhookAuthSpec `json:"auth,omitempty"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf=bearer;signature
+// +kubebuilder:validation:ExactlyOneOf:=bearer;signature
 type WebhookAuthSpec struct {
 	Bearer    *WebhookBearerAuthSpec    `json:"bearer,omitempty"`
 	Signature *WebhookSignatureAuthSpec `json:"signature,omitempty"`
 }
 
+// +kubebuilder:validation:Required
 type WebhookBearerAuthSpec struct {
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
+// +kubebuilder:validation:Required
 type WebhookSignatureAuthSpec struct {
 	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
 
 	// Header containing the signature
-	Header string `json:"header,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	Header string `json:"header"`
 
-	// +kubebuilder:default="sha256"
+	// +kubebuilder:default="sha512"
 	// +kubebuilder:validation:Enum=sha1;sha256;sha512
-	Algorithm string `json:"algorithm,omitempty"`
+	Algorithm string `json:"algorithm"`
 }
 
 // TargetSourceStatus defines the observed state of TargetSource
