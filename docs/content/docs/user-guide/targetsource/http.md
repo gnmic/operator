@@ -168,7 +168,7 @@ Example response:
 [
   {
     "name": "spine1",
-    "address": "spine1",
+    "address": "spine1.local",
     "port": 57400,
     "labels": {
       "role": "spine"
@@ -177,7 +177,7 @@ Example response:
   },
   {
     "name": "leaf1",
-    "address": "leaf1",
+    "address": "leaf1.local",
     "port": 57400,
     "labels": {
       "role": "leaf"
@@ -185,7 +185,7 @@ Example response:
   },
   {
     "name": "leaf2",
-    "address": "leaf2",
+    "address": "leaf2.local",
     "port": 57400,
     "labels": {
       "role": "leaf"
