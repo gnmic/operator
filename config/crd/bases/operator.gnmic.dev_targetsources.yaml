@@ -128,6 +128,13 @@ spec:
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
+                      itemsField:
+                        description: |-
+                          Field name in the JSON response that contains the list of items (targets).
+                          Must refer to a top-level key in the response object.
+                          If not specified, the entire response is expected to be a list of items.
+                          Example: "results"
+                        type: string
                       mapping:
                         description: Optional mapping configuration for parsing responses
                           from the HTTP endpoint
@@ -164,11 +171,6 @@ spec:
                         description: Optional pagination configuration for parsing
                           responses from the HTTP endpoint
                         properties:
-                          itemsField:
-                            description: |-
-                              JSONPath-style expression to extract the list of targets from the response
-                              Example: "results"
-                            type: string
                           nextField:
                             description: |-
                               JSONPath-style expression to extract the next page token or URL from the response for pagination
@@ -180,8 +182,9 @@ spec:
                         description: Optional timeout for HTTP requests to the endpoint
                         type: string
                       tls:
-                        description: Optional TLS configuration for connecting to
-                          the HTTP endpoint
+                        description: |-
+                          Optional TLS configuration for connecting to the HTTP endpoint
+                          If it is an HTTP endpoint, this will be ignored
                         properties:
                           caBundle:
                             description: |-
