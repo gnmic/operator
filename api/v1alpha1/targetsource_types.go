@@ -71,8 +71,8 @@ type HTTPConfig struct {
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
-	// TODO: increase default value
-	// +kubebuilder:default="30s"
+	// TODO: add to docs
+	// +kubebuilder:default="6h"
 	// +kubebuilder:validation:Optional
 	PollInterval *metav1.Duration `json:"interval,omitempty"`
 

@@ -157,7 +157,7 @@ spec:
                           rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
                             == 1'
                       interval:
-                        default: 30s
+                        default: 6h
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
