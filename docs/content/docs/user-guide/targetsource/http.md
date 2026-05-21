@@ -13,7 +13,6 @@ spec:
   provider:
     http:
       url: http://inventory-service:8080/targets
-      
 ```
 
 ## HTTP Spec Fields
@@ -23,19 +22,19 @@ spec:
 | `url` | string | Yes | URL pointing to the inventory server |
 | `acceptPush` | bool | No | Enable webhook-based target updates. Defaults to `false`. |
 | `authorization` | object | No | Credentials used to access the HTTP endpoint. See _Authorization_ section. |
-| `pollInterval` | metav1.Duration | No | Polling interval used to fetch targets from the endpoint. Defaults to `30s`. |
-| `timeout` | metav1.Duration | No | Timeout for HTTP requests. Defaults to `10s`. |
+| `pollInterval` | duration | No | Polling interval used to fetch targets from the endpoint. Defaults to `30s`. |
+| `timeout` | duration | No | Timeout for HTTP requests. Defaults to `10s`. |
 | `tls` | object | No | Client TLS configuration for HTTPS endpoints. See _TLS_ section. |
 | `pagination` | object | No | Pagination configuration for parsing responses from the HTTP endpoint. See _Pagination_ section. |
-| `responseMapping` | object | No | JSON path mapping definitions. See _Response Mapping_ section. |
+| `responseMapping` | object | No | JSONPath mapping definitions. See _Response Processing_ section. |
 
-### Authorization
+## Authorization
 
 The HTTP provider supports authenticated requests to the inventory endpoint.
 
 Exactly one authorization method can be configured.
 
-#### Basic Authentication
+### Basic Authentication
 
 Credentials can either be defined inline or referenced from a Secret.
 
@@ -64,7 +63,7 @@ spec:
             key: username
 ```
 
-#### Token Authentication
+### Token Authentication
 
 Static token authentication can be configured using either an inline token or a Secret reference.
 
@@ -94,7 +93,7 @@ spec:
             key: token
 ```
 
-### TLS
+## TLS
 
 TLS settings can be configured for HTTPS endpoints.
 
@@ -107,7 +106,7 @@ spec:
         insecureSkipVerify: false
 ```
 
-#### TLS Fields
+### TLS Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -117,7 +116,7 @@ spec:
 
 `caBundle` and `caBundleSecretRef` are mutually exclusive.
 
-### Pagination
+## Pagination
 
 Pagination can be configured for APIs returning paginated responses.
 
@@ -131,7 +130,7 @@ spec:
         nextField: next
 ```
 
-#### Pagination Fields
+### Pagination Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -142,42 +141,16 @@ The `nextField` value may either contain:
 - A full URL for the next request
 - A pagination token appended as a query parameter to the original URL
 
-### Response Mapping
+## Response Processing
 
-By default, the HTTP response must follow the structure defined in the _Response Format_ section.
+The HTTP provider supports two methods for processing responses from the inventory endpoint:
 
-`responseMapping` allows extracting target fields from arbitrary JSON structures using JSONPath expressions.
+- **Default Response Format**: The endpoint returns a predefined JSON structure understood directly by the operator.
+- **Response Mapping via JSONPath**: Arbitrary JSON structures can be mapped to target fields using JSONPath expressions.
 
-```yaml
-spec:
-  provider:
-    http:
-      url: https://inventory.example.com/devices
-      responseMapping:
-        name: "$.hostname"
-        address: "$.management.ip"
-        port: "$.gnmi.port"
-        targetProfile: "$.profile"
-        labels:
-          role: "$.metadata.role"
-          site: "$.metadata.site"
-```
+If `responseMapping` is configured, the custom mappings are used. Otherwise, the default response format is expected.
 
-#### Response Mapping Fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | JSONPath expression extracting the target name. |
-| `ip` | string | Yes | JSONPath expression extracting the target IP address or hostname. |
-| `port` | string | No | JSONPath expression extracting the gNMI port. |
-| `targetProfile` | string | No | JSONPath expression extracting the `TargetProfile`. |
-| `labels` | map[string]string | No | JSONPath expressions extracting target labels. |
-
-Labels extracted through `responseMapping.labels` are merged with labels from `spec.targetLabels`.
-
-If the same label key exists in both locations, labels extracted through `responseMapping.labels` take precedence.
-
-## Response Format
+### Default Response Format
 
 If `responseMapping` is not configured, the endpoint must return a JSON array of objects with the following structure:
 
@@ -220,3 +193,32 @@ Example response:
   }
 ]
 ```
+
+### Response Mapping via JSONPath
+
+`responseMapping` allows extracting target fields from arbitrary JSON structures using JSONPath expressions.
+
+```yaml
+spec:
+  provider:
+    http:
+      url: https://inventory.example.com/devices
+      responseMapping:
+        name: "$.hostname"
+        address: "$.management.ip"
+        port: "$.gnmi.port"
+        targetProfile: "$.profile"
+        labels:
+          role: "$.metadata.role"
+          site: "$.metadata.site"
+```
+
+#### Response Mapping Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | JSONPath expression extracting the target name |
+| `address` | string | Yes | JSONPath expression extracting the target IP address or hostname |
+| `port` | string | No | JSONPath expression extracting the gNMI port |
+| `targetProfile` | string | No | JSONPath expression extracting the `TargetProfile` |
+| `labels` | map[string]string | No | JSONPath expressions extracting target labels |
