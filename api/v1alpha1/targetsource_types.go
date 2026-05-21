@@ -108,12 +108,12 @@ type ClientTLSConfig struct {
 	// +kubebuilder:default:=false
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 
-	// Base64-encoded bundle of PEM CAs which will be used to validate the certificate
+	// Bundle of PEM CAs which will be used to validate the certificate
 	// chain presented by the Provider. Only used if using HTTPS to connect to Provider and
 	// ignored for HTTP connections.
 	// Mutually exclusive with CABundleSecretRef.
 	// +optional
-	CABundle []byte `json:"caBundle,omitempty"`
+	CABundle string `json:"caBundle,omitempty"`
 
 	// Reference to a Secret containing a bundle of PEM-encoded CAs to use when
 	// verifying the certificate chain presented by the Provider when using HTTPS.

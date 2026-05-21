@@ -141,7 +141,7 @@ func (l *Loader) buildHTTPClient() (*http.Client, error) {
 	// If a CA bundle is provided, add it to the TLS config
 	if l.spec.TLS != nil && len(l.spec.TLS.CABundle) > 0 {
 		certPool := x509.NewCertPool()
-		if ok := certPool.AppendCertsFromPEM(l.spec.TLS.CABundle); !ok {
+		if ok := certPool.AppendCertsFromPEM([]byte(l.spec.TLS.CABundle)); !ok {
 			return nil, fmt.Errorf("Failed to parse CA bundle for TargetSource %s/%s\n", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
 		}
 		tlsConfig.RootCAs = certPool

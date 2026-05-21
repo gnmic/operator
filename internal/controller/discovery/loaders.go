@@ -162,8 +162,7 @@ func resolveTLSIntoSpec(
 		if err != nil {
 			return err
 		}
-		// convert string to []byte
-		tls.CABundle = []byte(values[key])
+		tls.CABundle = (values[key])
 	}
 
 	return nil

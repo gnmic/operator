@@ -226,11 +226,10 @@ spec:
                         properties:
                           caBundle:
                             description: |-
-                              Base64-encoded bundle of PEM CAs which will be used to validate the certificate
+                              Bundle of PEM CAs which will be used to validate the certificate
                               chain presented by the Provider. Only used if using HTTPS to connect to Provider and
                               ignored for HTTP connections.
                               Mutually exclusive with CABundleSecretRef.
-                            format: byte
                             type: string
                           caBundleSecretRef:
                             description: |-
