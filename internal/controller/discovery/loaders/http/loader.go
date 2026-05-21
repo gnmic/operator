@@ -230,22 +230,22 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
 	var items []interface{}
 
-	if l.spec.ItemsField != "" {
+	if l.spec.TargetsField != "" {
 		obj, ok := raw.(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf(
 				"invalid HTTP response: expected JSON object when itemsField '%s' is configured (e.g. {\"%s\": [...]})",
-				l.spec.ItemsField,
-				l.spec.ItemsField,
+				l.spec.TargetsField,
+				l.spec.TargetsField,
 			)
 		}
 
-		results, ok := obj[l.spec.ItemsField]
+		results, ok := obj[l.spec.TargetsField]
 		if !ok {
 			return nil, fmt.Errorf(
 				"invalid HTTP response: itemsField '%s' not found. ensure the API response contains this field (e.g. {\"%s\": [...]})",
-				l.spec.ItemsField,
-				l.spec.ItemsField,
+				l.spec.TargetsField,
+				l.spec.TargetsField,
 			)
 		}
 
@@ -253,8 +253,8 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger)
 		if !ok {
 			return nil, fmt.Errorf(
 				"invalid HTTP response: itemsField '%s' must be an array of objects (e.g. {\"%s\": [...]})",
-				l.spec.ItemsField,
-				l.spec.ItemsField,
+				l.spec.TargetsField,
+				l.spec.TargetsField,
 			)
 		}
 

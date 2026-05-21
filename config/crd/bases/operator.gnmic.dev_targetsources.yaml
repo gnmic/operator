@@ -161,13 +161,6 @@ spec:
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
-                      itemsField:
-                        description: |-
-                          Field name in the JSON response that contains the list of items (targets).
-                          Must refer to a top-level key in the response object.
-                          If not specified, the entire response is expected to be a list of items.
-                          Example: "results"
-                        type: string
                       mapping:
                         description: Optional mapping configuration for parsing responses
                           from the HTTP endpoint
@@ -215,6 +208,13 @@ spec:
                               Example: "next" or "nextToken"
                             type: string
                         type: object
+                      targetsField:
+                        description: |-
+                          Field name in the JSON response that contains the list of items (targets).
+                          Must refer to a top-level key in the response object.
+                          If not specified, the entire response is expected to be a list of items.
+                          Example: "results"
+                        type: string
                       timeout:
                         default: 10s
                         description: Optional timeout for HTTP requests to the endpoint
