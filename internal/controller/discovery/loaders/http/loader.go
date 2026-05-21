@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -75,7 +76,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
 		// Fetch targets from HTTP endpoint
-		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client)
+		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client, logger)
 		if err != nil {
 			logger.Error(
 				err,
@@ -83,6 +84,17 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				"url", l.spec.URL,
 			)
 			return
+		}
+		// TODO temporary log discovered targets
+		for _, t := range targets {
+			logger.Info(
+				"Discovered target",
+				"name", t.Name,
+				"ip", t.IP,
+				"port", t.Port,
+				"labels", t.Labels,
+				"profile", t.TargetProfile,
+			)
 		}
 
 		// Emit discovery snapshot downstream
@@ -148,55 +160,66 @@ func (l *Loader) buildHTTPClient() (*http.Client, error) {
 func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	ctx context.Context,
 	client *http.Client,
+	logger logr.Logger,
 ) ([]core.DiscoveredTarget, error) {
 	var allTargets []core.DiscoveredTarget
-	currentUrl := l.spec.URL
+	currentURL := l.spec.URL
 
 	for {
-		// Create HTTP request with context
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, currentUrl, nil)
-		if err != nil {
-			return nil, fmt.Errorf("creating HTTP request failed: %w", err)
+		// Build HTTP request
+		req, buildRequestErr := http.NewRequestWithContext(ctx, http.MethodGet, currentURL, nil)
+		if buildRequestErr != nil {
+			return nil, fmt.Errorf("creating HTTP request failed: %w", buildRequestErr)
 		}
 		req.Header.Set("Accept", "application/json")
 		l.applyAuthorization(req)
 
 		// Execute HTTP request
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("HTTP request failed: %w", err)
+		resp, requestErr := client.Do(req)
+		if requestErr != nil {
+			return nil, fmt.Errorf("HTTP request failed: %w", requestErr)
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
 			return nil, fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
 		}
 
-		// Decode response into raw map for pagination support
+		// Decode HTTP response
 		var raw interface{}
 		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			resp.Body.Close()
 			return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
 		}
 
-		// Extract targets from response
-		targets, err := l.extractTargetsFromResponse(raw)
-		if err != nil {
-			return nil, err
-		}
-		allTargets = append(allTargets, targets...)
+		resp.Body.Close()
 
-		// Check for pagination
-		nextPageInfo, err := l.extractNextPageInfo(raw)
-		if err != nil {
-			return nil, err
+		// Extract targets from response
+		targets, extractErr := l.extractTargetsFromResponse(raw, logger)
+		if extractErr != nil {
+			logger.Error(extractErr,
+				"Failed to extract targets from HTTP response",
+				"url", currentURL,
+			)
+		} else {
+			allTargets = append(allTargets, targets...)
+		}
+
+		// Extract pagination info
+		nextPageInfo, nextErr := l.extractNextPageInfo(raw)
+		if nextErr != nil {
+			logger.Error(nextErr, "Failed to extract next page info from HTTP response")
+			break
 		}
 		if nextPageInfo == "" {
 			break
 		}
-		nextURL, err := l.buildNextURL(currentUrl, nextPageInfo)
-		if err != nil {
-			return nil, err
+		// Build next page URL
+		nextURL, buildNextErr := l.buildNextURL(currentURL, nextPageInfo)
+		if buildNextErr != nil {
+			logger.Error(buildNextErr, "Failed to build next URL")
+			break
 		}
-		currentUrl = nextURL
+		currentURL = nextURL
 	}
 
 	return allTargets, nil
@@ -204,33 +227,44 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 
 // extractTargetsFromResponse extracts items from the response
 // and maps each item into a DiscoveredTarget
-func (l *Loader) extractTargetsFromResponse(raw interface{}) ([]core.DiscoveredTarget, error) {
+func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
 	var items []interface{}
 
-	switch v := raw.(type) {
-	// Top-level array response
-	case []interface{}:
-		items = v
-	// Object with itemsField containing the array
-	case map[string]interface{}:
-		if l.spec.Pagination != nil && l.spec.Pagination.ItemsField != "" {
-			// Extract items array from response using itemsField
-			val, ok := v[l.spec.Pagination.ItemsField]
-			if !ok {
-				return nil, fmt.Errorf("itemsField '%s' not found", l.spec.Pagination.ItemsField)
-			}
-
-			arr, ok := val.([]interface{})
-			if !ok {
-				return nil, fmt.Errorf("itemsField '%s' is not an array", l.spec.Pagination.ItemsField)
-			}
-
-			items = arr
-		} else {
-			return nil, fmt.Errorf("response is an object but no itemsField specified for TargetSource %s/%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
+	if l.spec.ItemsField != "" {
+		obj, ok := raw.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf(
+				"invalid HTTP response: expected JSON object when itemsField '%s' is configured (e.g. {\"%s\": [...]})",
+				l.spec.ItemsField,
+				l.spec.ItemsField,
+			)
 		}
-	default:
-		return nil, fmt.Errorf("unexpected response format")
+
+		results, ok := obj[l.spec.ItemsField]
+		if !ok {
+			return nil, fmt.Errorf(
+				"invalid HTTP response: itemsField '%s' not found. ensure the API response contains this field (e.g. {\"%s\": [...]})",
+				l.spec.ItemsField,
+				l.spec.ItemsField,
+			)
+		}
+
+		array, ok := results.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf(
+				"invalid HTTP response: itemsField '%s' must be an array of objects (e.g. {\"%s\": [...]})",
+				l.spec.ItemsField,
+				l.spec.ItemsField,
+			)
+		}
+
+		items = array
+	} else {
+		array, ok := raw.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid HTTP response: expected a JSON array because itemsField is not set (e.g. [{...}, {...}])")
+		}
+		items = array
 	}
 
 	// Map items to targets
@@ -238,12 +272,20 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}) ([]core.DiscoveredT
 	for _, item := range items {
 		obj, ok := item.(map[string]interface{})
 		if !ok {
+			logger.Error(fmt.Errorf("invalid target format"),
+				"Failed to convert target to map",
+				"item", item,
+			)
 			continue
 		}
 
 		target, err := l.mapItem(obj)
 		if err != nil {
-			return nil, err
+			logger.Error(err,
+				"Failed to map target",
+				"item", obj,
+			)
+			continue
 		}
 
 		targets = append(targets, target)
