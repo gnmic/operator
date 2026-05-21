@@ -273,7 +273,7 @@ spec:
                               signature:
                                 properties:
                                   algorithm:
-                                    default: sha256
+                                    default: sha512
                                     enum:
                                     - sha1
                                     - sha256
@@ -309,6 +309,7 @@ spec:
                                     type: object
                                     x-kubernetes-map-type: atomic
                                 required:
+                                - algorithm
                                 - header
                                 - secretRef
                                 type: object
