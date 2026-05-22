@@ -196,7 +196,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 		targetSource,
 		targetChannel,
 	)
-	loader, err := discovery.NewLoader(reconcileCtx, r.Client, &loaderConfig, targetSource.Spec)
+	loader, err := discovery.NewLoader(ctx, r.Client, &loaderConfig, targetSource.Spec)
 	if err != nil {
 		logger.Error(err, "Target loader could not be created")
 		cleanup()

@@ -42,7 +42,7 @@ func (g *jsonPathGetter) GetName() (string, error) {
 
 // GetIP extracts the IP using JSONPath
 func (g *jsonPathGetter) GetIP() (string, error) {
-	val, err := g.get(g.spec.IP)
+	val, err := g.get(g.spec.Address)
 	if err != nil {
 		return "", fmt.Errorf("IP mapping failed: %w", err)
 	}
