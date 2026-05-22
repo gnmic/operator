@@ -87,34 +87,15 @@ spec:
                                 - key
                                 type: object
                                 x-kubernetes-map-type: atomic
-                              password:
-                                description: |-
-                                  Password for basic auth
-                                  Mutually exclusive with CredentialsSecretRef.
-                                type: string
-                              username:
-                                description: |-
-                                  Username for basic auth
-                                  Mutually exclusive with CredentialsSecretRef.
-                                type: string
+                            required:
+                            - credentialsSecretRef
                             type: object
-                            x-kubernetes-validations:
-                            - message: either credentialsSecretRef OR both username
-                                and password must be set, but not a mix
-                              rule: (has(self.credentialsSecretRef) && !has(self.username)
-                                && !has(self.password)) || (!has(self.credentialsSecretRef)
-                                && has(self.username) && has(self.password))
                           token:
                             description: Token-based authentication configuration
                             properties:
                               scheme:
                                 description: Scheme for the token, e.g. "Bearer"
                                 minLength: 1
-                                type: string
-                              token:
-                                description: |-
-                                  Token value for authentication
-                                  Mutually exclusive with TokenSecretRef.
                                 type: string
                               tokenSecretRef:
                                 description: |-
@@ -145,11 +126,8 @@ spec:
                                 x-kubernetes-map-type: atomic
                             required:
                             - scheme
+                            - tokenSecretRef
                             type: object
-                            x-kubernetes-validations:
-                            - message: either token or tokenSecretRef must be set,
-                                but not both
-                              rule: has(self.token) != has(self.tokenSecretRef)
                         type: object
                         x-kubernetes-validations:
                         - message: exactly one of the fields in [basic token] must
@@ -157,7 +135,7 @@ spec:
                           rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
                             == 1'
                       interval:
-                        default: 6h
+                        default: 30s
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
@@ -165,33 +143,41 @@ spec:
                         description: Optional mapping configuration for parsing responses
                           from the HTTP endpoint
                         properties:
-                          ip:
-                            description: JSONPath expression to extract the target
-                              IP from the response
+                          address:
+                            description: |-
+                              CEL expression to extract the target Address from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           labels:
                             additionalProperties:
                               type: string
                             description: |-
-                              JSONPath expression to extract the target labels from the response
+                              CEL expression to extract the target labels from the response
                               The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
                               with values from the response taking precedence in case of conflicts.
                             type: object
                           name:
-                            description: JSONPath expression to extract the target
-                              name from the response
+                            description: |-
+                              CEL expression to extract the target name from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           port:
-                            description: JSONPath expression to extract the target
-                              port from the response
+                            description: |-
+                              CEL expression to extract the target port from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           targetProfile:
-                            description: JSONPath expression to extract the target
-                              profile from the response
+                            description: |-
+                              CEL expression to extract the target profile from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
-                        required:
-                        - ip
-                        - name
+                          targetsField:
+                            description: |-
+                              Field name in the JSON response that contains the list of items (targets).
+                              If not specified, the entire response is expected to be a list of items.
+                              All subsequent fields are specified relative to this field
+                              Example: "results" if the response is of the form {"results": [ ... list of items ... ]}
+                            type: string
                         type: object
                       pagination:
                         description: Optional pagination configuration for parsing
@@ -208,13 +194,6 @@ spec:
                               Example: "next" or "nextToken"
                             type: string
                         type: object
-                      targetsField:
-                        description: |-
-                          Field name in the JSON response that contains the list of items (targets).
-                          Must refer to a top-level key in the response object.
-                          If not specified, the entire response is expected to be a list of items.
-                          Example: "results"
-                        type: string
                       timeout:
                         default: 10s
                         description: Optional timeout for HTTP requests to the endpoint
@@ -224,22 +203,14 @@ spec:
                           Optional TLS configuration for connecting to the HTTP endpoint
                           If it is an HTTP endpoint, this will be ignored
                         properties:
-                          caBundle:
-                            description: |-
-                              Bundle of PEM CAs which will be used to validate the certificate
-                              chain presented by the Provider. Only used if using HTTPS to connect to Provider and
-                              ignored for HTTP connections.
-                              Mutually exclusive with CABundleSecretRef.
-                            type: string
                           caBundleSecretRef:
                             description: |-
-                              Reference to a Secret containing a bundle of PEM-encoded CAs to use when
+                              Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
                               verifying the certificate chain presented by the Provider when using HTTPS.
                               Mutually exclusive with CABundle.
                             properties:
                               key:
-                                description: The key of the secret to select from.  Must
-                                  be a valid secret key.
+                                description: The key to select.
                                 type: string
                               name:
                                 default: ""
@@ -251,8 +222,8 @@ spec:
                                   More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                 type: string
                               optional:
-                                description: Specify whether the Secret or its key
-                                  must be defined
+                                description: Specify whether the ConfigMap or its
+                                  key must be defined
                                 type: boolean
                             required:
                             - key
@@ -263,9 +234,6 @@ spec:
                             description: Skip TLS verification of the Provider's certificate.
                             type: boolean
                         type: object
-                        x-kubernetes-validations:
-                        - message: caBundle and caBundleSecretRef are mutually exclusive
-                          rule: '!(has(self.caBundle) && has(self.caBundleSecretRef))'
                       url:
                         description: |-
                           URL of the HTTP endpoint to pull targets from
