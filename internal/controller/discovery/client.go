@@ -27,9 +27,6 @@ func fetchExistingTargets(
 	err := c.List(
 		ctx,
 		&targetList,
-	err := c.List(
-		ctx,
-		&targetList,
 		client.InNamespace(ts.Namespace),
 		client.MatchingLabels{
 			LabelTargetSourceName: ts.Name,
