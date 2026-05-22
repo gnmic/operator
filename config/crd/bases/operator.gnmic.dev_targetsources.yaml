@@ -322,9 +322,8 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-validations:
-                    - message: at least one of the fields in [url webhook] must be
-                        set
-                      rule: '[has(self.url),has(self.webhook)].filter(x,x==true).size()
+                    - message: at least one of the fields in [url push] must be set
+                      rule: '[has(self.url),has(self.push)].filter(x,x==true).size()
                         >= 1'
                 type: object
                 x-kubernetes-validations:
