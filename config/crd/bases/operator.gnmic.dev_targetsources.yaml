@@ -128,7 +128,7 @@ spec:
                           rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
                             == 1'
                       interval:
-                        default: 30s
+                        default: 6h
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
@@ -284,7 +284,7 @@ spec:
                           Optional TLS configuration for connecting to the HTTP endpoint
                           If it is an HTTP endpoint, this will be ignored
                         properties:
-                          caBundleSecretRef:
+                          caBundleRef:
                             description: |-
                               Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
                               verifying the certificate chain presented by the Provider when using HTTPS.

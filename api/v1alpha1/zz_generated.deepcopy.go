@@ -328,8 +328,8 @@ func (in *HTTPConfig) DeepCopyInto(out *HTTPConfig) {
 		*out = new(AuthorizationSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.PollInterval != nil {
-		in, out := &in.PollInterval, &out.PollInterval
+	if in.Interval != nil {
+		in, out := &in.Interval, &out.Interval
 		*out = new(metav1.Duration)
 		**out = **in
 	}
