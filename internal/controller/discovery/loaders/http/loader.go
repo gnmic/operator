@@ -157,9 +157,10 @@ func (l *Loader) buildHTTPClient(ctx context.Context) (*http.Client, error) {
 		}
 	}
 
+	timeout := l.spec.Timeout.Duration
 	// Build the HTTP client with the specified timeout and TLS config
 	return &http.Client{
-		Timeout: l.spec.Timeout.Duration,
+		Timeout: timeout,
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
 		},
@@ -238,70 +239,43 @@ func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string)
 	return raw, nil
 }
 
-// extractTargetsFromResponse extracts items from the response
-// and maps each item into a DiscoveredTarget
+// extractTargetsFromResponse extracts items from the response and maps each item into a DiscoveredTarget
 func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
 	var items []interface{}
-
-	if l.spec.ResponseMapping.TargetsField != "" {
-		obj, ok := raw.(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf(
-				"invalid HTTP response: expected JSON object when itemsField '%s' is configured (e.g. {\"%s\": [...]})",
-				l.spec.ResponseMapping.TargetsField,
-				l.spec.ResponseMapping.TargetsField,
-			)
+	// If ResponseMapping is configured and TargetsField is provided we treat
+	// it as a CEL expression that evaluates against the whole response and
+	// must return an array of items.
+	if l.spec.ResponseMapping != nil && l.spec.ResponseMapping.TargetsField != "" {
+		prog, err := compileCEL(l.spec.ResponseMapping.TargetsField)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TargetsField CEL expression: %w", err)
 		}
-
-		results, ok := obj[l.spec.ResponseMapping.TargetsField]
-		if !ok {
-			return nil, fmt.Errorf(
-				"invalid HTTP response: itemsField '%s' not found. ensure the API response contains this field (e.g. {\"%s\": [...]})",
-				l.spec.ResponseMapping.TargetsField,
-				l.spec.ResponseMapping.TargetsField,
-			)
+		out, _, err := prog.Eval(map[string]interface{}{"self": raw})
+		if err != nil {
+			return nil, fmt.Errorf("evaluating TargetsField CEL expression failed: %w", err)
 		}
-
-		array, ok := results.([]interface{})
-		if !ok {
-			return nil, fmt.Errorf(
-				"invalid HTTP response: itemsField '%s' must be an array of objects (e.g. {\"%s\": [...]})",
-				l.spec.ResponseMapping.TargetsField,
-				l.spec.ResponseMapping.TargetsField,
-			)
+		if out == nil {
+			return nil, fmt.Errorf("TargetsField expression returned nil")
 		}
-
+		array, ok := out.Value().([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid HTTP response: targetsField expression must evaluate to an array of objects")
+		}
 		items = array
 	} else {
+		//If TargetsField is empty, the raw response is expected to be an array of items.
 		array, ok := raw.([]interface{})
 		if !ok {
-			return nil, fmt.Errorf("invalid HTTP response: expected a JSON array because itemsField is not set (e.g. [{...}, {...}])")
+			return nil, fmt.Errorf("invalid HTTP response: expected a JSON array when itemsField is not set")
 		}
 		items = array
 	}
 
 	// Map items to targets
 	var targets []core.DiscoveredTarget
-	for _, item := range items {
-		obj, ok := item.(map[string]interface{})
-		if !ok {
-			logger.Error(fmt.Errorf("invalid target format"),
-				"Failed to convert target to map",
-				"item", item,
-			)
-			continue
-		}
-
-		target, err := l.mapItem(obj)
-		if err != nil {
-			logger.Error(err,
-				"Failed to map target",
-				"item", obj,
-			)
-			continue
-		}
-
-		targets = append(targets, target)
+	targets, err := l.mapItemsToTargets(items, raw, logger)
+	if err != nil {
+		return nil, fmt.Errorf("mapping items to targets failed: %w", err)
 	}
 
 	return targets, nil

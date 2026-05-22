@@ -1,71 +1,266 @@
 package http
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 
 	"github.com/gnmic/operator/internal/controller/discovery/core"
+	"github.com/go-logr/logr"
+	"github.com/google/cel-go/cel"
 )
 
-// valueGetter defines the contract for extracting values from a response item
-type valueGetter interface {
-	GetName() (string, error)
-	GetIP() (string, error)
-	GetPort() int32
-	GetLabels() map[string]string
-	GetTargetProfile() string
+// mapItemsToTargets converts a list of raw JSON items into DiscoveredTargets using the configured mapping rules
+func (l *Loader) mapItemsToTargets(items []interface{}, full interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
+	// Compile CEL expressions once for efficiency
+	compiled, err := l.compileMapping()
+	if err != nil {
+		return nil, fmt.Errorf("compile mapping: %w", err)
+	}
+
+	// Map items to targets
+	targets := make([]core.DiscoveredTarget, 0, len(items))
+	for _, item := range items {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
+			logger.Error(fmt.Errorf("invalid target format"),
+				"failed to convert target to map",
+				"item", item,
+			)
+			continue
+		}
+		target, err := l.mapItemToTarget(obj, full, compiled)
+		if err != nil {
+			logger.Error(err,
+				"failed to map target",
+				"item", obj,
+			)
+			continue
+		}
+
+		targets = append(targets, target)
+	}
+
+	return targets, nil
 }
 
-// getGetter selects the extraction strategy based on the spec
-// If no ResponseMapping is defined -> use direct mapping
-func (l *Loader) getGetter(item map[string]interface{}) valueGetter {
-	if l.spec.ResponseMapping == nil {
-		return &directGetter{
-			item: item,
+type compiledMapping struct {
+	name    cel.Program
+	address cel.Program
+	port    cel.Program
+
+	targetProfile cel.Program
+	labels        map[string]cel.Program
+}
+
+func (l *Loader) compileMapping() (*compiledMapping, error) {
+	rm := l.spec.ResponseMapping
+	cm := &compiledMapping{
+		labels: make(map[string]cel.Program),
+	}
+	if rm == nil {
+		return cm, nil
+	}
+
+	var err error
+	if rm.Name != "" {
+		cm.name, err = compileCEL(rm.Name)
+		if err != nil {
+			return nil, fmt.Errorf("name: %w", err)
 		}
 	}
-
-	return &jsonPathGetter{
-		item: item,
-		spec: l.spec.ResponseMapping,
+	if rm.Address != "" {
+		cm.address, err = compileCEL(rm.Address)
+		if err != nil {
+			return nil, fmt.Errorf("address: %w", err)
+		}
 	}
+	if rm.Port != "" {
+		cm.port, err = compileCEL(rm.Port)
+		if err != nil {
+			return nil, fmt.Errorf("port: %w", err)
+		}
+	}
+	if rm.TargetProfile != "" {
+		cm.targetProfile, err = compileCEL(rm.TargetProfile)
+		if err != nil {
+			return nil, fmt.Errorf("targetProfile: %w", err)
+		}
+	}
+	for key, expr := range rm.Labels {
+		p, err := compileCEL(expr)
+		if err != nil {
+			return nil, fmt.Errorf("label %s: %w", key, err)
+		}
+		cm.labels[key] = p
+	}
+
+	return cm, nil
 }
 
-// mapItem is the mapping entrypoint used by the loader
-// It uses the selected valueGetter and produces a DiscoveredTarget
-func (l *Loader) mapItem(item map[string]interface{}) (core.DiscoveredTarget, error) {
-	getter := l.getGetter(item)
-
-	name, err := getter.GetName()
+// mapItemToTarget converts a raw JSON object into a DiscoveredTarget
+func (l *Loader) mapItemToTarget(item map[string]interface{}, full interface{}, cm *compiledMapping) (core.DiscoveredTarget, error) {
+	name, err := l.getName(item, full, cm)
 	if err != nil {
 		return core.DiscoveredTarget{}, err
 	}
 
-	ip, err := getter.GetIP()
+	address, err := l.getAddress(item, full, cm)
 	if err != nil {
 		return core.DiscoveredTarget{}, err
 	}
-
-	port := getter.GetPort()
-	labels := getter.GetLabels()
-	targetProfile := getter.GetTargetProfile()
 
 	return core.DiscoveredTarget{
 		Name:          name,
-		Address:       ip,
-		Port:          port,
-		Labels:        labels,
-		TargetProfile: targetProfile,
+		Address:       address,
+		Port:          l.getPort(item, full, cm),
+		Labels:        l.getLabels(item, full, cm),
+		TargetProfile: l.getTargetProfile(item, full, cm),
 	}, nil
 }
 
-// extractPort attempts to normalize different JSON types into int32
-//
-// Supports:
-// - float64 (default JSON number type)
-// - string ("1234")
-//
-// Returns 0 if conversion fails (treated as "no port specified").
+// getName extracts the target name from the item using the compiled CEL expression if provided,
+// otherwise it falls back to the default "name" field
+func (l *Loader) getName(item map[string]interface{}, full interface{}, cm *compiledMapping) (string, error) {
+	if cm.name != nil {
+		val, err := evalCEL(cm.name, item, full)
+		if err != nil {
+			return "", err
+		}
+
+		str, ok := val.(string)
+		if !ok || str == "" {
+			return "", fmt.Errorf("name must be non-empty string")
+		}
+		return str, nil
+	}
+
+	val, ok := item["name"].(string)
+	if !ok || val == "" {
+		return "", fmt.Errorf("name must be non-empty string")
+	}
+	return val, nil
+}
+
+// getAddress extracts the target address from the item using the compiled CEL expression if provided,
+// otherwise it falls back to the default "address" field
+func (l *Loader) getAddress(item map[string]interface{}, full interface{}, cm *compiledMapping) (string, error) {
+	if cm.address != nil {
+		val, err := evalCEL(cm.address, item, full)
+		if err != nil {
+			return "", err
+		}
+
+		str, ok := val.(string)
+		if !ok || str == "" {
+			return "", fmt.Errorf("address must be non-empty string")
+		}
+		return str, nil
+	}
+
+	val, ok := item["address"].(string)
+	if !ok || val == "" {
+		return "", fmt.Errorf("address must be non-empty string")
+	}
+	return val, nil
+}
+
+// getPort extracts the target port from the item using the compiled CEL expression if provided,
+// otherwise it falls back to the default "port" field
+func (l *Loader) getPort(item map[string]interface{}, full interface{}, cm *compiledMapping) int32 {
+	if cm.port != nil {
+		val, err := evalCEL(cm.port, item, full)
+		if err == nil {
+			return extractPort(val)
+		}
+		return 0
+	}
+
+	return extractPort(item["port"])
+}
+
+// getLabels extracts the target labels from the item using the compiled CEL expressions if provided,
+// otherwise it falls back to the default "labels" field
+func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *compiledMapping) map[string]string {
+	labels := make(map[string]string)
+
+	if len(cm.labels) > 0 {
+		for label, prog := range cm.labels {
+			val, err := evalCEL(prog, item, full)
+			if err == nil {
+				labels[label] = fmt.Sprintf("%v", val)
+			}
+		}
+		return labels
+	}
+
+	if raw, ok := item["labels"].(map[string]interface{}); ok {
+		for key, val := range raw {
+			labels[key] = fmt.Sprintf("%v", val)
+		}
+	}
+	return labels
+}
+
+// getTargetProfile extracts the target profile from the item using the compiled CEL expression if provided,
+// otherwise it falls back to the default "targetProfile" field
+func (l *Loader) getTargetProfile(item map[string]interface{}, full interface{}, cm *compiledMapping) string {
+	if cm.targetProfile != nil {
+		val, err := evalCEL(cm.targetProfile, item, full)
+		if err == nil {
+			if str, ok := val.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
+
+	if val, ok := item["targetProfile"].(string); ok {
+		return val
+	}
+	return ""
+}
+
+var celEnv = mustNewEnv()
+
+// mustNewEnv creates a CEL environment with the necessary variable declarations for evaluating expressions
+func mustNewEnv() *cel.Env {
+	env, err := cel.NewEnv(
+		cel.Variable("self", cel.DynType),
+		cel.Variable("item", cel.DynType),
+	)
+	if err != nil {
+		panic(err)
+	}
+	return env
+}
+
+// compileCEL compiles a CEL expression into a program that can be evaluated against items
+func compileCEL(expr string) (cel.Program, error) {
+	ast, issues := celEnv.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, issues.Err()
+	}
+	return celEnv.Program(ast, cel.EvalOptions(cel.OptOptimize))
+}
+
+// evalCEL evaluates a compiled CEL program against an item
+func evalCEL(p cel.Program, item map[string]interface{}, full interface{}) (interface{}, error) {
+	out, _, err := p.Eval(map[string]interface{}{
+		"self": full,
+		"item": item,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		return nil, fmt.Errorf("CEL returned nil")
+	}
+	return out.Value(), nil
+}
+
+// extractPort converts a CEL evaluation result into an int32 port number,
+// handling both numeric and string representations
 func extractPort(val interface{}) int32 {
 	switch v := val.(type) {
 	case float64:
@@ -73,12 +268,14 @@ func extractPort(val interface{}) int32 {
 			return 0
 		}
 		return int32(v)
+
 	case string:
 		p, err := strconv.ParseInt(v, 10, 32)
 		if err != nil {
 			return 0
 		}
 		return int32(p)
+
 	default:
 		return 0
 	}

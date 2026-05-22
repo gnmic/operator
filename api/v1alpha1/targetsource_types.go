@@ -146,39 +146,125 @@ type PaginationSpec struct {
 	NextField string `json:"nextField,omitempty"`
 }
 
-// CEL expressions to extract target fields from the response
-// and map them to the corresponding Target fields.
+// ResponseMappingSpec controls how targets are extracted from an HTTP JSON response.
+//
+// This allows you to map fields from a JSON API into targets using either:
+//   - simple direct field access (e.g. item["name"])
+//   - or CEL expressions for more advanced logic
+//
+// General behavior:
+//
+//  1. Selecting targets:
+//     - `targetsField` is a CEL expression that selects the list of targets
+//     - It runs once on the full response (`self`) and MUST return a list
+//     - If not set, the response itself must be a JSON array
+//
+//  2. Extracting fields:
+//     - Each field (name, address, port, labels, etc.) is handled independently
+//     - If a CEL expression is provided → it is evaluated
+//     - If not provided → the value is read directly from the target object
+//
+//  3. Available variables in CEL:
+//     - item -> the current target object
+//     - self -> the full HTTP response JSON
+//
+// Example:
+//
+//	Response:
+//	{
+//	  "results": [
+//	    { "name": "device1", "ip": "10.0.0.1", "env": "prod" }
+//	  ],
+//	  "meta": { "region": "eu-west" }
+//	}
+//
+//	Mapping:
+//	targetsField: "self.results"
+//
+//	name: ""            # direct → item["name"]
+//	address: "item.ip"  # CEL
+//
+//	labels:
+//	  env:    "item.env"
+//	  region: "self.meta.region"
 type ResponseMappingSpec struct {
-	// Field name in the JSON response that contains the list of items (targets).
-	// If not specified, the entire response is expected to be a list of items.
-	// All subsequent fields are specified relative to this field
-	// Example: "results" if the response is of the form {"results": [ ... list of items ... ]}
+	// CEL expression that selects the list of target objects from the response.
+	//
+	// This is evaluated once using:
+	//   self -> full JSON response
+	//
+	// Example:
+	//   targetsField: "self.results"
+	//
+	// If not set, the response itself must be a JSON array with the targets.
+	//
 	// +kubebuilder:validation:Optional
 	TargetsField string `json:"targetsField,omitempty"`
 
-	// CEL expression to extract the target name from the response
-	// If TargetsField is specified, this should be relative to TargetsField
+	// CEL expression for the target name.
+	//
+	// If not set, defaults to:
+	//   item["name"]
+	//
+	// Example:
+	//   "item.hostname"
+	//
 	// +kubebuilder:validation:Optional
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 
-	// CEL expression to extract the target Address from the response
-	// If TargetsField is specified, this should be relative to TargetsField
+	// CEL expression for the target address.
+	//
+	// If not set, defaults to:
+	//   item["address"]
+	//
+	// Example:
+	//   "item.ip"
+	//
 	// +kubebuilder:validation:Optional
-	Address string `json:"address"`
+	Address string `json:"address,omitempty"`
 
-	// CEL expression to extract the target port from the response
-	// If TargetsField is specified, this should be relative to TargetsField
+	// CEL expression for the target port.
+	//
+	// If not set, defaults to:
+	//   item["port"]
+	//
+	// Example:
+	//   "item.port"
+	//
 	// +kubebuilder:validation:Optional
 	Port string `json:"port,omitempty"`
 
-	// CEL expression to extract the target labels from the response
-	// The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
-	// with values from the response taking precedence in case of conflicts.
+	// Defines labels to attach to the target.
+	//
+	// Each entry defines:
+	//   key   -> label name
+	//   value -> CEL expression
+	//
+	// Expressions can use both:
+	//   item -> current target
+	//   self -> full response
+	//
+	// Example:
+	//   labels:
+	//     env:    "item.environment"
+	//     region: "self.meta.region"
+	//
+	// If not set, defaults to:
+	//   item["labels"]
+	//
+	// Dynamic labels override static labels defined in the TargetSource.
+	//
 	// +kubebuilder:validation:Optional
 	Labels map[string]string `json:"labels,omitempty"`
 
-	// CEL expression to extract the target profile from the response
-	// If TargetsField is specified, this should be relative to TargetsField
+	// CEL expression for the target profile.
+	//
+	// If not set, defaults to:
+	//   item["targetProfile"]
+	//
+	// Example:
+	//   "item.type == 'edge' ? 'edge-profile' : 'default'"
+	//
 	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile,omitempty"`
 }
