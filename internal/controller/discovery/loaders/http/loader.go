@@ -59,11 +59,11 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	logger.Info("HTTP loader started")
 
-	client, err := l.buildHTTPClient()
+	client, err := l.buildHTTPClient(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to build HTTP client: %w", err)
 	}
-	interval := l.spec.PollInterval.Duration
+	interval := l.spec.Interval.Duration
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -90,7 +90,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			logger.Info(
 				"Discovered target",
 				"name", t.Name,
-				"ip", t.IP,
+				"address", t.Address,
 				"port", t.Port,
 				"labels", t.Labels,
 				"profile", t.TargetProfile,
@@ -133,18 +133,28 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 }
 
 // buildHTTPClient constructs an HTTP client with optional configuration
-func (l *Loader) buildHTTPClient() (*http.Client, error) {
+func (l *Loader) buildHTTPClient(ctx context.Context) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: l.spec.TLS != nil && l.spec.TLS.InsecureSkipVerify,
 	}
 
-	// If a CA bundle is provided, add it to the TLS config
-	if l.spec.TLS != nil && len(l.spec.TLS.CABundle) > 0 {
-		certPool := x509.NewCertPool()
-		if ok := certPool.AppendCertsFromPEM([]byte(l.spec.TLS.CABundle)); !ok {
-			return nil, fmt.Errorf("Failed to parse CA bundle for TargetSource %s/%s\n", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
+	// If a CA bundle is provided, add it to the TLS config.
+	if l.spec.TLS != nil {
+		var caBundle string
+		if l.spec.TLS.CABundleRef != nil {
+			var err error
+			caBundle, err = l.loaderCfg.ResourceFetcher.GetConfigMapKey(ctx, l.loaderCfg.TargetsourceNN.Namespace, l.spec.TLS.CABundleRef)
+			if err != nil {
+				return nil, fmt.Errorf("failed to fetch CA bundle from config map ref: %w", err)
+			}
 		}
-		tlsConfig.RootCAs = certPool
+		if len(caBundle) > 0 {
+			certPool := x509.NewCertPool()
+			if ok := certPool.AppendCertsFromPEM([]byte(caBundle)); !ok {
+				return nil, fmt.Errorf("failed to parse CA bundle for TargetSource %s/%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
+			}
+			tlsConfig.RootCAs = certPool
+		}
 	}
 
 	// Build the HTTP client with the specified timeout and TLS config
@@ -205,7 +215,9 @@ func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string)
 		return nil, fmt.Errorf("creating HTTP request failed: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-	l.applyAuthorization(req)
+	if err := l.applyAuthorization(req); err != nil {
+		return nil, fmt.Errorf("applying authorization to HTTP request failed: %w", err)
+	}
 
 	// Execute HTTP request
 	resp, err := client.Do(req)
@@ -231,22 +243,22 @@ func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string)
 func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
 	var items []interface{}
 
-	if l.spec.TargetsField != "" {
+	if l.spec.ResponseMapping.TargetsField != "" {
 		obj, ok := raw.(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf(
 				"invalid HTTP response: expected JSON object when itemsField '%s' is configured (e.g. {\"%s\": [...]})",
-				l.spec.TargetsField,
-				l.spec.TargetsField,
+				l.spec.ResponseMapping.TargetsField,
+				l.spec.ResponseMapping.TargetsField,
 			)
 		}
 
-		results, ok := obj[l.spec.TargetsField]
+		results, ok := obj[l.spec.ResponseMapping.TargetsField]
 		if !ok {
 			return nil, fmt.Errorf(
 				"invalid HTTP response: itemsField '%s' not found. ensure the API response contains this field (e.g. {\"%s\": [...]})",
-				l.spec.TargetsField,
-				l.spec.TargetsField,
+				l.spec.ResponseMapping.TargetsField,
+				l.spec.ResponseMapping.TargetsField,
 			)
 		}
 
@@ -254,8 +266,8 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger)
 		if !ok {
 			return nil, fmt.Errorf(
 				"invalid HTTP response: itemsField '%s' must be an array of objects (e.g. {\"%s\": [...]})",
-				l.spec.TargetsField,
-				l.spec.TargetsField,
+				l.spec.ResponseMapping.TargetsField,
+				l.spec.ResponseMapping.TargetsField,
 			)
 		}
 

@@ -19,9 +19,10 @@ type DiscoveryRegistryValue struct {
 }
 
 type CommonLoaderConfig struct {
-	TargetsourceNN types.NamespacedName
-	ChunkSize      int
-	AcceptPush     bool
+	TargetsourceNN  types.NamespacedName
+	ChunkSize       int
+	AcceptPush      bool
+	ResourceFetcher ResourceFetcher
 }
 
 // EventAction represents the type of a discovery event

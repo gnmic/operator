@@ -17,7 +17,8 @@ func NewLoader(ctx context.Context, c client.Client, cfg *core.CommonLoaderConfi
 	switch {
 	case spec.Provider.HTTP != nil:
 		httpSpec := *spec.Provider.HTTP
-		cfg.AcceptPush = httpSpec.AcceptPush
+		cfg.AcceptPush = httpSpec.Push.Enabled
+		cfg.ResourceFetcher = newK8sResourceFetcher(c)
 		return http.New(*cfg, httpSpec), nil
 	default:
 		return nil, fmt.Errorf("unknown targetsource provider, check TargetSource CRD for %s", cfg.TargetsourceNN)
