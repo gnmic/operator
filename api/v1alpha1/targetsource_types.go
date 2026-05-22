@@ -65,10 +65,10 @@ type HTTPConfig struct {
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
-	// TODO: increase default value
-	// +kubebuilder:default="30s"
+	// TODO: document about default value
+	// +kubebuilder:default="6h"
 	// +kubebuilder:validation:Optional
-	PollInterval *metav1.Duration `json:"interval,omitempty"`
+	Interval *metav1.Duration `json:"interval,omitempty"`
 
 	// Optional timeout for HTTP requests to the endpoint
 	// +kubebuilder:default="10s"
@@ -101,7 +101,8 @@ type ClientTLSConfig struct {
 	// Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
 	// verifying the certificate chain presented by the Provider when using HTTPS.
 	// Mutually exclusive with CABundle.
-	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleSecretRef,omitempty"`
+	// +kubebuilder:validation:Optional
+	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleRef,omitempty"`
 }
 
 // AuthorizationSpec defines the configuration for authentication
