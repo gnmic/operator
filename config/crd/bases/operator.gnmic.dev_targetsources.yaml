@@ -138,38 +138,79 @@ spec:
                         properties:
                           address:
                             description: |-
-                              CEL expression to extract the target Address from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target address.
+
+                              If not set, defaults to:
+                                item["address"]
+
+                              Example:
+                                "item.ip"
                             type: string
                           labels:
                             additionalProperties:
                               type: string
                             description: |-
-                              CEL expression to extract the target labels from the response
-                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
-                              with values from the response taking precedence in case of conflicts.
+                              Defines labels to attach to the target.
+
+                              Each entry defines:
+                                key   -> label name
+                                value -> CEL expression
+
+                              Expressions can use both:
+                                item -> current target
+                                self -> full response
+
+                              Example:
+                                labels:
+                                  env:    "item.environment"
+                                  region: "self.meta.region"
+
+                              If not set, defaults to:
+                                item["labels"]
+
+                              Dynamic labels override static labels defined in the TargetSource.
                             type: object
                           name:
                             description: |-
-                              CEL expression to extract the target name from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target name.
+
+                              If not set, defaults to:
+                                item["name"]
+
+                              Example:
+                                "item.hostname"
                             type: string
                           port:
                             description: |-
-                              CEL expression to extract the target port from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target port.
+
+                              If not set, defaults to:
+                                item["port"]
+
+                              Example:
+                                "item.port"
                             type: string
                           targetProfile:
                             description: |-
-                              CEL expression to extract the target profile from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target profile.
+
+                              If not set, defaults to:
+                                item["targetProfile"]
+
+                              Example:
+                                "item.type == 'edge' ? 'edge-profile' : 'default'"
                             type: string
                           targetsField:
                             description: |-
-                              Field name in the JSON response that contains the list of items (targets).
-                              If not specified, the entire response is expected to be a list of items.
-                              All subsequent fields are specified relative to this field
-                              Example: "results" if the response is of the form {"results": [ ... list of items ... ]}
+                              CEL expression that selects the list of target objects from the response.
+
+                              This is evaluated once using:
+                                self -> full JSON response
+
+                              Example:
+                                targetsField: "self.results"
+
+                              If not set, the response itself must be a JSON array with the targets.
                             type: string
                         type: object
                       pagination:
