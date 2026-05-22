@@ -53,7 +53,7 @@ type ProviderSpec struct {
 }
 
 // HTTPConfig defines the configuration for the HTTP provider
-// +kubebuilder:validation:AtLeastOneOf:=url;webhook
+// +kubebuilder:validation:AtLeastOneOf:=url;push
 type HTTPConfig struct {
 	// URL of the HTTP endpoint to pull targets from
 	// If defined, the loader will periodically poll this endpoint for targets
@@ -188,22 +188,22 @@ type PushSpec struct {
 	Enabled bool `json:"enabled"`
 
 	// +kubebuilder:validation:Optional
-	Auth *WebhookAuthSpec `json:"auth,omitempty"`
+	Auth *PushAuthSpec `json:"auth,omitempty"`
 }
 
 // +kubebuilder:validation:ExactlyOneOf:=bearer;signature
-type WebhookAuthSpec struct {
-	Bearer    *WebhookBearerAuthSpec    `json:"bearer,omitempty"`
-	Signature *WebhookSignatureAuthSpec `json:"signature,omitempty"`
+type PushAuthSpec struct {
+	Bearer    *PushBearerAuthSpec    `json:"bearer,omitempty"`
+	Signature *PushSignatureAuthSpec `json:"signature,omitempty"`
 }
 
 // +kubebuilder:validation:Required
-type WebhookBearerAuthSpec struct {
+type PushBearerAuthSpec struct {
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
 // +kubebuilder:validation:Required
-type WebhookSignatureAuthSpec struct {
+type PushSignatureAuthSpec struct {
 	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
 
 	// Header containing the signature
