@@ -182,7 +182,7 @@ type ResponseMappingSpec struct {
 	TargetProfile string `json:"targetProfile,omitempty"`
 }
 
-// PushSpec defines the settings for event-based update mechanism (i.e. push-based)
+// PushSpec defines the settings for event-based update mechanism (i.e. webhooks sent from the server)
 type PushSpec struct {
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
