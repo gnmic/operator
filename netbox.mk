@@ -23,7 +23,7 @@ ifndef NETBOX_CLUSTER_NAME
 	$(error NETBOX_CLUSTER_NAME is required. Usage: make netbox-deploy-cluster NETBOX_CLUSTER_NAME=cluster-name)
 endif
 	kind get clusters | grep -q "$(NETBOX_CLUSTER_NAME)" || kind create cluster --name $(NETBOX_CLUSTER_NAME)
-	kubectl config use-context kind-$(CLUSTER_NAME)
+	kubectl config use-context kind-$(NETBOX_CLUSTER_NAME)
 
 .PHONY: netbox-undeploy
 netbox-undeploy: ## Undeploy the netbox cluster

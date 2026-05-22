@@ -33,7 +33,8 @@ notes/
 docs/public
 docs/resources/_gen/
 docs/.hugo_build.lock
-test/integration/clab-*
+test/integration/**/clab-*
+
 
 # Only for development and testing purposes
 # To be removed after development of targetsource

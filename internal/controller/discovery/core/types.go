@@ -38,7 +38,7 @@ const (
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
 	Name          string
-	IP            string
+	Address       string
 	Port          int32
 	Labels        map[string]string
 	TargetProfile string
@@ -47,6 +47,17 @@ type DiscoveredTarget struct {
 type DiscoveryEvent struct {
 	Target DiscoveredTarget
 	Event  EventAction
+}
+
+func (e EventAction) String() string {
+	switch e {
+	case EventDelete:
+		return "DELETE"
+	case EventApply:
+		return "APPLY"
+	default:
+		return "UNKNOWN"
+	}
 }
 
 type DiscoverySnapshot struct {

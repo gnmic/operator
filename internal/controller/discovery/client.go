@@ -5,7 +5,13 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
@@ -21,6 +27,9 @@ func fetchExistingTargets(
 	err := c.List(
 		ctx,
 		&targetList,
+	err := c.List(
+		ctx,
+		&targetList,
 		client.InNamespace(ts.Namespace),
 		client.MatchingLabels{
 			LabelTargetSourceName: ts.Name,
@@ -31,6 +40,62 @@ func fetchExistingTargets(
 	}
 
 	return targetList.Items, nil
+}
+
+func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desired *gnmicv1alpha1.Target, ts *gnmicv1alpha1.TargetSource) error {
+	existing := &gnmicv1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      desired.Name,
+			Namespace: desired.Namespace,
+		},
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, c, existing, func() error {
+		existing.Spec = desired.Spec
+		existing.Labels = desired.Labels
+
+		return controllerutil.SetControllerReference(ts, existing, s)
+	})
+
+	return err
+}
+
+func deleteTarget(ctx context.Context, c client.Client, name string, namespace string) error {
+	existing := &gnmicv1alpha1.Target{}
+
+	err := c.Get(ctx, types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}, existing)
+	if apierrors.IsNotFound(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	err = c.Delete(ctx, existing)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+
+	return err
+}
+
+// updateTargetSourceStatus updates the status of the TargetSource Object ts. The only fields updated are targetCount and LastSync, which takes the current timestamp.
+func updateTargetSourceStatus(ctx context.Context, c client.Client, ts *gnmicv1alpha1.TargetSource, targetCount int32) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &gnmicv1alpha1.TargetSource{}
+		if err := c.Get(ctx, client.ObjectKeyFromObject(ts), latest); err != nil {
+			return err
+		}
+
+		latest.Status.TargetsCount = targetCount
+		latest.Status.LastSync = metav1.Now()
+
+		return c.Status().Update(ctx, latest)
+	})
+
+	return err
 }
 
 // Helper: GetSecretValues returns values from a secret

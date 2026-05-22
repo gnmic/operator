@@ -53,28 +53,22 @@ type ProviderSpec struct {
 }
 
 // HTTPConfig defines the configuration for the HTTP provider
-// +kubebuilder:validation:AtLeastOneOf=url;acceptPush
+// +kubebuilder:validation:AtLeastOneOf:=url;webhook
 type HTTPConfig struct {
 	// URL of the HTTP endpoint to pull targets from
 	// If defined, the loader will periodically poll this endpoint for targets
 	// +kubebuilder:validation:Optional
 	URL string `json:"url,omitempty"`
 
-	// If true, the loader will accept pushed target updates to the controller endpoint
-	// The endpoint will be /{namespace}/{targetsource}/<todo>
-	// +kubebuilder:default=false
-	// +kubebuilder:validation:Optional
-	AcceptPush bool `json:"acceptPush,omitempty"`
-
 	// Optional authorization configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
-	// TODO: add to docs and increse to 6h
+	// TODO: increase default value
 	// +kubebuilder:default="30s"
 	// +kubebuilder:validation:Optional
-	Interval *metav1.Duration `json:"interval,omitempty"`
+	PollInterval *metav1.Duration `json:"interval,omitempty"`
 
 	// Optional timeout for HTTP requests to the endpoint
 	// +kubebuilder:default="10s"
@@ -93,6 +87,10 @@ type HTTPConfig struct {
 	// Optional mapping configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
+
+	// Optional configuration to enable push
+	// +kubebuilder:validation:Optional
+	Push *PushSpec `json:"push,omitempty"`
 }
 
 type ClientTLSConfig struct {
@@ -119,9 +117,8 @@ type AuthorizationSpec struct {
 type BasicAuthSpec struct {
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
-	// Mutually exclusive with Username and Password.
 	// +kubebuilder:validation:Required
-	CredentialsSecretRef corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
+	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication
@@ -133,7 +130,7 @@ type TokenAuthSpec struct {
 	// authentication when connecting to the Provider.
 	// Mutually exclusive with Token.
 	// +kubebuilder:validation:Required
-	TokenSecretRef corev1.SecretKeySelector `json:"tokenSecretRef"`
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
 // PaginationSpec defines the configuration for paginating through responses from providers
@@ -185,11 +182,45 @@ type ResponseMappingSpec struct {
 	TargetProfile string `json:"targetProfile,omitempty"`
 }
 
+// PushSpec defines the settings for event-based update mechanism (i.e. push-based)
+type PushSpec struct {
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// +kubebuilder:validation:Optional
+	Auth *WebhookAuthSpec `json:"auth,omitempty"`
+}
+
+// +kubebuilder:validation:ExactlyOneOf:=bearer;signature
+type WebhookAuthSpec struct {
+	Bearer    *WebhookBearerAuthSpec    `json:"bearer,omitempty"`
+	Signature *WebhookSignatureAuthSpec `json:"signature,omitempty"`
+}
+
+// +kubebuilder:validation:Required
+type WebhookBearerAuthSpec struct {
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+}
+
+// +kubebuilder:validation:Required
+type WebhookSignatureAuthSpec struct {
+	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
+
+	// Header containing the signature
+	// +kubebuilder:validation:MinLength=1
+	Header string `json:"header"`
+
+	// +kubebuilder:default="sha512"
+	// +kubebuilder:validation:Enum=sha1;sha256;sha512
+	Algorithm string `json:"algorithm"`
+}
+
 // TargetSourceStatus defines the observed state of TargetSource
 type TargetSourceStatus struct {
-	Status       string      `json:"status"`
-	TargetsCount int32       `json:"targetsCount"`
-	LastSync     metav1.Time `json:"lastSync"`
+	Status             string      `json:"status,omitempty"`
+	ObservedGeneration int64       `json:"observedGeneration"`
+	TargetsCount       int32       `json:"targetsCount,omitempty"`
+	LastSync           metav1.Time `json:"lastSync,omitempty"`
 }
 
 //+kubebuilder:object:root=true
