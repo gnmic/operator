@@ -80,6 +80,8 @@ spec:
                                 - key
                                 type: object
                                 x-kubernetes-map-type: atomic
+                            required:
+                            - credentialsSecretRef
                             type: object
                           token:
                             description: Token-based authentication configuration
@@ -92,6 +94,7 @@ spec:
                                 description: |-
                                   Reference to a Secret containing a key with the token value to use for
                                   authentication when connecting to the Provider.
+                                  Mutually exclusive with Token.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -116,6 +119,7 @@ spec:
                                 x-kubernetes-map-type: atomic
                             required:
                             - scheme
+                            - tokenSecretRef
                             type: object
                         type: object
                         x-kubernetes-validations:
@@ -133,37 +137,40 @@ spec:
                           from the HTTP endpoint
                         properties:
                           address:
-                            description: JSONPath expression to extract the target
-                              address from the response list
+                            description: |-
+                              CEL expression to extract the target Address from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           labels:
                             additionalProperties:
                               type: string
-                            description: JSONPath expression to extract the target
-                              labels from the response list
+                            description: |-
+                              CEL expression to extract the target labels from the response
+                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+                              with values from the response taking precedence in case of conflicts.
                             type: object
                           name:
-                            description: JSONPath expression to extract the target
-                              name from the response list
+                            description: |-
+                              CEL expression to extract the target name from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           port:
-                            description: JSONPath expression to extract the target
-                              port from the response list
+                            description: |-
+                              CEL expression to extract the target port from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           targetProfile:
-                            description: JSONPath expression to extract the target
-                              profile from the response list
+                            description: |-
+                              CEL expression to extract the target profile from the response
+                              If TargetsField is specified, this should be relative to TargetsField
                             type: string
                           targetsField:
                             description: |-
                               Field name in the JSON response that contains the list of items (targets).
                               If not specified, the entire response is expected to be a list of items.
                               All subsequent fields are specified relative to this field
-                              Example: "results"
+                              Example: "results" if the response is of the form {"results": [ ... list of items ... ]}
                             type: string
-                        required:
-                        - address
-                        - name
                         type: object
                       pagination:
                         description: Optional pagination configuration for parsing
@@ -180,65 +187,8 @@ spec:
                               Example: "next" or "nextToken"
                             type: string
                         type: object
-                      timeout:
-                        default: 10s
-                        description: Optional timeout for HTTP requests to the endpoint
-                        type: string
-                      tls:
-                        description: |-
-                          Optional TLS configuration for connecting to the HTTP endpoint
-                          If it is an HTTP endpoint, this will be ignored
-                        properties:
-                          caBundle:
-                            description: |-
-                              Base64-encoded bundle of PEM CAs which will be used to validate the certificate
-                              chain presented by the Provider. Only used if using HTTPS to connect to Provider and
-                              ignored for HTTP connections.
-                              Mutually exclusive with CABundleSecretRef.
-                            format: byte
-                            type: string
-                          caBundleSecretRef:
-                            description: |-
-                              Reference to a Secret containing a bundle of PEM-encoded CAs to use when
-                              verifying the certificate chain presented by the Provider when using HTTPS.
-                              Mutually exclusive with CABundle.
-                            properties:
-                              key:
-                                description: The key of the secret to select from.  Must
-                                  be a valid secret key.
-                                type: string
-                              name:
-                                default: ""
-                                description: |-
-                                  Name of the referent.
-                                  This field is effectively required, but due to backwards compatibility is
-                                  allowed to be empty. Instances of this type with an empty value here are
-                                  almost certainly wrong.
-                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                type: string
-                              optional:
-                                description: Specify whether the Secret or its key
-                                  must be defined
-                                type: boolean
-                            required:
-                            - key
-                            type: object
-                            x-kubernetes-map-type: atomic
-                          insecureSkipVerify:
-                            default: false
-                            description: Skip TLS verification of the Provider's certificate.
-                            type: boolean
-                        type: object
-                        x-kubernetes-validations:
-                        - message: caBundle and caBundleSecretRef are mutually exclusive
-                          rule: '!(has(self.caBundle) && has(self.caBundleSecretRef))'
-                      url:
-                        description: |-
-                          URL of the HTTP endpoint to pull targets from
-                          If defined, the loader will periodically poll this endpoint for targets
-                        type: string
-                      webhook:
-                        description: Optional configuration to enable webhooks
+                      push:
+                        description: Optional configuration to enable push
                         properties:
                           auth:
                             properties:
@@ -325,6 +275,51 @@ spec:
                         required:
                         - enabled
                         type: object
+                      timeout:
+                        default: 10s
+                        description: Optional timeout for HTTP requests to the endpoint
+                        type: string
+                      tls:
+                        description: |-
+                          Optional TLS configuration for connecting to the HTTP endpoint
+                          If it is an HTTP endpoint, this will be ignored
+                        properties:
+                          caBundleSecretRef:
+                            description: |-
+                              Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
+                              verifying the certificate chain presented by the Provider when using HTTPS.
+                              Mutually exclusive with CABundle.
+                            properties:
+                              key:
+                                description: The key to select.
+                                type: string
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the ConfigMap or its
+                                  key must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          insecureSkipVerify:
+                            default: false
+                            description: Skip TLS verification of the Provider's certificate.
+                            type: boolean
+                        type: object
+                      url:
+                        description: |-
+                          URL of the HTTP endpoint to pull targets from
+                          If defined, the loader will periodically poll this endpoint for targets
+                        type: string
                     type: object
                     x-kubernetes-validations:
                     - message: at least one of the fields in [url webhook] must be

@@ -88,28 +88,20 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
 
-	// Optional configuration to enable webhooks
+	// Optional configuration to enable push
 	// +kubebuilder:validation:Optional
-	Webhook *WebhookSpec `json:"webhook,omitempty"`
+	Push *PushSpec `json:"push,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="!(has(self.caBundle) && has(self.caBundleSecretRef))",message="caBundle and caBundleSecretRef are mutually exclusive"
 type ClientTLSConfig struct {
 	// Skip TLS verification of the Provider's certificate.
 	// +kubebuilder:default:=false
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 
-	// Base64-encoded bundle of PEM CAs which will be used to validate the certificate
-	// chain presented by the Provider. Only used if using HTTPS to connect to Provider and
-	// ignored for HTTP connections.
-	// Mutually exclusive with CABundleSecretRef.
-	// +optional
-	CABundle []byte `json:"caBundle,omitempty"`
-
-	// Reference to a Secret containing a bundle of PEM-encoded CAs to use when
+	// Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
 	// verifying the certificate chain presented by the Provider when using HTTPS.
 	// Mutually exclusive with CABundle.
-	CABundleSecretRef *corev1.SecretKeySelector `json:"caBundleSecretRef,omitempty"`
+	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleSecretRef,omitempty"`
 }
 
 // AuthorizationSpec defines the configuration for authentication
@@ -119,15 +111,14 @@ type AuthorizationSpec struct {
 	Basic *BasicAuthSpec `json:"basic,omitempty"`
 	// Token-based authentication configuration
 	Token *TokenAuthSpec `json:"token,omitempty"`
-	// JWT   *JWTAuthSpec   `json:"jwt,omitempty"`
-	// MTLS
 }
 
 // BasicAuthSpec defines the configuration for basic authentication
 type BasicAuthSpec struct {
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
-	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
+	// +kubebuilder:validation:Required
+	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication
@@ -137,23 +128,10 @@ type TokenAuthSpec struct {
 	Scheme string `json:"scheme"`
 	// Reference to a Secret containing a key with the token value to use for
 	// authentication when connecting to the Provider.
+	// Mutually exclusive with Token.
+	// +kubebuilder:validation:Required
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
-
-// disabled: +kubebuilder:validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && ((has(self.key) || has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
-// disabled: +kubebuilder:validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != \"\"",message="algorithm must be specified when generating a JWT"
-// type JWTAuthSpec struct {
-// 	// Static pre-generated JWT
-// 	Token          string                    `json:"token,omitempty"`
-// 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
-// 	// Optional: generate JWT dynamically
-// 	Claims              map[string]string         `json:"claims,omitempty"`
-// 	Key                 string                    `json:"key,omitempty"`
-// 	SigningKeySecretRef *corev1.SecretKeySelector `json:"signingKeySecretRef,omitempty"`
-// 	// HS256, RS256, ES256, etc.
-// 	Algorithm string           `json:"algorithm,omitempty"`
-// 	TTL       *metav1.Duration `json:"ttl,omitempty"`
-// }
 
 // PaginationSpec defines the configuration for paginating through responses from providers
 type PaginationSpec struct {
@@ -167,39 +145,45 @@ type PaginationSpec struct {
 	NextField string `json:"nextField,omitempty"`
 }
 
-// JSONPath-style expressions to extract target fields from the response
+// CEL expressions to extract target fields from the response
 // and map them to the corresponding Target fields.
 type ResponseMappingSpec struct {
 	// Field name in the JSON response that contains the list of items (targets).
 	// If not specified, the entire response is expected to be a list of items.
 	// All subsequent fields are specified relative to this field
-	// Example: "results"
+	// Example: "results" if the response is of the form {"results": [ ... list of items ... ]}
 	// +kubebuilder:validation:Optional
 	TargetsField string `json:"targetsField,omitempty"`
 
-	// JSONPath expression to extract the target name from the response list
-	// +kubebuilder:validation:Required
+	// CEL expression to extract the target name from the response
+	// If TargetsField is specified, this should be relative to TargetsField
+	// +kubebuilder:validation:Optional
 	Name string `json:"name"`
 
-	// JSONPath expression to extract the target address from the response list
-	// +kubebuilder:validation:Required
+	// CEL expression to extract the target Address from the response
+	// If TargetsField is specified, this should be relative to TargetsField
+	// +kubebuilder:validation:Optional
 	Address string `json:"address"`
 
-	// JSONPath expression to extract the target port from the response list
+	// CEL expression to extract the target port from the response
+	// If TargetsField is specified, this should be relative to TargetsField
 	// +kubebuilder:validation:Optional
 	Port string `json:"port,omitempty"`
 
-	// JSONPath expression to extract the target labels from the response list
+	// CEL expression to extract the target labels from the response
+	// The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+	// with values from the response taking precedence in case of conflicts.
 	// +kubebuilder:validation:Optional
 	Labels map[string]string `json:"labels,omitempty"`
 
-	// JSONPath expression to extract the target profile from the response list
+	// CEL expression to extract the target profile from the response
+	// If TargetsField is specified, this should be relative to TargetsField
 	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile,omitempty"`
 }
 
-// WebhookSpec defines the settings for event-based update mechanism (i.e. push-based)
-type WebhookSpec struct {
+// PushSpec defines the settings for event-based update mechanism (i.e. push-based)
+type PushSpec struct {
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
