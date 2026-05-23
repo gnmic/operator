@@ -50,14 +50,12 @@ type compiledMapping struct {
 	port    cel.Program
 
 	targetProfile cel.Program
-	labels        map[string]cel.Program
+	labels        cel.Program
 }
 
 func (l *Loader) compileMapping() (*compiledMapping, error) {
 	rm := l.spec.ResponseMapping
-	cm := &compiledMapping{
-		labels: make(map[string]cel.Program),
-	}
+	cm := &compiledMapping{}
 	if rm == nil {
 		return cm, nil
 	}
@@ -87,12 +85,11 @@ func (l *Loader) compileMapping() (*compiledMapping, error) {
 			return nil, fmt.Errorf("targetProfile: %w", err)
 		}
 	}
-	for key, expr := range rm.Labels {
-		p, err := compileCEL(expr)
+	if rm.Labels != "" {
+		cm.labels, err = compileCEL(rm.Labels)
 		if err != nil {
-			return nil, fmt.Errorf("label %s: %w", key, err)
+			return nil, fmt.Errorf("labels: %w", err)
 		}
-		cm.labels[key] = p
 	}
 
 	return cm, nil
@@ -182,24 +179,30 @@ func (l *Loader) getPort(item map[string]interface{}, full interface{}, cm *comp
 // getLabels extracts the target labels from the item using the compiled CEL expressions if provided,
 // otherwise it falls back to the default "labels" field
 func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *compiledMapping) map[string]string {
-	labels := make(map[string]string)
+	result := make(map[string]string)
 
-	if len(cm.labels) > 0 {
-		for label, prog := range cm.labels {
-			val, err := evalCEL(prog, item, full)
-			if err == nil {
-				labels[label] = fmt.Sprintf("%v", val)
-			}
+	if cm != nil && cm.labels != nil {
+		val, err := evalCEL(cm.labels, item, full)
+		if err != nil {
+			return result
 		}
-		return labels
+		raw, ok := val.(map[string]interface{})
+		if !ok {
+			return result
+		}
+		for k, v := range raw {
+			result[k] = fmt.Sprintf("%v", v)
+		}
+		return result
 	}
 
+	// fallback: direct
 	if raw, ok := item["labels"].(map[string]interface{}); ok {
-		for key, val := range raw {
-			labels[key] = fmt.Sprintf("%v", val)
+		for k, v := range raw {
+			result[k] = fmt.Sprintf("%v", v)
 		}
 	}
-	return labels
+	return result
 }
 
 // getTargetProfile extracts the target profile from the item using the compiled CEL expression if provided,

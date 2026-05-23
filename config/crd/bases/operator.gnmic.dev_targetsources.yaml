@@ -147,29 +147,26 @@ spec:
                                 "item.ip"
                             type: string
                           labels:
-                            additionalProperties:
-                              type: string
                             description: |-
-                              Defines labels to attach to the target.
-
-                              Each entry defines:
-                                key   -> label name
-                                value -> CEL expression
-
-                              Expressions can use both:
-                                item -> current target
-                                self -> full response
+                              CEL expression that returns a map of labels.
+                              The expression must evaluate to an object (map).
 
                               Example:
-                                labels:
-                                  env:    "item.environment"
-                                  region: "self.meta.region"
+
+                                labels: |
+                                  {
+                                    "env": item.environment,
+                                    "region": self.meta.region,
+                                    item.dynamicKey: "value"
+                                  }
 
                               If not set, defaults to:
                                 item["labels"]
 
-                              Dynamic labels override static labels defined in the TargetSource.
-                            type: object
+                              The resulting map will be converted into labels.
+                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+                              with values from the response taking precedence in case of conflicts.
+                            type: string
                           name:
                             description: |-
                               CEL expression for the target name.

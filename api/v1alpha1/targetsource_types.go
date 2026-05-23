@@ -234,28 +234,27 @@ type ResponseMappingSpec struct {
 	// +kubebuilder:validation:Optional
 	Port string `json:"port,omitempty"`
 
-	// Defines labels to attach to the target.
-	//
-	// Each entry defines:
-	//   key   -> label name
-	//   value -> CEL expression
-	//
-	// Expressions can use both:
-	//   item -> current target
-	//   self -> full response
+	// CEL expression that returns a map of labels.
+	// The expression must evaluate to an object (map).
 	//
 	// Example:
-	//   labels:
-	//     env:    "item.environment"
-	//     region: "self.meta.region"
+	//
+	//   labels: |
+	//     {
+	//       "env": item.environment,
+	//       "region": self.meta.region,
+	//       item.dynamicKey: "value"
+	//     }
 	//
 	// If not set, defaults to:
 	//   item["labels"]
 	//
-	// Dynamic labels override static labels defined in the TargetSource.
+	// The resulting map will be converted into labels.
+	// The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+	// with values from the response taking precedence in case of conflicts.
 	//
 	// +kubebuilder:validation:Optional
-	Labels map[string]string `json:"labels,omitempty"`
+	Labels string `json:"labels,omitempty"`
 
 	// CEL expression for the target profile.
 	//
