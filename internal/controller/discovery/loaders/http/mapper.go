@@ -8,6 +8,7 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/ext"
 )
 
 // mapItemsToTargets converts a list of raw JSON items into DiscoveredTargets using the configured mapping rules
@@ -231,6 +232,14 @@ func mustNewEnv() *cel.Env {
 	env, err := cel.NewEnv(
 		cel.Variable("self", cel.DynType),
 		cel.Variable("item", cel.DynType),
+		// TODO: document what extensions are included
+		// Include standard CEL declarations for common operations and types
+		ext.Strings(),
+		ext.Math(),
+		ext.Lists(),
+		ext.Sets(),
+		ext.Regex(),
+		ext.Bindings(),
 	)
 	if err != nil {
 		panic(err)
