@@ -60,6 +60,51 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	URL string `json:"url,omitempty"`
 
+	// HTTP method used for the request.
+	//
+	// Defaults to GET if not specified.
+	//
+	// Supported values:
+	// - GET  (default, no request body)
+	// - POST (supports request body)
+	//
+	// +kubebuilder:validation:Enum=GET;POST
+	// +kubebuilder:validation:Optional
+	Method string `json:"method,omitempty"`
+
+	// Optional HTTP headers to include in the request.
+	//
+	// These map directly to HTTP headers (key-value pairs).
+	//
+	// Example:
+	//   headers:
+	//     Content-Type: application/json
+	//     X-Custom-Header: value
+	//
+	// Precedence:
+	// - Authorization configuration overrides any conflicting headers
+	//
+	// +kubebuilder:validation:Optional
+	Headers map[string]string `json:"headers,omitempty"`
+
+	// Optional raw request body.
+	//
+	// Typically used with POST requests and contains JSON payload.
+	//
+	// Example:
+	//   body: |
+	//     {
+	//       "limit": 100,
+	//       "status": "active"
+	//     }
+	//
+	// Notes:
+	// - Ignored for GET requests
+	// - User must set appropriate Content-Type header if needed
+	//
+	// +kubebuilder:validation:Optional
+	Body string `json:"body,omitempty"`
+
 	// Optional authorization configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`

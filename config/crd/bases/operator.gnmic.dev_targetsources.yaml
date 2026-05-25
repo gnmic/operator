@@ -126,6 +126,39 @@ spec:
                             be set
                           rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
                             == 1'
+                      body:
+                        description: |-
+                          Optional raw request body.
+
+                          Typically used with POST requests and contains JSON payload.
+
+                          Example:
+                            body: |
+                              {
+                                "limit": 100,
+                                "status": "active"
+                              }
+
+                          Notes:
+                          - Ignored for GET requests
+                          - User must set appropriate Content-Type header if needed
+                        type: string
+                      headers:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Optional HTTP headers to include in the request.
+
+                          These map directly to HTTP headers (key-value pairs).
+
+                          Example:
+                            headers:
+                              Content-Type: application/json
+                              X-Custom-Header: value
+
+                          Precedence:
+                          - Authorization configuration overrides any conflicting headers
+                        type: object
                       interval:
                         default: 6h
                         description: Optional interval for polling the HTTP endpoint
@@ -209,6 +242,19 @@ spec:
                               If not set, the response itself must be a JSON array with the targets.
                             type: string
                         type: object
+                      method:
+                        description: |-
+                          HTTP method used for the request.
+
+                          Defaults to GET if not specified.
+
+                          Supported values:
+                          - GET  (default, no request body)
+                          - POST (supports request body)
+                        enum:
+                        - GET
+                        - POST
+                        type: string
                       pagination:
                         description: Optional pagination configuration for parsing
                           responses from the HTTP endpoint

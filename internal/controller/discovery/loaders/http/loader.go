@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -177,7 +178,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	currentURL := l.spec.URL
 
 	for {
-		raw, err := l.fetchPage(ctx, client, currentURL)
+		raw, err := l.fetchPage(ctx, client, currentURL, logger)
 		if err != nil {
 			logger.Error(err,
 				"Failed to fetch page from HTTP endpoint",
@@ -209,13 +210,34 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 
 // fetchPage performs an HTTP GET request to the specified URL and decodes the JSON response
 // and returns the raw response as an interface{}
-func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string) (interface{}, error) {
+func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string, logger logr.Logger) (interface{}, error) {
+	// Determine HTTP method (default GET)
+	method := l.spec.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+
+	// Build request body (only for POST)
+	if method == http.MethodGet && l.spec.Body != "" {
+		logger.Info("ignoring body for GET request")
+	}
+	var bodyReader *bytes.Reader
+	if method == http.MethodPost && l.spec.Body != "" {
+		bodyReader = bytes.NewReader([]byte(l.spec.Body))
+	} else {
+		bodyReader = bytes.NewReader(nil)
+	}
+
 	// Build HTTP request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP request failed: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	// Apply user-defined headers
+	for key, val := range l.spec.Headers {
+		req.Header.Set(key, val)
+	}
 	if err := l.applyAuthorization(req); err != nil {
 		return nil, fmt.Errorf("applying authorization to HTTP request failed: %w", err)
 	}
