@@ -187,14 +187,22 @@ func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *co
 		if err != nil {
 			return result
 		}
-		raw, ok := val.(map[string]interface{})
-		if !ok {
+		// Handle different map representations returned by CEL
+		// Labels must be a map of string keys and string values
+		switch labels := val.(type) {
+		case map[string]interface{}:
+			for key, val := range labels {
+				result[key] = fmt.Sprintf("%v", val)
+			}
+			return result
+		case map[interface{}]interface{}:
+			for key, val := range labels {
+				result[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
+			}
+			return result
+		default:
 			return result
 		}
-		for k, v := range raw {
-			result[k] = fmt.Sprintf("%v", v)
-		}
-		return result
 	}
 
 	// fallback: direct
