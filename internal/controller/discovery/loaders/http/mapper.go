@@ -8,6 +8,7 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/go-logr/logr"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
 )
 
@@ -184,25 +185,16 @@ func (l *Loader) getLabels(item map[string]any, full any, cm *compiledMapping) m
 
 	if cm != nil && cm.labels != nil {
 		val, err := evalCEL(cm.labels, item, full)
+		fmt.Printf("DEBUG: CEL labels result = %#v (type: %T)\n", val, val)
 		if err != nil {
 			return result
 		}
-		// Handle different map representations returned by CEL
-		// Labels must be a map of string keys and string values
-		switch labels := val.(type) {
-		case map[string]any:
-			for key, val := range labels {
-				result[key] = fmt.Sprintf("%v", val)
+		if m, ok := val.(map[string]any); ok {
+			for k, v := range m {
+				result[k] = fmt.Sprintf("%v", v)
 			}
-			return result
-		case map[any]any:
-			for key, val := range labels {
-				result[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
-			}
-			return result
-		default:
-			return result
 		}
+		return result
 	}
 
 	// fallback: direct
@@ -278,7 +270,42 @@ func evalCEL(p cel.Program, item map[string]any, full any) (any, error) {
 	if out == nil {
 		return nil, fmt.Errorf("CEL returned nil")
 	}
-	return out.Value(), nil
+
+	return normalizeCEL(out.Value()), nil
+}
+
+// normalizeCEL recursively converts CEL evaluation results into standard Go types
+func normalizeCEL(v any) any {
+	switch raw := v.(type) {
+	case ref.Val:
+		return normalizeCEL(raw.Value())
+	case map[ref.Val]ref.Val:
+		out := make(map[string]any)
+		for k, v := range raw {
+			key := fmt.Sprintf("%v", normalizeCEL(k))
+			out[key] = normalizeCEL(v)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any)
+		for k, v := range raw {
+			out[k] = normalizeCEL(v)
+		}
+		return out
+	case map[any]any:
+		out := make(map[string]any)
+		for k, v := range raw {
+			out[fmt.Sprintf("%v", normalizeCEL(k))] = normalizeCEL(v)
+		}
+		return out
+	case []any:
+		for i := range raw {
+			raw[i] = normalizeCEL(raw[i])
+		}
+		return raw
+	default:
+		return raw
+	}
 }
 
 // extractPort converts a CEL evaluation result into an int32 port number,
