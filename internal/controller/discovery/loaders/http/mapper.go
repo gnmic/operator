@@ -232,6 +232,8 @@ func mustNewEnv() *cel.Env {
 	env, err := cel.NewEnv(
 		cel.Variable("self", cel.DynType),
 		cel.Variable("item", cel.DynType),
+		// Required for ext.Regex
+		cel.OptionalTypes(),
 		// TODO: document what extensions are included
 		// Include standard CEL declarations for common operations and types
 		ext.Strings(),
@@ -240,8 +242,6 @@ func mustNewEnv() *cel.Env {
 		ext.Sets(),
 		ext.Regex(),
 		ext.Bindings(),
-		// Required for ext.Regex
-		cel.OptionalTypes(),
 	)
 	if err != nil {
 		panic(err)
