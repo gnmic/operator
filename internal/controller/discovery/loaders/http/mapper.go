@@ -240,6 +240,8 @@ func mustNewEnv() *cel.Env {
 		ext.Sets(),
 		ext.Regex(),
 		ext.Bindings(),
+		// Required for ext.Regex
+		cel.OptionalTypes(),
 	)
 	if err != nil {
 		panic(err)
