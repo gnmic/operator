@@ -1,6 +1,6 @@
 package discovery
 
 const (
-	// Labels
+	// Kubernetes Side Labels
 	LabelTargetSourceName = "operator.gnmic.dev/targetsource"
 )

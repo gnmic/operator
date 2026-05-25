@@ -1,0 +1,11 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: http-ts
+spec:
+  provider:
+    http:
+      url: http://http-svc.default.svc/targets.json
+  targetLabels:
+    integrationtest: http
+  targetProfile: default

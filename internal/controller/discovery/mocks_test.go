@@ -9,6 +9,23 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
+func mockDiscoveredTargetList(len int) []core.DiscoveredTarget {
+	targets := make([]core.DiscoveredTarget, len)
+
+	if len > 100 {
+		len = 100
+	}
+
+	for i := range len {
+		targets[i] = core.DiscoveredTarget{
+			Address: fmt.Sprintf("192.168.1.%d", i+1),
+			Name:    fmt.Sprintf("router%d", i+1),
+		}
+	}
+
+	return targets
+}
+
 func mockDiscoveryTarget(opts ...func(*core.DiscoveredTarget)) core.DiscoveredTarget {
 	t := core.DiscoveredTarget{
 		Name:    "target1",

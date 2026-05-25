@@ -41,8 +41,8 @@ import (
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/controller/discovery"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
