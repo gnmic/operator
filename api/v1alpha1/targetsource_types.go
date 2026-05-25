@@ -52,11 +52,20 @@ type ConsulConfig struct {
 
 // TargetSourceStatus defines the observed state of TargetSource
 type TargetSourceStatus struct {
-	Status             string      `json:"status,omitempty"`
-	ObservedGeneration int64       `json:"observedGeneration"`
-	TargetsCount       int32       `json:"targetsCount,omitempty"`
-	LastSync           metav1.Time `json:"lastSync,omitempty"`
+	SyncStatus         TargetSourceSyncStatus `json:"status"`
+	ObservedGeneration int64                  `json:"observedGeneration,omitempty"`
+	TargetsCount       int32                  `json:"targetsCount,omitempty"`
+	LastUpdate         metav1.Time            `json:"lastSync,omitempty"`
 }
+
+const (
+	SyncStatusError            TargetSourceSyncStatus = "Error"
+	SyncStatusPending          TargetSourceSyncStatus = "Pending"
+	SyncStatusSynced           TargetSourceSyncStatus = "Synced"
+	SyncStatusSyncedWithErrors TargetSourceSyncStatus = "SyncedWithErrors"
+)
+
+type TargetSourceSyncStatus string
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
