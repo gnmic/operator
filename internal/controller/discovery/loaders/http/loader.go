@@ -209,8 +209,8 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 }
 
 // fetchPage performs an HTTP GET request to the specified URL and decodes the JSON response
-// and returns the raw response as an interface{}
-func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string, logger logr.Logger) (interface{}, error) {
+// and returns the raw response
+func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string, logger logr.Logger) (any, error) {
 	// Determine HTTP method (default GET)
 	method := l.spec.Method
 	if method == "" {
@@ -253,7 +253,7 @@ func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string,
 	}
 
 	// Decode HTTP response
-	var raw interface{}
+	var raw any
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
 	}
@@ -262,8 +262,8 @@ func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string,
 }
 
 // extractTargetsFromResponse extracts items from the response and maps each item into a DiscoveredTarget
-func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
-	var items []interface{}
+func (l *Loader) extractTargetsFromResponse(raw any, logger logr.Logger) ([]core.DiscoveredTarget, error) {
+	var items []any
 	// If ResponseMapping is configured and TargetsField is provided we treat
 	// it as a CEL expression that evaluates against the whole response and
 	// must return an array of items.
@@ -272,21 +272,21 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger)
 		if err != nil {
 			return nil, fmt.Errorf("invalid TargetsField CEL expression: %w", err)
 		}
-		out, _, err := prog.Eval(map[string]interface{}{"self": raw})
+		out, _, err := prog.Eval(map[string]any{"self": raw})
 		if err != nil {
 			return nil, fmt.Errorf("evaluating TargetsField CEL expression failed: %w", err)
 		}
 		if out == nil {
 			return nil, fmt.Errorf("TargetsField expression returned nil")
 		}
-		array, ok := out.Value().([]interface{})
+		array, ok := out.Value().([]any)
 		if !ok {
 			return nil, fmt.Errorf("invalid HTTP response: targetsField expression must evaluate to an array of objects")
 		}
 		items = array
 	} else {
 		//If TargetsField is empty, the raw response is expected to be an array of items.
-		array, ok := raw.([]interface{})
+		array, ok := raw.([]any)
 		if !ok {
 			return nil, fmt.Errorf("invalid HTTP response: expected a JSON array when itemsField is not set")
 		}
@@ -308,7 +308,7 @@ func (l *Loader) extractTargetsFromResponse(raw interface{}, logger logr.Logger)
 // - nextURL: next request
 // - stop: whether to terminate loop
 func (l *Loader) getNextURL(
-	raw interface{},
+	raw any,
 	currentURL string,
 	logger logr.Logger,
 ) (string, bool) {

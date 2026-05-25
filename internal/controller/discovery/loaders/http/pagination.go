@@ -6,13 +6,13 @@ import (
 )
 
 // extractNextPageInfo extracts pagination information from a response
-func (l *Loader) extractNextPageInfo(raw interface{}) (string, error) {
+func (l *Loader) extractNextPageInfo(raw any) (string, error) {
 	if l.spec.Pagination == nil || l.spec.Pagination.NextField == "" {
 		return "", nil
 	}
 
 	// Only objects can have "next" fields
-	obj, ok := raw.(map[string]interface{})
+	obj, ok := raw.(map[string]any)
 	if !ok {
 		// array case -> no pagination
 		return "", nil

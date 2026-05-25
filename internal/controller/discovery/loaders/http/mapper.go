@@ -12,7 +12,7 @@ import (
 )
 
 // mapItemsToTargets converts a list of raw JSON items into DiscoveredTargets using the configured mapping rules
-func (l *Loader) mapItemsToTargets(items []interface{}, full interface{}, logger logr.Logger) ([]core.DiscoveredTarget, error) {
+func (l *Loader) mapItemsToTargets(items []any, full any, logger logr.Logger) ([]core.DiscoveredTarget, error) {
 	// Compile CEL expressions once for efficiency
 	compiled, err := l.compileMapping()
 	if err != nil {
@@ -22,7 +22,7 @@ func (l *Loader) mapItemsToTargets(items []interface{}, full interface{}, logger
 	// Map items to targets
 	targets := make([]core.DiscoveredTarget, 0, len(items))
 	for _, item := range items {
-		obj, ok := item.(map[string]interface{})
+		obj, ok := item.(map[string]any)
 		if !ok {
 			logger.Error(fmt.Errorf("invalid target format"),
 				"failed to convert target to map",
@@ -97,7 +97,7 @@ func (l *Loader) compileMapping() (*compiledMapping, error) {
 }
 
 // mapItemToTarget converts a raw JSON object into a DiscoveredTarget
-func (l *Loader) mapItemToTarget(item map[string]interface{}, full interface{}, cm *compiledMapping) (core.DiscoveredTarget, error) {
+func (l *Loader) mapItemToTarget(item map[string]any, full any, cm *compiledMapping) (core.DiscoveredTarget, error) {
 	name, err := l.getName(item, full, cm)
 	if err != nil {
 		return core.DiscoveredTarget{}, err
@@ -119,7 +119,7 @@ func (l *Loader) mapItemToTarget(item map[string]interface{}, full interface{}, 
 
 // getName extracts the target name from the item using the compiled CEL expression if provided,
 // otherwise it falls back to the default "name" field
-func (l *Loader) getName(item map[string]interface{}, full interface{}, cm *compiledMapping) (string, error) {
+func (l *Loader) getName(item map[string]any, full any, cm *compiledMapping) (string, error) {
 	if cm.name != nil {
 		val, err := evalCEL(cm.name, item, full)
 		if err != nil {
@@ -142,7 +142,7 @@ func (l *Loader) getName(item map[string]interface{}, full interface{}, cm *comp
 
 // getAddress extracts the target address from the item using the compiled CEL expression if provided,
 // otherwise it falls back to the default "address" field
-func (l *Loader) getAddress(item map[string]interface{}, full interface{}, cm *compiledMapping) (string, error) {
+func (l *Loader) getAddress(item map[string]any, full any, cm *compiledMapping) (string, error) {
 	if cm.address != nil {
 		val, err := evalCEL(cm.address, item, full)
 		if err != nil {
@@ -165,7 +165,7 @@ func (l *Loader) getAddress(item map[string]interface{}, full interface{}, cm *c
 
 // getPort extracts the target port from the item using the compiled CEL expression if provided,
 // otherwise it falls back to the default "port" field
-func (l *Loader) getPort(item map[string]interface{}, full interface{}, cm *compiledMapping) int32 {
+func (l *Loader) getPort(item map[string]any, full any, cm *compiledMapping) int32 {
 	if cm.port != nil {
 		val, err := evalCEL(cm.port, item, full)
 		if err == nil {
@@ -179,7 +179,7 @@ func (l *Loader) getPort(item map[string]interface{}, full interface{}, cm *comp
 
 // getLabels extracts the target labels from the item using the compiled CEL expressions if provided,
 // otherwise it falls back to the default "labels" field
-func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *compiledMapping) map[string]string {
+func (l *Loader) getLabels(item map[string]any, full any, cm *compiledMapping) map[string]string {
 	result := make(map[string]string)
 
 	if cm != nil && cm.labels != nil {
@@ -190,12 +190,12 @@ func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *co
 		// Handle different map representations returned by CEL
 		// Labels must be a map of string keys and string values
 		switch labels := val.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			for key, val := range labels {
 				result[key] = fmt.Sprintf("%v", val)
 			}
 			return result
-		case map[interface{}]interface{}:
+		case map[any]any:
 			for key, val := range labels {
 				result[fmt.Sprintf("%v", key)] = fmt.Sprintf("%v", val)
 			}
@@ -206,9 +206,9 @@ func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *co
 	}
 
 	// fallback: direct
-	if raw, ok := item["labels"].(map[string]interface{}); ok {
-		for k, v := range raw {
-			result[k] = fmt.Sprintf("%v", v)
+	if raw, ok := item["labels"].(map[string]any); ok {
+		for key, val := range raw {
+			result[key] = fmt.Sprintf("%v", val)
 		}
 	}
 	return result
@@ -216,7 +216,7 @@ func (l *Loader) getLabels(item map[string]interface{}, full interface{}, cm *co
 
 // getTargetProfile extracts the target profile from the item using the compiled CEL expression if provided,
 // otherwise it falls back to the default "targetProfile" field
-func (l *Loader) getTargetProfile(item map[string]interface{}, full interface{}, cm *compiledMapping) string {
+func (l *Loader) getTargetProfile(item map[string]any, full any, cm *compiledMapping) string {
 	if cm.targetProfile != nil {
 		val, err := evalCEL(cm.targetProfile, item, full)
 		if err == nil {
@@ -267,8 +267,8 @@ func compileCEL(expr string) (cel.Program, error) {
 }
 
 // evalCEL evaluates a compiled CEL program against an item
-func evalCEL(p cel.Program, item map[string]interface{}, full interface{}) (interface{}, error) {
-	out, _, err := p.Eval(map[string]interface{}{
+func evalCEL(p cel.Program, item map[string]any, full any) (any, error) {
+	out, _, err := p.Eval(map[string]any{
 		"self": full,
 		"item": item,
 	})
@@ -283,7 +283,7 @@ func evalCEL(p cel.Program, item map[string]interface{}, full interface{}) (inte
 
 // extractPort converts a CEL evaluation result into an int32 port number,
 // handling both numeric and string representations
-func extractPort(val interface{}) int32 {
+func extractPort(val any) int32 {
 	switch v := val.(type) {
 	case float64:
 		if v < 0 || v > math.MaxInt32 {
