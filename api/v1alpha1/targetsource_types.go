@@ -129,7 +129,6 @@ type TokenAuthSpec struct {
 	Scheme string `json:"scheme"`
 	// Reference to a Secret containing a key with the token value to use for
 	// authentication when connecting to the Provider.
-	// Mutually exclusive with Token.
 	// +kubebuilder:validation:Required
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }

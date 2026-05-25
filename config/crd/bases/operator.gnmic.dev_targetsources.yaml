@@ -94,7 +94,6 @@ spec:
                                 description: |-
                                   Reference to a Secret containing a key with the token value to use for
                                   authentication when connecting to the Provider.
-                                  Mutually exclusive with Token.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
