@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -44,7 +45,35 @@ var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
 
+func envtestAssetsDir() string {
+	candidates := []string{
+		filepath.Join("..", "..", "bin", "k8s",
+			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
+		filepath.Join(os.Getenv("HOME"), ".local", "share", "kubebuilder-envtest", "k8s",
+			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
+	}
+	if fromEnv := os.Getenv("KUBEBUILDER_ASSETS"); fromEnv != "" {
+		candidates = append([]string{fromEnv}, candidates...)
+	}
+	for _, dir := range candidates {
+		if _, err := os.Stat(filepath.Join(dir, "etcd")); err == nil {
+			return dir
+		}
+	}
+	return ""
+}
+
+func envtestAvailable() bool {
+	return envtestAssetsDir() != ""
+}
+
 func TestControllers(t *testing.T) {
+	if os.Getenv("RUN_CONTROLLER_INTEGRATION_TESTS") != "1" {
+		t.Skip("skipping controller integration tests; set RUN_CONTROLLER_INTEGRATION_TESTS=1 to enable")
+	}
+	if !envtestAvailable() {
+		t.Skip("envtest binaries not installed; run make setup-envtest")
+	}
 	RegisterFailHandler(Fail)
 
 	RunSpecs(t, "Controller Suite")
@@ -58,13 +87,10 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 
-		// The BinaryAssetsDirectory is only required if you want to run the tests directly
-		// without call the makefile target test. If not informed it will look for the
-		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
-		// Note that you must have the required binaries setup under the bin directory to perform
-		// the tests directly. When we run make test it will be setup and used automatically.
-		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
-			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
+		BinaryAssetsDirectory: envtestAssetsDir(),
+	}
+	if testEnv.BinaryAssetsDirectory == "" {
+		Skip("envtest binaries not installed; run make setup-envtest")
 	}
 
 	var err error
