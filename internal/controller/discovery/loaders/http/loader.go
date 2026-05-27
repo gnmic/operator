@@ -143,35 +143,12 @@ func (l *Loader) buildHTTPClient(ctx context.Context) (*http.Client, error) {
 	}
 	timeout := l.spec.Timeout.Duration
 	transport := &http.Transport{}
-
-	// If a CA bundle is provided, add it to the TLS config.
+	// If TLS is configured, build TLS config (may include CA bundle).
 	if l.spec.TLS != nil {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: l.spec.TLS.InsecureSkipVerify,
+		tlsConfig, err := l.buildTLSConfig(ctx)
+		if err != nil {
+			return nil, err
 		}
-
-		if l.spec.TLS.CABundleRef != nil {
-			if l.loaderCfg.ResourceFetcher == nil {
-				return nil, fmt.Errorf("resource fetcher is not configured")
-			}
-
-			ref := l.spec.TLS.CABundleRef
-			if ref.Name == "" || ref.Key == "" {
-				return nil, fmt.Errorf("CABundleRef must specify both name and key")
-			}
-
-			caPEM, err := l.loaderCfg.ResourceFetcher.GetConfigMapKey(ctx, l.loaderCfg.TargetsourceNN.Namespace, l.spec.TLS.CABundleRef)
-			if err != nil {
-				return nil, fmt.Errorf("failed to fetch CA bundle from config map ref: %w", err)
-			}
-
-			certPool := x509.NewCertPool()
-			if ok := certPool.AppendCertsFromPEM([]byte(caPEM)); !ok {
-				return nil, fmt.Errorf("failed to parse CA bundle PEM")
-			}
-			tlsConfig.RootCAs = certPool
-		}
-
 		transport.TLSClientConfig = tlsConfig
 	}
 
@@ -181,6 +158,40 @@ func (l *Loader) buildHTTPClient(ctx context.Context) (*http.Client, error) {
 		Transport: transport,
 	}
 	return client, nil
+}
+
+// buildTLSConfig constructs a tls.Config according to the loader spec,
+// fetching and parsing a CA bundle if requested.
+func (l *Loader) buildTLSConfig(ctx context.Context) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: l.spec.TLS.InsecureSkipVerify,
+	}
+
+	if l.spec.TLS.CABundleRef == nil {
+		return tlsConfig, nil
+	}
+
+	if l.loaderCfg.ResourceFetcher == nil {
+		return nil, fmt.Errorf("resource fetcher is not configured")
+	}
+
+	ref := l.spec.TLS.CABundleRef
+	if ref.Name == "" || ref.Key == "" {
+		return nil, fmt.Errorf("CABundleRef must specify both name and key")
+	}
+
+	caPEM, err := l.loaderCfg.ResourceFetcher.GetConfigMapKey(ctx, l.loaderCfg.TargetsourceNN.Namespace, l.spec.TLS.CABundleRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch CA bundle from config map ref: %w", err)
+	}
+
+	certPool := x509.NewCertPool()
+	if ok := certPool.AppendCertsFromPEM([]byte(caPEM)); !ok {
+		return nil, fmt.Errorf("failed to parse CA bundle PEM")
+	}
+	tlsConfig.RootCAs = certPool
+
+	return tlsConfig, nil
 }
 
 // fetchTargetsFromHTTPEndpoint retrieves targets from the configured HTTP endpoint
