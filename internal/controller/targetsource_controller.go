@@ -22,6 +22,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -104,8 +105,8 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	targetSource.Status.ObservedGeneration = targetSource.Generation
-	if err := r.Status().Update(ctx, targetSource); err != nil {
+	// Update TargetSource Status for new generation
+	if err := r.updateObservedGeneration(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -179,9 +180,12 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
+	statusUpdater := discovery.NewTargetSourceStatusUpdater(r.Client, targetSource)
+	statusUpdater.SetPending(ctx)
 	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,
+		Client:         statusUpdater,
 	}
 
 	// Cleanup function to cleanup discovery runtime of targetsource
@@ -195,6 +199,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 		r.Scheme,
 		targetSource,
 		targetChannel,
+		statusUpdater,
 	)
 	loader, err := discovery.NewLoader(ctx, r.Client, &loaderConfig, targetSource.Spec)
 	if err != nil {
@@ -236,6 +241,22 @@ func (r *TargetSourceReconciler) startDiscovery(
 	}()
 
 	return nil
+}
+
+func (r *TargetSourceReconciler) updateObservedGeneration(ctx context.Context, ts *gnmicv1alpha1.TargetSource) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &gnmicv1alpha1.TargetSource{}
+		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(ts), latest); err != nil {
+			return err
+		}
+
+		patch := client.MergeFrom(latest.DeepCopy())
+		latest.Status.ObservedGeneration = ts.Generation
+
+		return r.Client.Status().Patch(ctx, latest, patch)
+	})
+
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager.

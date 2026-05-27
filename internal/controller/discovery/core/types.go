@@ -23,6 +23,7 @@ type CommonLoaderConfig struct {
 	ChunkSize       int
 	AcceptPush      bool
 	ResourceFetcher ResourceFetcher
+	Client          StatusUpdater
 }
 
 // EventAction represents the type of a discovery event
