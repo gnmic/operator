@@ -53,28 +53,68 @@ type ProviderSpec struct {
 }
 
 // HTTPConfig defines the configuration for the HTTP provider
-// +kubebuilder:validation:AtLeastOneOf=url;acceptPush
+// +kubebuilder:validation:AtLeastOneOf:=url;push
 type HTTPConfig struct {
 	// URL of the HTTP endpoint to pull targets from
 	// If defined, the loader will periodically poll this endpoint for targets
 	// +kubebuilder:validation:Optional
 	URL string `json:"url,omitempty"`
 
-	// If true, the loader will accept pushed target updates to the controller endpoint
-	// The endpoint will be /{namespace}/{targetsource}/<todo>
-	// +kubebuilder:default=false
+	// HTTP method used for the request.
+	//
+	// Defaults to GET if not specified.
+	//
+	// Supported values:
+	// - GET  (default, no request body)
+	// - POST (supports request body)
+	//
+	// +kubebuilder:validation:Enum=GET;POST
+	// +kubebuilder:default="GET"
 	// +kubebuilder:validation:Optional
-	AcceptPush bool `json:"acceptPush,omitempty"`
+	Method string `json:"method,omitempty"`
+
+	// Optional HTTP headers to include in the request.
+	//
+	// These map directly to HTTP headers (key-value pairs).
+	//
+	// Example:
+	//   headers:
+	//     Content-Type: application/json
+	//     X-Custom-Header: value
+	//
+	// Precedence:
+	// - Authorization configuration overrides any conflicting headers
+	//
+	// +kubebuilder:validation:Optional
+	Headers map[string]string `json:"headers,omitempty"`
+
+	// Optional raw request body.
+	//
+	// Typically used with POST requests and contains JSON payload.
+	//
+	// Example:
+	//   body: |
+	//     {
+	//       "limit": 100,
+	//       "status": "active"
+	//     }
+	//
+	// Notes:
+	// - Ignored for GET requests
+	// - User must set appropriate Content-Type header if needed
+	//
+	// +kubebuilder:validation:Optional
+	Body string `json:"body,omitempty"`
 
 	// Optional authorization configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
-	// TODO: increase default value
-	// +kubebuilder:default="30s"
+	// TODO: document about default value
+	// +kubebuilder:default="6h"
 	// +kubebuilder:validation:Optional
-	PollInterval *metav1.Duration `json:"interval,omitempty"`
+	Interval *metav1.Duration `json:"interval,omitempty"`
 
 	// Optional timeout for HTTP requests to the endpoint
 	// +kubebuilder:default="10s"
@@ -82,6 +122,7 @@ type HTTPConfig struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 
 	// Optional TLS configuration for connecting to the HTTP endpoint
+	// If it is an HTTP endpoint, this will be ignored
 	// +kubebuilder:validation:Optional
 	TLS *ClientTLSConfig `json:"tls,omitempty"`
 
@@ -92,25 +133,22 @@ type HTTPConfig struct {
 	// Optional mapping configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
+
+	// Optional configuration to enable push
+	// +kubebuilder:validation:Optional
+	Push *PushSpec `json:"push,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="!(has(self.caBundle) && has(self.caBundleSecretRef))",message="caBundle and caBundleSecretRef are mutually exclusive"
 type ClientTLSConfig struct {
 	// Skip TLS verification of the Provider's certificate.
 	// +kubebuilder:default:=false
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 
-	// Base64-encoded bundle of PEM CAs which will be used to validate the certificate
-	// chain presented by the Provider. Only used if using HTTPS to connect to Provider and
-	// ignored for HTTP connections.
-	// Mutually exclusive with CABundleSecretRef.
-	// +optional
-	CABundle []byte `json:"caBundle,omitempty"`
-
-	// Reference to a Secret containing a bundle of PEM-encoded CAs to use when
+	// Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
 	// verifying the certificate chain presented by the Provider when using HTTPS.
 	// Mutually exclusive with CABundle.
-	CABundleSecretRef *corev1.SecretKeySelector `json:"caBundleSecretRef,omitempty"`
+	// +kubebuilder:validation:Optional
+	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleRef,omitempty"`
 }
 
 // AuthorizationSpec defines the configuration for authentication
@@ -120,64 +158,29 @@ type AuthorizationSpec struct {
 	Basic *BasicAuthSpec `json:"basic,omitempty"`
 	// Token-based authentication configuration
 	Token *TokenAuthSpec `json:"token,omitempty"`
-	// JWT   *JWTAuthSpec   `json:"jwt,omitempty"`
-	// MTLS
 }
 
 // BasicAuthSpec defines the configuration for basic authentication
-// Enforce EITHER inline creds OR secret ref
-// +kubebuilder:validation:XValidation:rule="(has(self.credentialsSecretRef) && !has(self.username) && !has(self.password)) || (!has(self.credentialsSecretRef) && has(self.username) && has(self.password))",message="either credentialsSecretRef OR both username and password must be set, but not a mix"
 type BasicAuthSpec struct {
-	// Username for basic auth
-	// Mutually exclusive with CredentialsSecretRef.
-	Username string `json:"username,omitempty"`
-	// Password for basic auth
-	// Mutually exclusive with CredentialsSecretRef.
-	Password string `json:"password,omitempty"`
-
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
-	// Mutually exclusive with Username and Password.
-	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef,omitempty"`
+	// +kubebuilder:validation:Required
+	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication
-// +kubebuilder:validation:XValidation:rule="has(self.token) != has(self.tokenSecretRef)",message="either token or tokenSecretRef must be set, but not both"
 type TokenAuthSpec struct {
 	// Scheme for the token, e.g. "Bearer"
 	// +kubebuilder:validation:MinLength=1
 	Scheme string `json:"scheme"`
-	// Token value for authentication
-	// Mutually exclusive with TokenSecretRef.
-	Token string `json:"token,omitempty"`
 	// Reference to a Secret containing a key with the token value to use for
 	// authentication when connecting to the Provider.
-	// Mutually exclusive with Token.
+	// +kubebuilder:validation:Required
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
-// +kubebuilder(disabled):validation:XValidation:rule="!((has(self.token) || has(self.tokenSecretRef)) && (has(self.key) || has(self.signingKeySecretRef) || has(self.claims)))",message="static JWT token and generated JWT configuration cannot be combined"
-// +kubebuilder(disabled):validation:XValidation:rule="!has(self.signingKeySecretRef) || self.algorithm != \"\"",message="algorithm must be specified when generating a JWT"
-// type JWTAuthSpec struct {
-// 	// Static pre-generated JWT
-// 	Token          string                    `json:"token,omitempty"`
-// 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
-// 	// Optional: generate JWT dynamically
-// 	Claims              map[string]string         `json:"claims,omitempty"`
-// 	Key                 string                    `json:"key,omitempty"`
-// 	SigningKeySecretRef *corev1.SecretKeySelector `json:"signingKeySecretRef,omitempty"`
-// 	// HS256, RS256, ES256, etc.
-// 	Algorithm string           `json:"algorithm,omitempty"`
-// 	TTL       *metav1.Duration `json:"ttl,omitempty"`
-// }
-
 // PaginationSpec defines the configuration for paginating through responses from providers
 type PaginationSpec struct {
-	// Field name in the JSON response that contains the list of items (targets).
-	// Must refer to a top-level key in the response object.
-	// Example: "results"
-	ItemsField string `json:"itemsField,omitempty"`
-
 	// Field name in the JSON response that contains the next page reference.
 	// The value can be either:
 	// - a full URL (used directly for the next request), or
@@ -188,30 +191,159 @@ type PaginationSpec struct {
 	NextField string `json:"nextField,omitempty"`
 }
 
-// JSONPath-style expressions to extract target fields from the response
-// and map them to the corresponding Target fields.
+// ResponseMappingSpec controls how targets are extracted from an HTTP JSON response.
+//
+// This allows you to map fields from a JSON API into targets using either:
+//   - simple direct field access (e.g. item["name"])
+//   - or CEL expressions for more advanced logic
+//
+// General behavior:
+//
+//  1. Selecting targets:
+//     - `targetsField` is a CEL expression that selects the list of targets
+//     - It runs once on the full response (`self`) and MUST return a list
+//     - If not set, the response itself must be a JSON array
+//
+//  2. Extracting fields:
+//     - Each field (name, address, port, labels, etc.) is handled independently
+//     - If a CEL expression is provided → it is evaluated
+//     - If not provided → the value is read directly from the target object
+//
+//  3. Available variables in CEL:
+//     - item -> the current target object
+//     - self -> the full HTTP response JSON
+//
+// Example:
+//
+//	Response:
+//	{
+//	  "results": [
+//	    { "name": "device1", "ip": "10.0.0.1", "env": "prod" }
+//	  ],
+//	  "meta": { "region": "eu-west" }
+//	}
+//
+//	Mapping:
+//	targetsField: "self.results"
+//
+//	name: ""            # direct → item["name"]
+//	address: "item.ip"  # CEL
+//
+//	labels:
+//	  env:    "item.env"
+//	  region: "self.meta.region"
 type ResponseMappingSpec struct {
-	// JSONPath expression to extract the target name from the response
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	// CEL expression that selects the list of target objects from the response.
+	//
+	// This is evaluated once using:
+	//   self -> full JSON response
+	//
+	// Example:
+	//   targetsField: "self.results"
+	//
+	// If not set, the response itself must be a JSON array with the targets.
+	//
+	// +kubebuilder:validation:Optional
+	TargetsField string `json:"targetsField,omitempty"`
 
-	// JSONPath expression to extract the target IP from the response
-	// +kubebuilder:validation:Required
-	IP string `json:"ip"`
+	// CEL expression for the target name.
+	//
+	// If not set, defaults to:
+	//   item["name"]
+	//
+	// Example:
+	//   "item.hostname"
+	//
+	// +kubebuilder:validation:Optional
+	Name string `json:"name,omitempty"`
 
-	// JSONPath expression to extract the target port from the response
+	// CEL expression for the target address.
+	//
+	// If not set, defaults to:
+	//   item["address"]
+	//
+	// Example:
+	//   "item.ip"
+	//
+	// +kubebuilder:validation:Optional
+	Address string `json:"address,omitempty"`
+
+	// CEL expression for the target port.
+	//
+	// If not set, defaults to:
+	//   item["port"]
+	//
+	// Example:
+	//   "item.port"
+	//
 	// +kubebuilder:validation:Optional
 	Port string `json:"port,omitempty"`
 
-	// JSONPath expression to extract the target labels from the response
+	// CEL expression that returns a map of labels.
+	// The expression must evaluate to an object (map).
+	//
+	// Example:
+	//
+	//   labels: |
+	//     {
+	//       "env": item.environment,
+	//       "region": self.meta.region,
+	//       item.dynamicKey: "value"
+	//     }
+	//
+	// If not set, defaults to:
+	//   item["labels"]
+	//
+	// The resulting map will be converted into labels.
 	// The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
 	// with values from the response taking precedence in case of conflicts.
+	//
 	// +kubebuilder:validation:Optional
-	Labels map[string]string `json:"labels,omitempty"`
+	Labels string `json:"labels,omitempty"`
 
-	// JSONPath expression to extract the target profile from the response
+	// CEL expression for the target profile.
+	//
+	// If not set, defaults to:
+	//   item["targetProfile"]
+	//
+	// Example:
+	//   "item.type == 'edge' ? 'edge-profile' : 'default'"
+	//
 	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile,omitempty"`
+}
+
+// PushSpec defines the settings for event-based update mechanism (i.e. webhooks sent from the server)
+type PushSpec struct {
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// +kubebuilder:validation:Optional
+	Auth *PushAuthSpec `json:"auth,omitempty"`
+}
+
+// +kubebuilder:validation:ExactlyOneOf:=bearer;signature
+type PushAuthSpec struct {
+	Bearer    *PushBearerAuthSpec    `json:"bearer,omitempty"`
+	Signature *PushSignatureAuthSpec `json:"signature,omitempty"`
+}
+
+// +kubebuilder:validation:Required
+type PushBearerAuthSpec struct {
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+}
+
+// +kubebuilder:validation:Required
+type PushSignatureAuthSpec struct {
+	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
+
+	// Header containing the signature
+	// +kubebuilder:validation:MinLength=1
+	Header string `json:"header"`
+
+	// +kubebuilder:default="sha512"
+	// +kubebuilder:validation:Enum=sha1;sha256;sha512
+	Algorithm string `json:"algorithm"`
 }
 
 // TargetSourceStatus defines the observed state of TargetSource

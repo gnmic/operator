@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"fmt"
 	"maps"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,10 +21,19 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 		},
 	}
 
-	// Add Address from DiscoveredTarget
-	t.Spec.Address = d.Address
-	// Add default Target Profile from the TargetSource Spec TargetProfile
-	t.Spec.Profile = ts.Spec.TargetProfile
+	// Add Address + Port from DiscoveredTarget or use TargetSource.spec.targetPort
+	targetPort := ts.Spec.TargetPort
+	if d.Port != 0 {
+		targetPort = d.Port
+	}
+	t.Spec.Address = fmt.Sprintf("%s:%d", d.Address, targetPort)
+
+	// Add discovered Target Profile or use TargetSource.spec.targetProfile
+	targetProfile := ts.Spec.TargetProfile
+	if d.TargetProfile != "" {
+		targetProfile = d.TargetProfile
+	}
+	t.Spec.Profile = targetProfile
 
 	// Copy TargetLabels from TargetSource Spec & DiscoveredTarget. Discovered labels take precedence over TargetSource labels.
 	maps.Copy(t.Labels, ts.Spec.TargetLabels)
