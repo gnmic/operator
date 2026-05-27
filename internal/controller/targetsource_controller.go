@@ -237,7 +237,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 
 	// Start target loader
 	go func() {
-		if err := loader.Run(ctx, targetChannel, targetSource.Spec); err != nil {
+		if err := loader.Run(ctx, targetChannel); err != nil {
 			logger.Error(err, "Target loader exited unexpectedly")
 		} else {
 			logger.Error(nil, "Target loader exited unexpectedly without error")
