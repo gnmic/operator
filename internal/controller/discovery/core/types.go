@@ -22,6 +22,7 @@ type CommonLoaderConfig struct {
 	TargetsourceNN types.NamespacedName
 	ChunkSize      int
 	AcceptPush     bool
+	Client         StatusUpdater
 }
 
 // EventAction represents the type of a discovery event

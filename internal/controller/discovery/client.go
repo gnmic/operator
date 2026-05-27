@@ -7,7 +7,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -67,23 +66,6 @@ func deleteTarget(ctx context.Context, c client.Client, name string, namespace s
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
-
-	return err
-}
-
-// updateTargetSourceStatus updates the status of the TargetSource Object ts. The only fields updated are targetCount and LastSync, which takes the current timestamp.
-func updateTargetSourceStatus(ctx context.Context, c client.Client, ts *gnmicv1alpha1.TargetSource, targetCount int32) error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latest := &gnmicv1alpha1.TargetSource{}
-		if err := c.Get(ctx, client.ObjectKeyFromObject(ts), latest); err != nil {
-			return err
-		}
-
-		latest.Status.TargetsCount = targetCount
-		latest.Status.LastSync = metav1.Now()
-
-		return c.Status().Update(ctx, latest)
-	})
 
 	return err
 }

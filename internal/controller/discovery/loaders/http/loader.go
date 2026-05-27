@@ -51,6 +51,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			return nil
 
 		case <-ticker.C:
+			l.commonCfg.Client.SetFetching(ctx)
 			// Switch case + i only needed to test behavior for messages with different values.
 			switch i {
 			case 1:
