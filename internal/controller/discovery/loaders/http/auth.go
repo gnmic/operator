@@ -31,15 +31,16 @@ func (l *Loader) applyAuthorization(req *http.Request) error {
 				return err
 			}
 			var cm map[string]string
-			if err := json.Unmarshal([]byte(val), &cm); err == nil {
-				username := cm["username"]
-				password := cm["password"]
-				if username != "" || password != "" {
-					req.SetBasicAuth(username, password)
-					return nil
-				}
+			if err := json.Unmarshal([]byte(val), &cm); err != nil {
+				return err
 			}
-			return err
+			username := cm["username"]
+			password := cm["password"]
+			if username != "" || password != "" {
+				req.SetBasicAuth(username, password)
+				return nil
+			}
+			return fmt.Errorf("Basic auth enabled but no valid credentials provided")
 		}
 		return fmt.Errorf("Basic auth enabled but no valid credentials provided")
 	}
