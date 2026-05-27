@@ -135,37 +135,52 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 // buildHTTPClient constructs an HTTP client with optional configuration
 func (l *Loader) buildHTTPClient(ctx context.Context) (*http.Client, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: l.spec.TLS != nil && l.spec.TLS.InsecureSkipVerify,
+	if l.spec.Timeout == nil {
+		return nil, fmt.Errorf("timeout must be specified for HTTP loader")
 	}
+	if l.spec.Timeout == nil {
+		return nil, fmt.Errorf("timeout must be configured")
+	}
+	timeout := l.spec.Timeout.Duration
+	transport := &http.Transport{}
 
 	// If a CA bundle is provided, add it to the TLS config.
 	if l.spec.TLS != nil {
-		var caBundle string
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: l.spec.TLS.InsecureSkipVerify,
+		}
+
 		if l.spec.TLS.CABundleRef != nil {
-			var err error
-			caBundle, err = l.loaderCfg.ResourceFetcher.GetConfigMapKey(ctx, l.loaderCfg.TargetsourceNN.Namespace, l.spec.TLS.CABundleRef)
+			if l.loaderCfg.ResourceFetcher == nil {
+				return nil, fmt.Errorf("resource fetcher is not configured")
+			}
+
+			ref := l.spec.TLS.CABundleRef
+			if ref.Name == "" || ref.Key == "" {
+				return nil, fmt.Errorf("CABundleRef must specify both name and key")
+			}
+
+			caPEM, err := l.loaderCfg.ResourceFetcher.GetConfigMapKey(ctx, l.loaderCfg.TargetsourceNN.Namespace, l.spec.TLS.CABundleRef)
 			if err != nil {
 				return nil, fmt.Errorf("failed to fetch CA bundle from config map ref: %w", err)
 			}
-		}
-		if len(caBundle) > 0 {
+
 			certPool := x509.NewCertPool()
-			if ok := certPool.AppendCertsFromPEM([]byte(caBundle)); !ok {
-				return nil, fmt.Errorf("failed to parse CA bundle for TargetSource %s/%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name)
+			if ok := certPool.AppendCertsFromPEM([]byte(caPEM)); !ok {
+				return nil, fmt.Errorf("failed to parse CA bundle PEM")
 			}
 			tlsConfig.RootCAs = certPool
 		}
+
+		transport.TLSClientConfig = tlsConfig
 	}
 
-	timeout := l.spec.Timeout.Duration
 	// Build the HTTP client with the specified timeout and TLS config
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}, nil
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}
+	return client, nil
 }
 
 // fetchTargetsFromHTTPEndpoint retrieves targets from the configured HTTP endpoint
