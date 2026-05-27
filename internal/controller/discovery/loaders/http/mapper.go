@@ -186,16 +186,16 @@ func (l *Loader) getLabels(item map[string]any, full any, cm *compiledMapping) m
 
 	if cm != nil && cm.labels != nil {
 		val, err := evalCEL(cm.labels, item, full)
-		fmt.Printf("DEBUG: CEL labels result = %#v (type: %T)\n", val, val)
 		if err != nil {
 			return result
 		}
-		if m, ok := val.(map[string]any); ok {
-			for k, v := range m {
-				result[k] = fmt.Sprintf("%v", v)
-			}
+		m, ok := val.(map[string]any)
+		if !ok {
+			return result
 		}
-		return result
+		for k, v := range m {
+			result[k] = fmt.Sprintf("%v", v)
+		}
 	}
 
 	// fallback: direct
