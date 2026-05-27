@@ -1,0 +1,18 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: netbox
+spec:
+  provider:
+    http:
+      url: http://srbsci-152.ost.ch:8081/api/dcim/devices/?export=GNMIc_operator_pull
+      authorization:
+        token:
+          scheme: Bearer
+          token: nbt_9WdKt8Q5rAtV.wlPJGE2Eo3Mlhf6hvBjXtVcVpkmcQyQL38vp3PUi
+      acceptPush: true
+      interval: 12h
+  targetPort: 57400
+  targetProfile: default
+  targetLabels:
+    source: inventory

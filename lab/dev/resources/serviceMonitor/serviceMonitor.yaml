@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gnmic-prometheus-monitor
+  namespace: default
+  labels:
+    release: prometheus   # required by kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      operator.gnmic.dev/service-type: prometheus-output
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

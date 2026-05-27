@@ -1,12 +1,3 @@
-- name: ceos1
-  role:
-    slug: router
-  manufacturer:
-    name: Arista
-  device_type:
-    slug: arista-ixr-d2l
-  site:
-    name: Lab
 - name: leaf1
   role:
     slug: router

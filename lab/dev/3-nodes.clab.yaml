@@ -16,7 +16,6 @@ topology:
   nodes:
     spine1:
       type: ixr-d3l
-
     leaf1:
     leaf2:
     ceos1:
