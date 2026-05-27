@@ -136,9 +136,6 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 // buildHTTPClient constructs an HTTP client with optional configuration
 func (l *Loader) buildHTTPClient(ctx context.Context) (*http.Client, error) {
 	if l.spec.Timeout == nil {
-		return nil, fmt.Errorf("timeout must be specified for HTTP loader")
-	}
-	if l.spec.Timeout == nil {
 		return nil, fmt.Errorf("timeout must be configured")
 	}
 	timeout := l.spec.Timeout.Duration
