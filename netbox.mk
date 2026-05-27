@@ -50,7 +50,7 @@ endif
 	sed -i "s|\$$API_TOKEN|$${API_TOKEN}|g" lab/dev/netbox/secrets/netbox_secret.yaml
 	kubectl create namespace $(NETBOX_NAMESPACE) --context kind-$(NETBOX_CLUSTER_NAME) || true
 	kubectl apply -f lab/dev/netbox/secrets/ -n $(NETBOX_NAMESPACE) --context kind-$(NETBOX_CLUSTER_NAME)
-	helm repo add netbox https://netbox-community.github.io/netbox-helm 2>/dev/null --kube-context kind-$(NETBOX_CLUSTER_NAME) || true
+	helm repo add netbox https://charts.netbox.oss.netboxlabs.com 2>/dev/null --kube-context kind-$(NETBOX_CLUSTER_NAME) || true
 	helm repo update  --kube-context kind-$(NETBOX_CLUSTER_NAME)
 	helm upgrade --install $(NETBOX_RELEASE) $(NETBOX_CHART) \
 		-n $(NETBOX_NAMESPACE) --kube-context kind-$(NETBOX_CLUSTER_NAME) -f $(NETBOX_VALUES) \
@@ -75,7 +75,7 @@ endif
 	@POD=$$(kubectl -n $(NETBOX_NAMESPACE) --context kind-$(NETBOX_CLUSTER_NAME) get pod -l app.kubernetes.io/name=netbox -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true); \
 	if [ -z "$$POD" ]; then echo "Error: no NetBox pod found in namespace $(NETBOX_NAMESPACE). Run make netbox-install first."; exit 1; fi; \
 	TOKEN_KEY=$$(kubectl exec -n $(NETBOX_NAMESPACE) --context kind-$(NETBOX_CLUSTER_NAME) $$POD -- python manage.py shell -c "from users.models import Token; print(next((t.key for t in Token.objects.filter(user__username='admin')), ''))" 2>/dev/null | tr -d '\r' | grep -E '^[A-Za-z0-9]+$$' | head -n1); \
-	if [ -z "$$TOKEN_KEY" ]; then echo "Error: no admin v2 API token found in NetBox. Create one in NetBox admin and retry."; exit 1; fi; \
+  if [ -z "$$TOKEN_KEY" ]; then echo "Error: no admin v2 API token found in NetBox. Create one in NetBox admin and retry."; exit 1; fi; \
 	echo "NetBox Token Key: $$TOKEN_KEY"; \
 	echo "NetBox Token: $(NETBOX_TOKEN)"; \
 	python3 lab/dev/netbox/publish.py $(NETBOX_URL) "nbt_$$TOKEN_KEY.$(NETBOX_TOKEN)" $(NETBOX_INIT) --force

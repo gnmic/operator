@@ -28,3 +28,6 @@ extraVolumeMounts:
   - name: peppers
     mountPath: /run/config/extra/peppers
     readOnly: true
+
+image:
+  tag: v4.5.7
