@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 
 	"github.com/gnmic/operator/internal/controller/discovery/core"
@@ -278,34 +279,32 @@ func evalCEL(p cel.Program, item map[string]any, full any) (any, error) {
 func normalizeCEL(v any) any {
 	switch raw := v.(type) {
 	case ref.Val:
-		return normalizeCEL(raw.Value())
-	case map[ref.Val]ref.Val:
-		out := make(map[string]any)
-		for k, v := range raw {
-			key := fmt.Sprintf("%v", normalizeCEL(k))
-			out[key] = normalizeCEL(v)
+		v := raw.Value()
+		if v == nil {
+			return nil
 		}
-		return out
-	case map[string]any:
-		out := make(map[string]any)
-		for k, v := range raw {
-			out[k] = normalizeCEL(v)
-		}
-		return out
-	case map[any]any:
-		out := make(map[string]any)
-		for k, v := range raw {
-			out[fmt.Sprintf("%v", normalizeCEL(k))] = normalizeCEL(v)
-		}
-		return out
+		return normalizeCEL(v)
+
 	case []any:
 		for i := range raw {
 			raw[i] = normalizeCEL(raw[i])
 		}
 		return raw
-	default:
-		return raw
 	}
+
+	// For maps, keys are converted to strings
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Map {
+		out := make(map[string]any)
+		for _, key := range rv.MapKeys() {
+			k := fmt.Sprintf("%v", normalizeCEL(key.Interface()))
+			val := normalizeCEL(rv.MapIndex(key).Interface())
+			out[k] = val
+		}
+		return out
+	}
+
+	return v
 }
 
 // extractPort converts a CEL evaluation result into an int32 port number,
