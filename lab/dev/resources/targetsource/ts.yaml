@@ -1,0 +1,13 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: targetsource-1
+spec:
+  provider:
+    http:
+      url: http://targetsource-1:8080/targets
+      acceptPush: true
+  targetLabels:
+    datacenter: dc-a
+    environment: production
+  targetProfile: default

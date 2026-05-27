@@ -2,7 +2,9 @@ package discovery
 
 import (
 	"context"
+	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,4 +70,45 @@ func deleteTarget(ctx context.Context, c client.Client, name string, namespace s
 	}
 
 	return err
+}
+
+// Helper: GetSecretValues returns values from a secret
+// If keys are provided -> returns only those keys
+// If keys is empty -> returns entire secret data
+func GetSecretValues(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	secretRef string,
+	keys ...string,
+) (map[string]string, error) {
+	var secret corev1.Secret
+	if err := c.Get(ctx,
+		client.ObjectKey{
+			Name:      secretRef,
+			Namespace: namespace,
+		}, &secret); err != nil {
+		return nil, fmt.Errorf("failed to get secret %s/%s: %w", namespace, secretRef, err)
+	}
+
+	result := make(map[string]string)
+
+	// Return full secret
+	if len(keys) == 0 {
+		for k, v := range secret.Data {
+			result[k] = string(v)
+		}
+		return result, nil
+	}
+
+	// Return specific keys
+	for _, key := range keys {
+		val, ok := secret.Data[key]
+		if !ok {
+			return nil, fmt.Errorf("key %s missing in secret %s/%s", key, namespace, secretRef)
+		}
+		result[key] = string(val)
+	}
+
+	return result, nil
 }

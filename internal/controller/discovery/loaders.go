@@ -8,7 +8,7 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	http "github.com/gnmic/operator/internal/controller/discovery/loaders/http"
+	"github.com/gnmic/operator/internal/controller/discovery/loaders/http"
 )
 
 // NewLoader creates a loader by name

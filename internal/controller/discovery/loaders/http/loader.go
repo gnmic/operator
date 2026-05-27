@@ -41,7 +41,7 @@ func (l *Loader) Name() string {
 
 // Run starts the HTTP discovery loop
 // It performs an immediate fetch and then continues polling at a fixed interval
-func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) error {
+func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage, spec gnmicv1alpha1.TargetSourceSpec) error {
 	if l.spec.URL == "" {
 		return nil
 	}
