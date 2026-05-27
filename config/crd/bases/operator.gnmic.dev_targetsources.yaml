@@ -243,6 +243,7 @@ spec:
                             type: string
                         type: object
                       method:
+                        default: GET
                         description: |-
                           HTTP method used for the request.
 

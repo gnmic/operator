@@ -211,12 +211,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 // fetchPage performs an HTTP GET request to the specified URL and decodes the JSON response
 // and returns the raw response
 func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string, logger logr.Logger) (any, error) {
-	// Determine HTTP method (default GET)
 	method := l.spec.Method
-	if method == "" {
-		method = http.MethodGet
-	}
-
 	// Build request body (only for POST)
 	if method == http.MethodGet && l.spec.Body != "" {
 		logger.Info("ignoring body for GET request")

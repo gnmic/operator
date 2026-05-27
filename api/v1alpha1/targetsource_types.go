@@ -69,6 +69,7 @@ type HTTPConfig struct {
 	// - POST (supports request body)
 	//
 	// +kubebuilder:validation:Enum=GET;POST
+	// +kubebuilder:default="GET"
 	// +kubebuilder:validation:Optional
 	Method string `json:"method,omitempty"`
 
