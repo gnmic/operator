@@ -64,6 +64,9 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 	if err != nil {
 		return fmt.Errorf("failed to build HTTP client: %w", err)
 	}
+	if l.spec.Interval == nil {
+		return fmt.Errorf("interval must be configured")
+	}
 	interval := l.spec.Interval.Duration
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -224,6 +227,9 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 // and returns the raw response
 func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string, logger logr.Logger) (any, error) {
 	method := l.spec.Method
+	if method == "" {
+		return nil, fmt.Errorf("method must be configured")
+	}
 	// Build request body (only for POST)
 	if method == http.MethodGet && l.spec.Body != "" {
 		logger.Info("ignoring body for GET request")
