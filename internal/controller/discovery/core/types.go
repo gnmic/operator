@@ -40,7 +40,7 @@ const (
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
 	Name          string
-	IP            string
+	Address       string
 	Port          int32
 	Labels        map[string]string
 	TargetProfile string

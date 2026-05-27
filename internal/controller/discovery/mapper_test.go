@@ -19,9 +19,8 @@ func mockDiscoveredTargetList(len int) []core.DiscoveredTarget {
 
 	for i := range len {
 		targets[i] = core.DiscoveredTarget{
-			IP:   fmt.Sprintf("192.168.1.%d", i+1),
-			Port: 57400,
-			Name: fmt.Sprintf("router%d", i+1),
+			Address: fmt.Sprintf("192.168.1.%d", i+1),
+			Name:    fmt.Sprintf("router%d", i+1),
 		}
 	}
 
@@ -30,10 +29,9 @@ func mockDiscoveredTargetList(len int) []core.DiscoveredTarget {
 
 func mockDiscoveryTarget(opts ...func(*core.DiscoveredTarget)) core.DiscoveredTarget {
 	t := core.DiscoveredTarget{
-		Name:   "target1",
-		IP:     "10.0.0.1",
-		Port:   57400,
-		Labels: map[string]string{},
+		Name:    "target1",
+		Address: "10.0.0.1",
+		Labels:  map[string]string{},
 	}
 
 	for _, opt := range opts {
@@ -49,9 +47,9 @@ func withDiscoveredTargetName(name string) func(*core.DiscoveredTarget) {
 	}
 }
 
-func withDiscoveredTargetIP(ip string) func(*core.DiscoveredTarget) {
+func withDiscoveredTargetAddress(address string) func(*core.DiscoveredTarget) {
 	return func(t *core.DiscoveredTarget) {
-		t.IP = ip
+		t.Address = address
 	}
 }
 
@@ -289,7 +287,7 @@ func TestGenerateTargetResource_SetsTargetSourceNameLabel(t *testing.T) {
 	ts := mockTargetSource()
 	d := mockDiscoveryTarget()
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	if got := target.Labels[LabelTargetSourceName]; got != ts.Name {
 		t.Fatalf(
@@ -311,7 +309,7 @@ func TestGenerateTargetResource_CopiesDiscoveredLabels(t *testing.T) {
 
 	ts := mockTargetSource()
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	tests := map[string]string{
 		"discoveredLabel1": "discoveredValue1",
@@ -335,7 +333,7 @@ func TestGenerateTargetResource_CopiesTargetSourceLabels(t *testing.T) {
 
 	d := mockDiscoveryTarget()
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	tests := map[string]string{
 		"targetSourceLabel1": "targetSourceValue1",
@@ -362,7 +360,7 @@ func TestGenerateTargetResource_OverridesReservedTargetSourceNameLabel(t *testin
 		}),
 	)
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
 	if got := target.Labels[LabelTargetSourceName]; got != ts.Name {
 		t.Fatalf(
@@ -374,7 +372,7 @@ func TestGenerateTargetResource_OverridesReservedTargetSourceNameLabel(t *testin
 	}
 }
 
-func TestGenerateTargetResource_TargetSourceLabelsOverrideDiscoveredLabels(t *testing.T) {
+func TestGenerateTargetResource_DiscoveredLabelsOverrideTargetSourceLabels(t *testing.T) {
 	ts := mockTargetSource(
 		withTargetSourceTargetLabels(map[string]string{
 			"sharedLabel": "targetSourceValue",
@@ -387,9 +385,9 @@ func TestGenerateTargetResource_TargetSourceLabelsOverrideDiscoveredLabels(t *te
 		}),
 	)
 
-	target, _ := generateTargetResource(d, &ts)
+	target := generateTargetResource(d, &ts)
 
-	if got := target.Labels["sharedLabel"]; got != "targetSourceValue" {
+	if got := target.Labels["sharedLabel"]; got != "discoveredValue" {
 		t.Fatalf(
 			"expected target source label to override discovered label, got %q",
 			got,
@@ -415,14 +413,14 @@ func TestNormalizeTarget_PrefixesTargetName(t *testing.T) {
 
 func TestNormalizeTarget_PreservesTargetAddress(t *testing.T) {
 	target := mockDiscoveryTarget(
-		withDiscoveredTargetIP("192.168.1.10"),
+		withDiscoveredTargetAddress("192.168.1.10"),
 	)
 
 	normalized := normalizeTarget(target, "ts1")
 
-	if got := normalized.IP; got != "192.168.1.10" {
+	if got := normalized.Address; got != "192.168.1.10" {
 		t.Fatalf(
-			"expected IP %q, got %q",
+			"expected address %q, got %q",
 			"192.168.1.10",
 			got,
 		)

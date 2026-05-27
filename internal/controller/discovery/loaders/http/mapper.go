@@ -52,7 +52,7 @@ func (l *Loader) mapItem(item map[string]interface{}) (core.DiscoveredTarget, er
 
 	return core.DiscoveredTarget{
 		Name:          name,
-		IP:            ip,
+		Address:       ip,
 		Port:          port,
 		Labels:        labels,
 		TargetProfile: targetProfile,

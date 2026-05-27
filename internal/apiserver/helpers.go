@@ -35,7 +35,7 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:          target.Name,
-					IP:            target.Ip,
+					Address:       target.Ip,
 					Port:          int32(*target.Port),
 					Labels:        convertTargetLabelsToMap(target),
 					TargetProfile: *target.TargetProfile,

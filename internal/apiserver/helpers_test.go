@@ -180,7 +180,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 		{
 			Target: core.DiscoveredTarget{
 				Name:          "router1",
-				IP:            "1.1.1.1",
+				Address:       "1.1.1.1",
 				Port:          22,
 				Labels:        map[string]string{},
 				TargetProfile: "",
