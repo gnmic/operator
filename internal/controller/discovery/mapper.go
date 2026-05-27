@@ -3,7 +3,6 @@ package discovery
 import (
 	"fmt"
 	"maps"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -12,8 +11,7 @@ import (
 )
 
 // generateTargetResource converts a DiscoveredTarget into a Kubernetes Target Object based on the TargetSource Spec.
-// Returns the Target Resource and a map of unknown operator labels.
-func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) (*gnmicv1alpha1.Target, map[string]string) {
+func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSource) *gnmicv1alpha1.Target {
 	// Create object instance
 	t := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
@@ -22,34 +20,29 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 			Labels:    make(map[string]string),
 		},
 	}
-	unknownLabels := make(map[string]string)
 
-	// Add Address from DiscoveredTarget
-	t.Spec.Address = fmt.Sprintf("%s:%d", d.IP, d.Port)
-	// Add default Target Profile from the TargetSource Spec TargetProfile
-	t.Spec.Profile = ts.Spec.TargetProfile
-
-	// Handle labels from Source of Truth
-	for k, v := range d.Labels {
-		if strings.HasPrefix(k, ExternalLabelPrefix) {
-			switch k {
-			case ExternalLabelTargetProfile: // Overwrite TargetProfile if specified by SoT
-				t.Spec.Profile = v
-			default:
-				unknownLabels[k] = v
-			}
-		} else { // Copy all other labels into the Target
-			t.Labels[k] = v
-		}
+	// Add Address + Port from DiscoveredTarget or use TargetSource.spec.targetPort
+	targetPort := ts.Spec.TargetPort
+	if d.Port != 0 {
+		targetPort = d.Port
 	}
+	t.Spec.Address = fmt.Sprintf("%s:%d", d.Address, targetPort)
 
-	// Copy TargetLabels from TargetSource Spec
+	// Add discovered Target Profile or use TargetSource.spec.targetProfile
+	targetProfile := ts.Spec.TargetProfile
+	if d.TargetProfile != "" {
+		targetProfile = d.TargetProfile
+	}
+	t.Spec.Profile = targetProfile
+
+	// Copy TargetLabels from TargetSource Spec & DiscoveredTarget. Discovered labels take precedence over TargetSource labels.
 	maps.Copy(t.Labels, ts.Spec.TargetLabels)
+	maps.Copy(t.Labels, d.Labels)
 
 	// Add TargetSource Label to the Target (precedence over all labels)
 	t.Labels[LabelTargetSourceName] = ts.Name
 
-	return t, unknownLabels
+	return t
 }
 
 // generateEvents returns a list of DiscoveryEvents. Needed for snapshot handling to determine which devices get deleted and which applied.

@@ -20,10 +20,17 @@ type DiscoveryRegistryValue struct {
 }
 
 type CommonLoaderConfig struct {
+<<<<<<< HEAD
 	TargetsourceNN types.NamespacedName
 	ChunkSize      int
 	Router         *gin.Engine
 	AcceptPush     bool
+=======
+	TargetsourceNN  types.NamespacedName
+	ChunkSize       int
+	AcceptPush      bool
+	ResourceFetcher ResourceFetcher
+>>>>>>> feature/pull-interface
 }
 
 // EventAction represents the type of a discovery event
@@ -40,7 +47,7 @@ const (
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
 	Name          string
-	IP            string
+	Address       string
 	Port          int32
 	Labels        map[string]string
 	TargetProfile string

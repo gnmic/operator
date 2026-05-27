@@ -47,12 +47,15 @@ spec:
                   http:
                     description: HTTP defines the configuration for a HTTP provider
                     properties:
+<<<<<<< HEAD
                       acceptPush:
                         default: false
                         description: |-
                           If true, the loader will accept pushed target updates to the controller endpoint
                           The endpoint will be /{namespace}/{targetsource}/<todo>
                         type: boolean
+=======
+>>>>>>> feature/pull-interface
                       authorization:
                         description: Optional authorization configuration for accessing
                           the HTTP endpoint
@@ -64,7 +67,6 @@ spec:
                                 description: |-
                                   Reference to a Secret containing "username" and "password" keys to use for
                                   basic authentication when connecting to the Provider.
-                                  Mutually exclusive with Username and Password.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -87,23 +89,9 @@ spec:
                                 - key
                                 type: object
                                 x-kubernetes-map-type: atomic
-                              password:
-                                description: |-
-                                  Password for basic auth
-                                  Mutually exclusive with CredentialsSecretRef.
-                                type: string
-                              username:
-                                description: |-
-                                  Username for basic auth
-                                  Mutually exclusive with CredentialsSecretRef.
-                                type: string
+                            required:
+                            - credentialsSecretRef
                             type: object
-                            x-kubernetes-validations:
-                            - message: either credentialsSecretRef OR both username
-                                and password must be set, but not a mix
-                              rule: (has(self.credentialsSecretRef) && !has(self.username)
-                                && !has(self.password)) || (!has(self.credentialsSecretRef)
-                                && has(self.username) && has(self.password))
                           token:
                             description: Token-based authentication configuration
                             properties:
@@ -111,16 +99,10 @@ spec:
                                 description: Scheme for the token, e.g. "Bearer"
                                 minLength: 1
                                 type: string
-                              token:
-                                description: |-
-                                  Token value for authentication
-                                  Mutually exclusive with TokenSecretRef.
-                                type: string
                               tokenSecretRef:
                                 description: |-
                                   Reference to a Secret containing a key with the token value to use for
                                   authentication when connecting to the Provider.
-                                  Mutually exclusive with Token.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -145,19 +127,49 @@ spec:
                                 x-kubernetes-map-type: atomic
                             required:
                             - scheme
+                            - tokenSecretRef
                             type: object
-                            x-kubernetes-validations:
-                            - message: either token or tokenSecretRef must be set,
-                                but not both
-                              rule: has(self.token) != has(self.tokenSecretRef)
                         type: object
                         x-kubernetes-validations:
                         - message: exactly one of the fields in [basic token] must
                             be set
                           rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
                             == 1'
+                      body:
+                        description: |-
+                          Optional raw request body.
+
+                          Typically used with POST requests and contains JSON payload.
+
+                          Example:
+                            body: |
+                              {
+                                "limit": 100,
+                                "status": "active"
+                              }
+
+                          Notes:
+                          - Ignored for GET requests
+                          - User must set appropriate Content-Type header if needed
+                        type: string
+                      headers:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Optional HTTP headers to include in the request.
+
+                          These map directly to HTTP headers (key-value pairs).
+
+                          Example:
+                            headers:
+                              Content-Type: application/json
+                              X-Custom-Header: value
+
+                          Precedence:
+                          - Authorization configuration overrides any conflicting headers
+                        type: object
                       interval:
-                        default: 30s
+                        default: 6h
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
@@ -165,44 +177,98 @@ spec:
                         description: Optional mapping configuration for parsing responses
                           from the HTTP endpoint
                         properties:
-                          ip:
-                            description: JSONPath expression to extract the target
-                              IP from the response
+                          address:
+                            description: |-
+                              CEL expression for the target address.
+
+                              If not set, defaults to:
+                                item["address"]
+
+                              Example:
+                                "item.ip"
                             type: string
                           labels:
-                            additionalProperties:
-                              type: string
                             description: |-
-                              JSONPath expression to extract the target labels from the response
+                              CEL expression that returns a map of labels.
+                              The expression must evaluate to an object (map).
+
+                              Example:
+
+                                labels: |
+                                  {
+                                    "env": item.environment,
+                                    "region": self.meta.region,
+                                    item.dynamicKey: "value"
+                                  }
+
+                              If not set, defaults to:
+                                item["labels"]
+
+                              The resulting map will be converted into labels.
                               The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
                               with values from the response taking precedence in case of conflicts.
-                            type: object
+                            type: string
                           name:
-                            description: JSONPath expression to extract the target
-                              name from the response
+                            description: |-
+                              CEL expression for the target name.
+
+                              If not set, defaults to:
+                                item["name"]
+
+                              Example:
+                                "item.hostname"
                             type: string
                           port:
-                            description: JSONPath expression to extract the target
-                              port from the response
+                            description: |-
+                              CEL expression for the target port.
+
+                              If not set, defaults to:
+                                item["port"]
+
+                              Example:
+                                "item.port"
                             type: string
                           targetProfile:
-                            description: JSONPath expression to extract the target
-                              profile from the response
+                            description: |-
+                              CEL expression for the target profile.
+
+                              If not set, defaults to:
+                                item["targetProfile"]
+
+                              Example:
+                                "item.type == 'edge' ? 'edge-profile' : 'default'"
                             type: string
-                        required:
-                        - ip
-                        - name
+                          targetsField:
+                            description: |-
+                              CEL expression that selects the list of target objects from the response.
+
+                              This is evaluated once using:
+                                self -> full JSON response
+
+                              Example:
+                                targetsField: "self.results"
+
+                              If not set, the response itself must be a JSON array with the targets.
+                            type: string
                         type: object
+                      method:
+                        default: GET
+                        description: |-
+                          HTTP method used for the request.
+
+                          Defaults to GET if not specified.
+
+                          Supported values:
+                          - GET  (default, no request body)
+                          - POST (supports request body)
+                        enum:
+                        - GET
+                        - POST
+                        type: string
                       pagination:
                         description: Optional pagination configuration for parsing
                           responses from the HTTP endpoint
                         properties:
-                          itemsField:
-                            description: |-
-                              Field name in the JSON response that contains the list of items (targets).
-                              Must refer to a top-level key in the response object.
-                              Example: "results"
-                            type: string
                           nextField:
                             description: |-
                               Field name in the JSON response that contains the next page reference.
@@ -214,31 +280,111 @@ spec:
                               Example: "next" or "nextToken"
                             type: string
                         type: object
+                      push:
+                        description: Optional configuration to enable push
+                        properties:
+                          auth:
+                            properties:
+                              bearer:
+                                properties:
+                                  tokenSecretRef:
+                                    description: SecretKeySelector selects a key of
+                                      a Secret.
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                type: object
+                              signature:
+                                properties:
+                                  algorithm:
+                                    default: sha512
+                                    enum:
+                                    - sha1
+                                    - sha256
+                                    - sha512
+                                    type: string
+                                  header:
+                                    description: Header containing the signature
+                                    minLength: 1
+                                    type: string
+                                  secretRef:
+                                    description: SecretKeySelector selects a key of
+                                      a Secret.
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                required:
+                                - algorithm
+                                - header
+                                - secretRef
+                                type: object
+                            type: object
+                            x-kubernetes-validations:
+                            - message: exactly one of the fields in [bearer signature]
+                                must be set
+                              rule: '[has(self.bearer),has(self.signature)].filter(x,x==true).size()
+                                == 1'
+                          enabled:
+                            default: false
+                            type: boolean
+                        required:
+                        - enabled
+                        type: object
                       timeout:
                         default: 10s
                         description: Optional timeout for HTTP requests to the endpoint
                         type: string
                       tls:
-                        description: Optional TLS configuration for connecting to
-                          the HTTP endpoint
+                        description: |-
+                          Optional TLS configuration for connecting to the HTTP endpoint
+                          If it is an HTTP endpoint, this will be ignored
                         properties:
-                          caBundle:
+                          caBundleRef:
                             description: |-
-                              Base64-encoded bundle of PEM CAs which will be used to validate the certificate
-                              chain presented by the Provider. Only used if using HTTPS to connect to Provider and
-                              ignored for HTTP connections.
-                              Mutually exclusive with CABundleSecretRef.
-                            format: byte
-                            type: string
-                          caBundleSecretRef:
-                            description: |-
-                              Reference to a Secret containing a bundle of PEM-encoded CAs to use when
+                              Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
                               verifying the certificate chain presented by the Provider when using HTTPS.
                               Mutually exclusive with CABundle.
                             properties:
                               key:
-                                description: The key of the secret to select from.  Must
-                                  be a valid secret key.
+                                description: The key to select.
                                 type: string
                               name:
                                 default: ""
@@ -250,8 +396,8 @@ spec:
                                   More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                 type: string
                               optional:
-                                description: Specify whether the Secret or its key
-                                  must be defined
+                                description: Specify whether the ConfigMap or its
+                                  key must be defined
                                 type: boolean
                             required:
                             - key
@@ -262,9 +408,6 @@ spec:
                             description: Skip TLS verification of the Provider's certificate.
                             type: boolean
                         type: object
-                        x-kubernetes-validations:
-                        - message: caBundle and caBundleSecretRef are mutually exclusive
-                          rule: '!(has(self.caBundle) && has(self.caBundleSecretRef))'
                       url:
                         description: |-
                           URL of the HTTP endpoint to pull targets from
@@ -272,9 +415,8 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-validations:
-                    - message: at least one of the fields in [url acceptPush] must
-                        be set
-                      rule: '[has(self.url),has(self.acceptPush)].filter(x,x==true).size()
+                    - message: at least one of the fields in [url push] must be set
+                      rule: '[has(self.url),has(self.push)].filter(x,x==true).size()
                         >= 1'
                 type: object
                 x-kubernetes-validations:
