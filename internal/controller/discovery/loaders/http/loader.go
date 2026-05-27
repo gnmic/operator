@@ -325,8 +325,6 @@ func (l *Loader) extractTargetsFromResponse(raw any, logger logr.Logger) ([]core
 	}
 
 	return targets, nil
-<<<<<<< HEAD
-=======
 }
 
 // getNextURL determines the next page URL
@@ -363,5 +361,4 @@ func (l *Loader) getNextURL(
 	}
 
 	return nextURL, false
->>>>>>> feature/pull-interface
 }

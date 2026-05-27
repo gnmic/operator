@@ -133,13 +133,10 @@ type HTTPConfig struct {
 	// Optional mapping configuration for parsing responses from the HTTP endpoint
 	// +kubebuilder:validation:Optional
 	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
-<<<<<<< HEAD
-=======
 
 	// Optional configuration to enable push
 	// +kubebuilder:validation:Optional
 	Push *PushSpec `json:"push,omitempty"`
->>>>>>> feature/pull-interface
 }
 
 type ClientTLSConfig struct {

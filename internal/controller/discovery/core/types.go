@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-
-	"github.com/gin-gonic/gin"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -20,17 +18,10 @@ type DiscoveryRegistryValue struct {
 }
 
 type CommonLoaderConfig struct {
-<<<<<<< HEAD
-	TargetsourceNN types.NamespacedName
-	ChunkSize      int
-	Router         *gin.Engine
-	AcceptPush     bool
-=======
 	TargetsourceNN  types.NamespacedName
 	ChunkSize       int
 	AcceptPush      bool
 	ResourceFetcher ResourceFetcher
->>>>>>> feature/pull-interface
 }
 
 // EventAction represents the type of a discovery event
