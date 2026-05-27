@@ -1,15 +1,15 @@
-curl -X POST "http://localhost:8082/api/v1/default/target-source/targetsource-1/applyTargets" \
-  -H "Authorization: Bearer I+MieBB72PAD5Cu8y4iOc75q+xYiE8WhXjFA8K5Xm/4DtjA6GJufQisZuM7JIWQS" \
+curl -X POST "http://localhost:8082/api/v1/default/target-source/netbox/applyTargets" \
+  -H "Authorization: Bearer dIqf/y3xAvjisKweCG+Ro+9iqlLsBQc6Bl+RhjPbKzUy7T2B/ENA8+J7ZGms0/kK" \
   -H "Content-Type: application/json" \
   -d '[
     {
-      "ip": "1.1.1.1",
-      "port": 22,
-      "name": "Router1",
-      "operation": "created",
-      "targetProfile": "defaultProfile",
+      "address": "172.18.0.5",
+      "port": 57400,
+      "name": "leaf1",
+      "operation": "updated",
+      "targetProfile": "",
       "labels": [
-        { "key": "tags", "value": "tag1, tag2" }
+        { "key": "tags", "value": "" }
       ]
     }
   ]'

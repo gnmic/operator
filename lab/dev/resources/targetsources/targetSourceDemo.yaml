@@ -2,6 +2,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox
+  namespace: default
 spec:
   provider:
     http:
@@ -9,8 +10,11 @@ spec:
       authorization:
         token:
           scheme: Bearer
-          token: nbt_9WdKt8Q5rAtV.wlPJGE2Eo3Mlhf6hvBjXtVcVpkmcQyQL38vp3PUi
-      acceptPush: true
+          tokenSecretRef:
+            name: netbox-api-token
+            key: token
+      push:
+        enabled: true
       interval: 12h
   targetPort: 57400
   targetProfile: default

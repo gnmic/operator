@@ -58,7 +58,7 @@ components:
         name:
           type: string
           description: Routername
-        ip:
+        address:
           type: string
           description: IPv4 or IPv6
         port:

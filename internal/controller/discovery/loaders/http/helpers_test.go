@@ -67,7 +67,7 @@ func startLoaderRun(loader *Loader) (context.Context, context.CancelFunc, chan [
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan []core.DiscoveryMessage, 1)
 	done := make(chan error, 1)
-	go func() { done <- loader.Run(ctx, out) }()
+	go func() { done <- loader.Run(ctx, out, gnmicv1alpha1.TargetSourceSpec{}) }()
 	return ctx, cancel, out, done
 }
 

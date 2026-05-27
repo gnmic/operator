@@ -47,15 +47,6 @@ spec:
                   http:
                     description: HTTP defines the configuration for a HTTP provider
                     properties:
-<<<<<<< HEAD
-                      acceptPush:
-                        default: false
-                        description: |-
-                          If true, the loader will accept pushed target updates to the controller endpoint
-                          The endpoint will be /{namespace}/{targetsource}/<todo>
-                        type: boolean
-=======
->>>>>>> feature/pull-interface
                       authorization:
                         description: Optional authorization configuration for accessing
                           the HTTP endpoint
