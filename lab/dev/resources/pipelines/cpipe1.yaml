@@ -15,3 +15,4 @@ spec:
     outputSelectors:
       - matchLabels:
           type: metrics
+ 

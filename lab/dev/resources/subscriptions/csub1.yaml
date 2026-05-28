@@ -3,12 +3,11 @@ kind: Subscription
 metadata:
   name: csub1
   labels:
-    site: lab
     type: interfaces
 spec:
   paths:
-    - /interface/statistics
-    - /network-instance
+    - /interfaces
+    - /network-instances
   mode: STREAM/SAMPLE
-  sampleInterval: 1s
-  encoding: PROTO
+  sampleInterval: 10s
+ 

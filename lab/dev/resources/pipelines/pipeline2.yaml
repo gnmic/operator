@@ -8,10 +8,6 @@ spec:
   targetSelectors:
     - matchLabels:
         vendor: Nokia
-        role: leaf
-    - matchLabels:
-        vendor: Nokia
-        role: spine
   subscriptionSelectors:
     - matchLabels:
         vendor: Nokia
