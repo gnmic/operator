@@ -3,7 +3,7 @@ kind: Subscription
 metadata:
   name: csub1
   labels:
-    vendor: labRouters
+    site: lab
     type: interfaces
 spec:
   paths:

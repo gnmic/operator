@@ -3,6 +3,6 @@ kind: Secret
 metadata:
   name: eos-credentials
 type: Opaque
-stringData:
-  username: admin
-  password: NokiaSrl1!
+data:
+  username: YWRtaW4=
+  password: YWRtaW4=

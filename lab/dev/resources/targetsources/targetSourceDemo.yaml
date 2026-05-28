@@ -6,7 +6,7 @@ metadata:
 spec:
   provider:
     http:
-      url: http://srbsci-152.ost.ch:8081/api/dcim/devices/?export=GNMIc_operator_pull
+      url: http://srbsci-152:8081/api/dcim/devices/?export=GNMIc_operator_pull
       authorization:
         token:
           scheme: Bearer
@@ -15,8 +15,8 @@ spec:
             key: token
       push:
         enabled: true
-      interval: 12h
+      interval: 30s
   targetPort: 57400
   targetProfile: default
   targetLabels:
-    source: inventory
+    site: lab

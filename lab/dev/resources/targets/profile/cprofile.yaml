@@ -4,7 +4,7 @@ metadata:
   name: eos
 spec:
   credentialsRef: eos-credentials
-  tls: {}
+  tls: null
   encoding: JSON_IETF
   timeout: 10s
   tcpKeepAlive: 10s

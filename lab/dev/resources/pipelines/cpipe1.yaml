@@ -7,7 +7,7 @@ spec:
   enabled: true
   targetSelectors:
     - matchLabels:
-        vendor: labRouters
+        vendor: Arista
   subscriptionSelectors:
     - matchLabels:
         type: interfaces

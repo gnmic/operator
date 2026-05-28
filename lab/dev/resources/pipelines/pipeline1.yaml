@@ -7,20 +7,20 @@ spec:
   enabled: true
   targetSelectors:
     - matchLabels:
-        vendor: nokia_srlinux
+        vendor: Nokia
         role: leaf
     - matchLabels:
-        vendor: nokia_srlinux
+        vendor: Nokia
         role: spine
   subscriptionSelectors:
     - matchLabels:
-        vendor: nokia_srlinux
+        vendor: Nokia
         group: interface_metrics
     - matchLabels:
-        vendor: nokia_srlinux
+        vendor: Nokia
         group: bgp_metrics
     - matchLabels:
-        vendor: nokia_srlinux
+        vendor: Nokia
         group: lldp_metrics
   outputs:
     outputSelectors:

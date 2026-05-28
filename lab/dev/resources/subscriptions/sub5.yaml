@@ -3,7 +3,7 @@ kind: Subscription
 metadata:
   name: sub5
   labels:
-    vendor: nokia_srlinux
+    vendor: Nokia
     group: lldp_metrics
 spec:
   paths:

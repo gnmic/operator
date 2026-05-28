@@ -3,7 +3,7 @@ kind: Subscription
 metadata:
   name: sub3
   labels:
-    vendor: nokia_srlinux
+    vendor: Nokia
     group: bgp_state
 spec:
   paths:
