@@ -11,7 +11,7 @@ spec:
         token:
           scheme: Bearer
           tokenSecretRef:
-            name: netbox-api-token
+            name: netbox-api-token-demo
             key: token
       push:
         enabled: true
