@@ -65,6 +65,7 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 					},
 				},
 			)
+			time.Sleep(10 * time.Second)
 			// Switch case + i only needed to test behavior for messages with different values.
 			switch i {
 			case 1:
