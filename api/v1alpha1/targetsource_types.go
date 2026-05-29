@@ -29,7 +29,6 @@ type TargetSourceSpec struct {
 	// +kubebuilder:validation:Required
 	Provider *ProviderSpec `json:"provider"`
 
-	// TODO: implement in message processor
 	// Optional port to use for discovered targets if not specified by the provider
 	// +kubebuilder:validation:Optional
 	TargetPort int32 `json:"targetPort,omitempty"`
@@ -111,7 +110,6 @@ type HTTPConfig struct {
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
-	// TODO: document about default value
 	// +kubebuilder:default="30m"
 	// +kubebuilder:validation:Optional
 	Interval *metav1.Duration `json:"interval,omitempty"`
