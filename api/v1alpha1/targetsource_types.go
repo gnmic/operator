@@ -112,12 +112,12 @@ type HTTPConfig struct {
 
 	// Optional interval for polling the HTTP endpoint for targets
 	// TODO: document about default value
-	// +kubebuilder:default="6h"
+	// +kubebuilder:default="30m"
 	// +kubebuilder:validation:Optional
 	Interval *metav1.Duration `json:"interval,omitempty"`
 
 	// Optional timeout for HTTP requests to the endpoint
-	// +kubebuilder:default="10s"
+	// +kubebuilder:default="30s"
 	// +kubebuilder:validation:Optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 

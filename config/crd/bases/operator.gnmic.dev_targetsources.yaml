@@ -160,7 +160,7 @@ spec:
                           - Authorization configuration overrides any conflicting headers
                         type: object
                       interval:
-                        default: 6h
+                        default: 30m
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
@@ -360,7 +360,7 @@ spec:
                         - enabled
                         type: object
                       timeout:
-                        default: 10s
+                        default: 30s
                         description: Optional timeout for HTTP requests to the endpoint
                         type: string
                       tls:
