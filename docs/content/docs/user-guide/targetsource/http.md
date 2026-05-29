@@ -25,7 +25,7 @@ spec:
 | `body` | string | No | - | Request body for POST requests |
 | `authorization` | object | No | - | Authentication configuration for the HTTP endpoint |
 | `interval` | duration | No | 30m | Polling interval used to refresh targets |
-| `timeout` | duration | No | 10s | Timeout for HTTP requests |
+| `timeout` | duration | No | 30s | Timeout for HTTP requests |
 | `tls` | object | No | - | Client TLS configuration for HTTPS endpoints |
 | `pagination` | object | No | - | Pagination configuration for parsing HTTP responses |
 | `mapping` | object | No | - | Response mapping configuration for JSON responses |
