@@ -89,17 +89,6 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			)
 			return
 		}
-		// TODO temporary log discovered targets
-		for _, t := range targets {
-			logger.Info(
-				"Discovered target",
-				"name", t.Name,
-				"address", t.Address,
-				"port", t.Port,
-				"labels", t.Labels,
-				"profile", t.TargetProfile,
-			)
-		}
 
 		// Emit discovery snapshot downstream
 		snapshotID := fmt.Sprintf("%s-%s-%s", l.loaderCfg.TargetsourceNN.Namespace, l.loaderCfg.TargetsourceNN.Name, uuid.NewString())
