@@ -29,8 +29,8 @@ spec:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `provider` | object | Yes | Provider-specific discovery configuration. Exactly one provider must be configured |
-| `targetPort` | int32 | No | Default port used if the discovered target does not provide a port. |
-| `targetProfile` | string | Yes | Reference to `TargetProfile` applied to all targets |
+| `targetPort` | int32 | No | Default port used when the discovered target does not provide a port |
+| `targetProfile` | string | Yes | Reference to `TargetProfile` applied to all discovered targets |
 | `targetLabels` | map[string]string | No | Labels added to all discovered targets |
 
 
@@ -40,8 +40,66 @@ spec:
 
 | Provider | Description |
 |----------|-------------|
-| `http` | Discover targets from an HTTP JSON endpoint. [Configuration]({{< relref "http.md" >}}) |
+| `http` | Discover targets from an HTTP JSON endpoint or receive webhook updates. [Configuration]({{< relref "http.md" >}}) |
 
+
+<!-- ## Example: Multi-Source Discovery
+
+Combine multiple TargetSources for different environments:
+
+```yaml
+# Production devices from Consul
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: prod-consul
+spec:
+  consul:
+    url: http://consul-prod:8500
+  labels:
+    environment: production
+    source: consul
+---
+# Lab devices from ConfigMap
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: lab-devices
+spec:
+  configMap: lab-network-devices
+  labels:
+    environment: lab
+    source: configmap
+---
+# Simulator pods
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: simulators
+spec:
+  podSelector:
+    matchLabels:
+      app: srlinux
+  labels:
+    environment: dev
+    source: kubernetes
+```
+
+Then use label selectors in your Pipeline:
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: production-telemetry
+spec:
+  clusterRef: prod-cluster
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        environment: production
+  # ... subscriptions, outputs
+``` -->
 
 ## Label Inheritance
 
@@ -102,11 +160,12 @@ If the same label key is defined in multiple places, labels are applied in the f
 
 ## Status
 
-The TargetSource status shows discovery state:
+The `TargetSource` status shows discovery state:
 
 ```yaml
 status:
   status: Synced
+  observedGeneration: 1
   targetsCount: 42
   lastSync: "2024-01-15T10:30:00Z"
 ```
@@ -114,66 +173,9 @@ status:
 | Field | Description |
 |-------|-------------|
 | `status` | Current sync status (Synced, Error, Pending) |
+| `observedGeneration` | Generation of the spec last processed by the controller |
 | `targetsCount` | Number of targets discovered |
 | `lastSync` | Timestamp of last successful sync |
-
-<!-- ## Example: Multi-Source Discovery
-
-Combine multiple TargetSources for different environments:
-
-```yaml
-# Production devices from Consul
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: prod-consul
-spec:
-  consul:
-    url: http://consul-prod:8500
-  labels:
-    environment: production
-    source: consul
----
-# Lab devices from ConfigMap
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: lab-devices
-spec:
-  configMap: lab-network-devices
-  labels:
-    environment: lab
-    source: configmap
----
-# Simulator pods
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: TargetSource
-metadata:
-  name: simulators
-spec:
-  podSelector:
-    matchLabels:
-      app: srlinux
-  labels:
-    environment: dev
-    source: kubernetes
-```
-
-Then use label selectors in your Pipeline:
-
-```yaml
-apiVersion: operator.gnmic.dev/v1alpha1
-kind: Pipeline
-metadata:
-  name: production-telemetry
-spec:
-  clusterRef: prod-cluster
-  enabled: true
-  targetSelectors:
-    - matchLabels:
-        environment: production
-  # ... subscriptions, outputs
-``` -->
 
 ## Lifecycle
 
