@@ -262,13 +262,29 @@ spec:
                         properties:
                           nextField:
                             description: |-
-                              Field name in the JSON response that contains the next page reference.
-                              The value can be either:
-                              - a full URL (used directly for the next request), or
-                              - a pagination token (appended as a query parameter using this field name as the key).
+                              CEL expression used to extract the next page reference from the response.
 
-                              Must refer to a top-level key in the response object.
-                              Example: "next" or "nextToken"
+                              The expression is evaluated with:
+                                self -> full JSON response
+
+                              It must evaluate to either:
+                                - string (full URL OR token), or
+                                - null (indicates end of pagination)
+
+                              Examples:
+                                "self.next"
+                                "self.next_page_token"
+                                "self['@odata.nextLink']"
+                            type: string
+                          requestParam:
+                            description: |-
+                              Query parameter name used when the extracted value is a token.
+
+                              Required for token-based pagination.
+                              Ignored when NextField resolves to a full URL.
+
+                              Example:
+                                requestParam: "page_token"
                             type: string
                         type: object
                       push:

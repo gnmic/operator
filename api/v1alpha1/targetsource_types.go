@@ -177,16 +177,66 @@ type TokenAuthSpec struct {
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
-// PaginationSpec defines the configuration for paginating through responses from providers
+// PaginationSpec defines how pagination is handled for HTTP APIs.
+//
+// The pagination mechanism is fully server-driven. The loader will repeatedly:
+//  1. Extract the "next" reference from the response
+//  2. Use it to construct the next request
+//  3. Continue until no next reference is returned
+//
+// Supported pagination styles:
+//  1. Cursor-based:
+//     - Response returns a token (e.g. "next_page_token")
+//     - Client sends it back via a query parameter (e.g. "page_token")
+//  2. URL-based (nextLink):
+//     - Response returns a full URL
+//     - Client follows it directly without modification
+//  3. Expression-based extraction:
+//     - The next reference is extracted using a CEL expression
+//     - This allows access to nested fields or special keys
+//     (e.g. "@odata.nextLink")
+//
+// Behavior:
+//   - If the extracted value is a full URL, it will be used as-is
+//   - Otherwise, it is treated as a token and appended using RequestParam
+//   - The token is treated as opaque and must not be interpreted
+//
+// Example:
+//
+//	pagination:
+//	  nextField: "self.next_page_token"
+//	  requestParam: "page_token"
+//
+//	pagination:
+//	  nextField: "self['@odata.nextLink']"
 type PaginationSpec struct {
-	// Field name in the JSON response that contains the next page reference.
-	// The value can be either:
-	// - a full URL (used directly for the next request), or
-	// - a pagination token (appended as a query parameter using this field name as the key).
+	// CEL expression used to extract the next page reference from the response.
 	//
-	// Must refer to a top-level key in the response object.
-	// Example: "next" or "nextToken"
+	// The expression is evaluated with:
+	//   self -> full JSON response
+	//
+	// It must evaluate to either:
+	//   - string (full URL OR token), or
+	//   - null (indicates end of pagination)
+	//
+	// Examples:
+	//   "self.next"
+	//   "self.next_page_token"
+	//   "self['@odata.nextLink']"
+	//
+	// +kubebuilder:validation:Optional
 	NextField string `json:"nextField,omitempty"`
+
+	// Query parameter name used when the extracted value is a token.
+	//
+	// Required for token-based pagination.
+	// Ignored when NextField resolves to a full URL.
+	//
+	// Example:
+	//   requestParam: "page_token"
+	//
+	// +kubebuilder:validation:Optional
+	RequestParam string `json:"requestParam,omitempty"`
 }
 
 // ResponseMappingSpec controls how targets are extracted from an HTTP JSON response.
