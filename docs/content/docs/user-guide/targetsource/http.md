@@ -395,7 +395,7 @@ mapping:
       "site": item.site.name,
       "rack": item.rack != null ? item.rack.name : "",
       "role": item.role != null ? item.role : "unknown",
-      "tags": item.tags.size() > 0 ? ','.join(item.tags) : ""
+      "tags": item.tags.size() > 0 ? item.tags.join(',') : ""
     }
 ```
 
