@@ -153,5 +153,5 @@ apply-test-clusters: ## Apply the test clusters for testing
 	kubectl apply -f test/integration/resources/clusters
 
 .PHONY: apply-test-resources
-apply-test-resources: apply-test-targets apply-test-subscriptions apply-test-outputs apply-test-pipelines apply-test-clusters
+apply-test-resources: apply-test-targets apply-test-targetsources apply-test-subscriptions apply-test-outputs apply-test-pipelines apply-test-clusters
 
