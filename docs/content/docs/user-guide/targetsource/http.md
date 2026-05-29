@@ -8,13 +8,6 @@ description: >
 
 The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
 
-```yaml
-spec:
-  provider:
-    http:
-      url: http://inventory-service:8080/targets
-```
-
 ## HTTP Spec Fields
 
 | Field | Type | Required | Default | Description |
@@ -30,6 +23,25 @@ spec:
 | `pagination` | object | No | - | Pagination configuration for parsing HTTP responses |
 | `mapping` | object | No | - | Response mapping configuration for JSON responses |
 | `push` | object | No | - | Push-based update configuration |
+
+## Pull Mode
+
+The HTTP provider supports pull-based target discovery by periodically querying a remote HTTP endpoint that returns target data in JSON format.
+
+```yaml
+spec:
+  provider:
+    http:
+      url: http://inventory-service:8080/targets
+```
+
+In pull mode, the operator sends HTTP requests to the configured url at a fixed interval and updates targets based on the response. The `push.enabled` field is optional when pull mode is enabled, but can still be used for accepting incoming webhook notifications.
+
+*How Pull Mode Works*
+1. The operator sends an HTTP request to the configured url
+2. The response is parsed (either directly or via mapping)
+3. Targets are created, updated, or removed based on the returned data
+4. This process repeats according to the configured interval
 
 ## Push Mode
 
