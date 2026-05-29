@@ -20,6 +20,7 @@ import (
 	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -180,8 +181,21 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
-	statusUpdater := discovery.NewTargetSourceStatusUpdater(r.Client, targetSource)
-	statusUpdater.SetPending(ctx)
+
+	statusUpdater := discoveryTypes.NewDiscoveryKubernetesClient(r.Client, r.Scheme, targetSource)
+	if err := statusUpdater.UpdateStatus(ctx, discoveryTypes.StatusUpdate{
+		Conditions: []metav1.Condition{
+			{
+				Type:    discoveryTypes.ConditionTypeReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  string(discoveryTypes.ReasonWaitingForSync),
+				Message: "Waiting for initial sync",
+			},
+		},
+	}); err != nil {
+		logger.Error(err, "updating targetsource status failed")
+	}
+
 	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,

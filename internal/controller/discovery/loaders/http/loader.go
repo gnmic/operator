@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/gnmic/operator/internal/controller/discovery/core"
@@ -51,7 +52,19 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 			return nil
 
 		case <-ticker.C:
-			l.commonCfg.Client.SetFetching(ctx)
+			l.commonCfg.Client.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeReconciling,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncStarted),
+							Message: "Started fetching targets",
+						},
+					},
+				},
+			)
 			// Switch case + i only needed to test behavior for messages with different values.
 			switch i {
 			case 1:
