@@ -121,7 +121,7 @@ spec:
 
 ## Pagination
 
-Pagination enables the operator to retrieve all targets from APIs that return results in multiple pages. This is common with inventory systems that limit response sizes for performance reasons.
+Pagination enables the operator to retrieve complete result sets from APIs that return data in multiple pages. The operator automatically follows pagination until no further pages are available.
 
 ```yaml
 spec:
@@ -129,14 +129,15 @@ spec:
     http:
       url: https://inventory.example.com/devices
       pagination:
-        nextField: next
+        nextField: "self.next"
 ```
 
 ### Pagination Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `nextField` | string | No | Top-level JSON field name containing the pagination reference or token |
+| `nextField` | string | No | CEL expression used to extract the next page reference from the response |
+| `requestParam` | string | No | Query parameter used when the extracted value is a token |
 
 The `nextField` value may either contain:
 - A full URL for the next request
@@ -144,33 +145,26 @@ The `nextField` value may either contain:
 
 ### How Pagination Works
 
-The operator handles two common pagination patterns used by network inventory systems:
+The operator handles the following pagination patterns:
 
-#### 1. Cursor-Based Pagination (Tokens)
-When your inventory API returns a pagination token (e.g., `"next": "abc123xyz"`), the operator automatically appends it as a query parameter to construct the next request:
+#### 1. Link Header Pagination
+If the API provides a Link response header with `rel="next"`, the operator will automatically follow it.
 
+Example response header:
 ```
-First request:  GET https://inventory.example.com/devices
-Response contains: "next": "page2token"
-Next request:   GET https://inventory.example.com/devices?next=page2token
+Link: <https://api.example.com/devices?page=2>; rel="next"
 ```
 
-Example response:
-```json
-{
-  "devices": [...],
-  "next": "page2token"
-}
+Behavior:
+```
+Request 1: GET /devices?page=1
+Request 2: GET /devices?page=2
+Request 3: GET /devices?page=3
+...
 ```
 
 #### 2. URL-Based Pagination
-When your API returns a complete URL for the next page (e.g., `"next": "https://inventory.example.com/devices?offset=50"`), the operator uses it directly without modification:
-
-```
-First request:  GET https://inventory.example.com/devices
-Response contains: "next": "https://inventory.example.com/devices?offset=50"
-Next request:   GET https://inventory.example.com/devices?offset=50
-```
+If the response contains a full URL in the body (e.g. `"next": "https://..."`), it will be used directly.
 
 Example response:
 ```json
@@ -179,6 +173,35 @@ Example response:
   "next": "https://inventory.example.com/devices?offset=50"
 }
 ```
+
+#### 3. Token-Based Pagination
+If the response contains a pagination token, the operator appends it as a query parameter.
+
+Example:
+```yaml
+pagination:
+  nextField: "self.next_token"
+  requestParam: "page_token"
+```
+
+Example:
+```
+GET /devices
+-> "next_token": "abc123"
+GET /devices?page_token=abc123
+```
+
+#### CEL-Based Extraction
+The nextField is evaluated as a CEL expression using:
+- `self` -> entire JSON response
+
+Example:
+```yaml
+pagination:
+  nextField: "self['@odata.nextLink']"
+```
+
+This allows extracting values from nested or special keys.
 
 ## Response Processing
 
@@ -379,15 +402,22 @@ This hybrid approach optimizes performance by only compiling and evaluating CEL 
 **Example - Partial CEL mapping (only transform what needs transforming):**
 ```yaml
 mapping:
-  # name: "item.name" -> OMITTED: already matches default "name" field
+  # Use CEL only when you need to transform a field
+  name: "item.hostname"
   address: "item.primary_ip4 != null ? item.primary_ip4.split('/')[0] : item.primary_ip6.split('/')[0]"  # CEL: parse CIDR
-  # port: OMITTED: already exists as "port" field in item
-  labels: |  # CEL: construct labels from custom fields
+  
+  # Fields that already exist should be omitted
+  # Port already exists as "port" field in item
+  # port: item.port <- omit this
+
+  # Use CEL for structured or derived values
+  labels: |
     {
-      'site': item.site.name,
-      'role': item.device_role.name
+      "site": item.site.name,
+      "role": item.device_role.name
     }
-  # targetProfile: OMITTED: already exists as "targetProfile" field in item
+
+  # targetProfile can also be omitted if already present or not needed
 ```
 
 In this example, only `address` and `labels` use CEL expressions; `name`, `port`, and `targetProfile` use direct field lookups for efficiency.
@@ -407,7 +437,7 @@ mapping:
       "site": item.site.name,
       "rack": item.rack != null ? item.rack.name : "",
       "role": item.role != null ? item.role : "unknown",
-      "tags": item.tags.size() > 0 ? item.tags.join(',') : ""
+      "tags": item.tags.join(',')
     }
 ```
 
@@ -427,7 +457,7 @@ When deploying HTTP TargetSource providers in production networks, follow these 
 | **Medium environment** (100-500 targets) | `interval: 10m` | Balance between freshness and API load |
 | **Large environment** (500-2000 targets) | `interval: 15m` | Reduce API polling overhead |
 | **Very large environment** (2000+ targets) | `interval: 30m` | Minimize impact on inventory system |
-| **High-frequency changes** | Use `push` mode with `interval` | Enables sub-minute updates via push while periodic polling ensures completeness and consistency |
+| **High-frequency changes** | Use `push` mode with `interval` | Enables updates via push while periodic polling ensures completeness and consistency |
 
 **Timeout Configuration:**
 ```yaml
@@ -486,13 +516,13 @@ Pagination splits large datasets into multiple smaller HTTP requests. This impro
 ```yaml
 # EFFICIENT - Only CEL-transform what needs it
 mapping:
-  # These fields exist directly in API response -> no CEL needed
-  name: "item.hostname"         # Direct: omit CEL, fallback to field lookup
-  # port: (OMITTED)            # Direct: exists as "port" in item
+  #
+  name: "item.hostname"  # CEL expression
+  # port: (OMITTED) # Direct: exists as "port" in item
   
   # Only these need transformation -> use CEL
   address: "item.primary_ip.split('/')[0]"  # CEL: parse CIDR
-  labels: |                      # CEL: construct from nested fields
+  labels: | # CEL: construct from nested fields
     {'site': item.site.name}
 ```
 
