@@ -28,10 +28,6 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 				return nil, err
 			}
 
-			if err != nil {
-				return nil, err
-			}
-
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:          target.Name,
