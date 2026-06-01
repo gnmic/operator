@@ -58,9 +58,9 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	URL string `json:"url,omitempty"`
 
-	// Optional authorization configuration for accessing the HTTP endpoint
+	// Optional authentication configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
-	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+	Authentication *AuthenticationSpec `json:"authentication,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
 	// TODO: document about default value
@@ -103,9 +103,9 @@ type ClientTLSConfig struct {
 	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleRef,omitempty"`
 }
 
-// AuthorizationSpec defines the configuration for authentication
+// AuthenticationSpec defines the configuration for authentication
 // +kubebuilder:validation:ExactlyOneOf=basic;token
-type AuthorizationSpec struct {
+type AuthenticationSpec struct {
 	// Basic authentication configuration
 	Basic *BasicAuthSpec `json:"basic,omitempty"`
 	// Token-based authentication configuration

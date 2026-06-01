@@ -47,8 +47,8 @@ spec:
                   http:
                     description: HTTP defines the configuration for a HTTP provider
                     properties:
-                      authorization:
-                        description: Optional authorization configuration for accessing
+                      authentication:
+                        description: Optional authentication configuration for accessing
                           the HTTP endpoint
                         properties:
                           basic:
