@@ -16,7 +16,7 @@ The HTTP provider discovers targets from an HTTP endpoint returning JSON, or rec
 | `method` | string | No | GET | HTTP method used for requests |
 | `headers` | map[string]string | No | - | HTTP headers to include in requests |
 | `body` | string | No | - | Request body for POST requests |
-| `authorization` | object | No | - | Authentication configuration for the HTTP endpoint |
+| `authentication` | object | No | - | Authentication configuration for the HTTP endpoint |
 | `interval` | duration | No | 30m | Polling interval used to refresh targets |
 | `timeout` | duration | No | 30s | Timeout for HTTP requests |
 | `tls` | object | No | - | Client TLS configuration for HTTPS endpoints |
@@ -57,11 +57,11 @@ spec:
 
 When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
 
-## Authorization
+## Authentication
 
 The HTTP provider supports authenticated requests to the inventory endpoint.
 
-Exactly one authorization method can be configured.
+Exactly one authentication method can be configured.
 
 ### Basic Authentication
 
@@ -72,7 +72,7 @@ spec:
   provider:
     http:
       url: https://inventory.example.com/targets
-      authorization:
+      authentication:
         basic:
           credentialsSecretRef:
             name: inventory-credentials
@@ -88,7 +88,7 @@ spec:
   provider:
     http:
       url: https://inventory.example.com/targets
-      authorization:
+      authentication:
         token:
           scheme: Bearer
           tokenSecretRef:
@@ -484,7 +484,7 @@ tls:
 
 Example:
 ```yaml
-authorization:
+authentication:
   token:
     scheme: Bearer
     tokenSecretRef:
@@ -563,7 +563,7 @@ spec:
           key: ca.crt
       
       # Authentication
-      authorization:
+      authentication:
         token:
           scheme: Bearer
           tokenSecretRef:
