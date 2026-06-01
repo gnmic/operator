@@ -341,13 +341,11 @@ spec:
                 format: int32
                 type: integer
               targetProfile:
-                description: The TargetProfile to use for targets discovered by this
-                  TargetSource
-                minLength: 1
+                description: Optional TargetProfile to use for targets discovered
+                  by this TargetSource if not specified by the provider
                 type: string
             required:
             - provider
-            - targetProfile
             type: object
           status:
             description: TargetSourceStatus defines the observed state of TargetSource

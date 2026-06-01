@@ -29,7 +29,6 @@ type TargetSourceSpec struct {
 	// +kubebuilder:validation:Required
 	Provider *ProviderSpec `json:"provider"`
 
-	// TODO: implement in message processor
 	// Optional port to use for discovered targets if not specified by the provider
 	// +kubebuilder:validation:Optional
 	TargetPort int32 `json:"targetPort,omitempty"`
@@ -38,9 +37,8 @@ type TargetSourceSpec struct {
 	// +kubebuilder:validation:Optional
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
-	// The TargetProfile to use for targets discovered by this TargetSource
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// Optional TargetProfile to use for targets discovered by this TargetSource if not specified by the provider
+	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile"`
 }
 
