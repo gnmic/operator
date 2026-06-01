@@ -33,12 +33,25 @@ When used with gNMIc's HTTP provider, the operator simply fetches the rendered t
 
 ---
 
-## Step 1: Create a Secret for the NetBox API Token
+## Step 1: Create a NetBox API Token
 
-Create a Kubernetes Secret containing your NetBox API token. This keeps credentials secure and out of your TargetSource manifests.
+### Step 1a: Create the API Token in NetBox
+
+Create a dedicated API token in NetBox for gNMIc Operator access.
+
+1. Log in to NetBox.
+2. Go to **Admin > API Tokens**.
+3. Click **Add** or **Add token**.
+4. Enter a descriptive name such as `gNMIc Operator`.
+6. Do not grant "Write enabled"
+7. Copy the token value and store it safely; NetBox will not show it again.
+
+### Step 1b: Store the Token in a Kubernetes Secret
+
+Create a Kubernetes Secret containing the token so it is not embedded in manifests.
 
 ```bash
-# Substitute YOUR_NETBOX_TOKEN with your actual token
+# API Token Format: nbt_<Key>.<Token>
 kubectl create secret generic netbox-api-token \
   --from-literal=token=YOUR_NETBOX_TOKEN \
   -n your-namespace
@@ -144,18 +157,34 @@ The response is a JSON array of targets ready for gNMIc.
 
 ## Step 3: Create a TargetProfile
 
-Define how discovered targets should be configured: <!-- todo: reference to the targetprofile section to see more, also explain create credentials -->
+Define how discovered targets should be configured. The `TargetProfile` points to a Secret containing device credentials, such as username/password or client certificates.
+
+Create a credentials Secret first, then reference it from the profile.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: device-credentials
+  namespace: your-namespace
+type: Opaque
+stringData:
+  username: gnmic
+  password: gnmicPass
+```
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetProfile
 metadata:
-  name: netbox-devices
+  name: netbox-device
   namespace: your-namespace
 spec:
   credentialsRef: device-credentials
   timeout: 10s
 ```
+
+For more TargetProfile options and credential handling, see the operator documentation for `TargetProfile`.
 
 ---
 
