@@ -3,7 +3,7 @@ package apiserver
 //go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
 // To generate code, install openapi-codegen from https://github.com/oapi-codegen/oapi-codegen)
 // Then use: go generate ./internal/apiserver
-// 
+//
 // kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
 
 // docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/internal/apiserver/openapi.yaml -g markdown -o /local/docs/content/docs/user-guide/rest-api
@@ -106,7 +106,14 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 	)
 	logger.Info("Received POST request for CreateTargets")
 
-	if !a.verifyBearerToken(c, a.clusterReconciler) {
+	targetSource, err := a.fetchTargetSource(c.Request.Context(), getKey(url))
+	if err != nil {
+		logger.Error(err, "Failed to fetch TargetSource")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if !a.verifyAuthentication(c, a.clusterReconciler, targetSource) {
 		logger.Info("Unauthorized request for CreateTargets")
 		return
 	}
@@ -130,6 +137,7 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 	if err != nil {
 		logger.Error(err, "failed creating discoveryEvent")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
 	}
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
 	c.JSON(http.StatusOK, payloadTargets)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -83,6 +84,26 @@ func getStringForBearerToken() (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
+func (a *APIServer) verifyAuthentication(ctx *gin.Context, clusterReconciler *controller.ClusterReconciler, targetSource *gnmicv1alpha1.TargetSource) bool {
+	var pushAuthSpec *gnmicv1alpha1.PushAuthSpec
+	if targetSource.Spec.Provider != nil && targetSource.Spec.Provider.HTTP != nil && targetSource.Spec.Provider.HTTP.Push != nil {
+		pushAuthSpec = targetSource.Spec.Provider.HTTP.Push.Auth
+		if pushAuthSpec == nil {
+			return false
+		}
+		if pushAuthSpec.Bearer != nil {
+			return a.verifyBearerToken(ctx, clusterReconciler)
+		}
+		if pushAuthSpec.Signature != nil {
+			return a.verifySignature(ctx, clusterReconciler)
+		}
+		if pushAuthSpec.NoAuthentication {
+			return true
+		}
+	}
+	return false
+}
+
 // verifyBearerToken verifies bearer token from authorization header with value stored in kubernetes secret.
 func (a *APIServer) verifyBearerToken(ctx *gin.Context, clusterReconciler *controller.ClusterReconciler) bool {
 	const bearerPrefix = "Bearer "
@@ -104,6 +125,11 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, clusterReconciler *contr
 		return false
 	}
 	return true
+}
+
+// verifySignature verifies Signature
+func (a *APIServer) verifySignature(ctx *gin.Context, clusterReconciler *controller.ClusterReconciler) bool {
+	return false
 }
 
 // bearerTokenExists returns true if the bearerToken exists and false if it doesn't.
@@ -131,4 +157,12 @@ func getBearerToken(clusterReconciler *controller.ClusterReconciler) ([]byte, er
 	}
 	// kubectl get secret -n gnmic-system gnmic-api-auth -o jsonpath="{.data.bearer-token}" | base64 --decode
 	return token, nil
+}
+
+func (a *APIServer) fetchTargetSource(ctx context.Context, key types.NamespacedName) (*gnmicv1alpha1.TargetSource, error) {
+	var targetSource gnmicv1alpha1.TargetSource
+	if err := a.clusterReconciler.Get(ctx, key, &targetSource); err != nil {
+		return nil, err
+	}
+	return &targetSource, nil
 }

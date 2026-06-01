@@ -322,10 +322,11 @@ type PushSpec struct {
 	Auth *PushAuthSpec `json:"auth,omitempty"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf:=bearer;signature
+// +kubebuilder:validation:ExactlyOneOf:=bearer;signature;noAuthentication
 type PushAuthSpec struct {
-	Bearer    *PushBearerAuthSpec    `json:"bearer,omitempty"`
-	Signature *PushSignatureAuthSpec `json:"signature,omitempty"`
+	Bearer           *PushBearerAuthSpec    `json:"bearer,omitempty"`
+	Signature        *PushSignatureAuthSpec `json:"signature,omitempty"`
+	NoAuthentication bool                   `json:"noAuthentication,omitempty"`
 }
 
 // +kubebuilder:validation:Required
