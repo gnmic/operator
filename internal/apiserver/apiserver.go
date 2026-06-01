@@ -125,9 +125,7 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
 		return
 	}
-	// WROMA: both of these things are not relevant here, but instead in utils.send. TODO, check with Daniel if and how this can be implemented
-	// make sure channel is not closed if targetsource in registry is deleted ->
-	// timeout for sending to the channel
+
 	targets, err := createDiscoveryEvent(payloadTargets)
 	if err != nil {
 		logger.Error(err, "failed creating discoveryEvent")
