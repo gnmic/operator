@@ -74,7 +74,7 @@ spec:
       url: https://inventory.example.com/targets
       authentication:
         basic:
-          credentialsSecretRef:
+          credentialSecretRef:
             name: inventory-credentials
             key: username
 ```
