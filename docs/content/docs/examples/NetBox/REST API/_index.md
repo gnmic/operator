@@ -178,7 +178,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: netbox-api-token
-  namespace: gnmic
+  namespace: your-namespace
 type: Opaque
 data:
   # base64-encoded token (echo -n "YOUR_TOKEN" | base64)
@@ -213,7 +213,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox-rest-source
-  namespace: gnmic
+  namespace: your-namespace
 spec:
   targetPort: 57400
   targetProfile: netbox-device
