@@ -1,14 +1,14 @@
 ---
 title: "NetBox (Export Template)"
-linkTitle: "NetBox Export"
+linkTitle: "NetBox Export Template"
 weight: 3
 description: >
-  Discover targets from NetBox using HTTP provider with export templates
+  Discover targets from NetBox using HTTP provider with NetBox Export Template
 ---
 
 This guide shows how to use **NetBox Export Templates** with the HTTP provider to discover and sync targets.
 
-Export Templates offer powerful filtering, transformation, and formatting directly in NetBox, reducing load on the operator and enabling complex discovery logic.
+Export Templates offer powerful filtering, transformation, and formatting directly in NetBox, reducing the load on the operator.
 
 ## Overview
 
@@ -19,41 +19,42 @@ An **Export Template** is a Jinja2 template defined in NetBox that:
 3. **Transforms** data into your desired output format (JSON, YAML, CSV, etc.)
 4. **Returns** the formatted output via a custom REST API endpoint
 
-When used with gNMIc's HTTP provider, the operator simply fetches the rendered template and parses the result — no additional transformation needed.
+When used with gNMIc's HTTP provider, the operator simply fetches the rendered template and parses the result — no additional gNMIc Operator transformation needed if done correctly.
 
 ---
 
 ## Prerequisites
 
 - A running Kubernetes cluster with gNMIc Operator installed
-- A reachable NetBox instance with **permissions to create Export Templates**
-- A NetBox API token
 - `kubectl` access to your cluster
+- A reachable NetBox instance with permissions to create Export Templates
+- A NetBox API token
 - Familiarity with Jinja2 templates
 
 ---
 
-## Step 1: Create a NetBox API Token
+## Step 1: Create a NetBox API Token and Store It Securely
 
 ### Step 1a: Create the API Token in NetBox
 
 Create a dedicated API token in NetBox for gNMIc Operator access.
 
 1. Log in to NetBox.
-2. Go to **Admin > API Tokens**.
+2. Open your user profile or go to **User > API Tokens**.
 3. Click **Add** or **Add token**.
 4. Enter a descriptive name such as `gNMIc Operator`.
-6. Do not grant "Write enabled"
-7. Copy the token value and store it safely; NetBox will not show it again.
+5. Grant the minimum permissions required for read-only device discovery.
+6. Copy the token value and store it safely; NetBox will not show it again.
 
 ### Step 1b: Store the Token in a Kubernetes Secret
 
 Create a Kubernetes Secret containing the token so it is not embedded in manifests.
 
 ```bash
-# API Token Format: nbt_<Key>.<Token>
+# Substitute YOUR_NETBOX_API_TOKEN with your actual token
+# Bearer Token Format (v2): nbt_<key>.<token>
 kubectl create secret generic netbox-api-token \
-  --from-literal=token=YOUR_NETBOX_TOKEN \
+  --from-literal=token=YOUR_NETBOX_API_TOKEN \
   -n your-namespace
 ```
 
@@ -86,45 +87,41 @@ Click **Add Export Template** and fill in the details:
 #### Basic Template (All Devices)
 
 ```jinja2
-{
-  "targets": [
-    {% for device in queryset %}
-    {
-      "name": "{{ device.name }}",
-      "address": "{{ device.primary_ip4.address.split('/')[0] }}:57400",
-      "labels": {
-        "site": "{{ device.site.name }}",
-        "role": "{{ device.device_role.name }}",
-        "region": "{{ device.site.region.name }}",
-        "type": "{{ device.device_type.model }}"
-      }
-    }{{ "," if not loop.last }}
-    {% endfor %}
-  ]
-}
+[
+  {% for device in queryset %}
+  {
+    "name": "{{ device.name }}",
+    "address": "{{ device.primary_ip4.address.split('/')[0] }}",
+    "labels": {
+      "site": "{{ device.site.name }}",
+      "role": "{{ device.device_role.name }}",
+      "region": "{{ device.site.region.name }}",
+      "type": "{{ device.device_type.model }}"
+    }
+  }{{ "," if not loop.last }}
+  {% endfor %}
+]
 ```
 
 #### Advanced Template (Filtered by Status and Role)
 
 ```jinja2
-{
-  "targets": [
-    {% for device in queryset.filter(status='active', device_role__name__in=['leaf', 'spine']) %}
-    {
-      "name": "{{ device.name }}",
-      "address": "{{ device.primary_ip4.address.split('/')[0] }}:57400",
-      "labels": {
-        "site": "{{ device.site.name }}",
-        "role": "{{ device.device_role.name }}",
-        "region": "{{ device.site.region.name }}",
-        "model": "{{ device.device_type.model }}",
-        "serial": "{{ device.serial }}",
-        "asset_tag": "{{ device.asset_tag }}"
-      }
-    }{{ "," if not loop.last }}
-    {% endfor %}
-  ]
-}
+[
+  {% for device in queryset.filter(status='active', device_role__name__in=['leaf', 'spine']) %}
+  {
+    "name": "{{ device.name }}",
+    "address": "{{ device.primary_ip4.address.split('/')[0] }}",
+    "labels": {
+      "site": "{{ device.site.name }}",
+      "role": "{{ device.device_role.name }}",
+      "region": "{{ device.site.region.name }}",
+      "model": "{{ device.device_type.model }}",
+      "serial": "{{ device.serial }}",
+      "asset_tag": "{{ device.asset_tag }}"
+    }
+  }{{ "," if not loop.last }}
+  {% endfor %}
+]
 ```
 
 **Key template elements:**
@@ -147,11 +144,15 @@ Or fetch it directly:
 
 ```bash
 # Replace with your NetBox URL and template name
-curl -H "Authorization: Token YOUR_NETBOX_TOKEN" \
+# Substitute YOUR_NETBOX_API_TOKEN with your actual token
+# Bearer Token Format (v2): nbt_<key>.<token>
+curl -H "Authorization: Bearer YOUR_NETBOX_API_TOKEN" \
   "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
 ```
 
 The response is a JSON array of targets ready for gNMIc.
+
+> If you instead return a JSON object with a nested array, add a mapping section such as `targetsField: "self.targets"` to the TargetSource CR.
 
 ---
 
@@ -162,6 +163,7 @@ Define how discovered targets should be configured. The `TargetProfile` points t
 Create a credentials Secret first, then reference it from the profile.
 
 ```yaml
+# Replace YOUR_DEVICE_USERNAME and YOUR_DEVICE_PASSWORD with your corresponding default device username and password
 apiVersion: v1
 kind: Secret
 metadata:
@@ -169,8 +171,8 @@ metadata:
   namespace: your-namespace
 type: Opaque
 stringData:
-  username: gnmic
-  password: gnmicPass
+  username: YOUR_DEVICE_USERNAME
+  password: YOUR_DEVICE_PASSWORD
 ```
 
 ```yaml
@@ -199,28 +201,23 @@ metadata:
   name: netbox-export-source
   namespace: your-namespace
 spec:
-  # Specify the HTTP provider
-  provider:
-    http:
-      # NetBox API endpoint with export template query
-      # Replace: netbox.example.com, template name (gNMIc+Device+Export), token
-      url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
-
-      # Do not embed plaintext tokens in the TargetSource YAML. Instead, use a secret reference:
-      token:
-          scheme: Bearer
-          tokenSecretRef:
-            name: netbox-api-token
-            key: token
-
-  
-  # Reference the TargetProfile
+  targetPort: 57400
   targetProfile: netbox-device
-  
-  # Optional: Apply labels to all discovered targets
   targetLabels:
     inventory: netbox
     sync-source: export-template
+  provider:
+    http:
+      url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
+      method: GET
+      interval: 30m
+      timeout: 30s
+      authorization:
+        token:
+          scheme: Token
+          tokenSecretRef:
+            name: netbox-api-token
+            key: token
 ```
 
 ---
@@ -234,12 +231,12 @@ Once the `TargetSource` is deployed, verify that targets are being discovered:
 kubectl get targets -n your-namespace
 
 # Check TargetSource status and sync details
-kubectl describe ts netbox-export-source -n your-namespace
+kubectl describe targetsource netbox-export-source -n your-namespace
 ```
 
 Successful sync shows:
 
-- `status.status`: "success" <!-- todo: check this status -->
+- `status.status`: "success" (or similar) <!-- todo: to be verivied -->
 - `status.targetsCount`: number of devices
 - `status.lastSync`: recent timestamp
 
@@ -256,22 +253,35 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: netbox-api-token
-  namespace: gnmic
+  namespace: your-namespace
 type: Opaque
 data:
   # base64-encoded token (echo -n "YOUR_TOKEN" | base64)
   token: YOUR_BASE64_ENCODED_TOKEN
 
 ---
-# TargetProfile for NetBox devices
+# Secret for Target Credential
+apiVersion: v1
+kind: Secret
+metadata:
+  name: device-credentials
+  namespace: your-namespace
+type: Opaque
+stringData:
+  username: YOUR_DEVICE_USERNAME
+  password: YOUR_DEVICE_PASSWORD
+
+---
+# TargetProfile
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetProfile
 metadata:
   name: netbox-device
-  namespace: gnmic
+  namespace: your-namespace
 spec:
   credentialsRef: device-credentials
   timeout: 10s
+
 
 ---
 # TargetSource using Export Template
@@ -279,27 +289,25 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox-export-source
-  namespace: gnmic
+  namespace: your-namespace
 spec:
-  provider:
-    http:
-      url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
+  targetPort: 57400
   targetProfile: netbox-device
   targetLabels:
     inventory: netbox
     sync-source: export-template
-
----
-# Device Credentials (referenced by TargetProfile)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: device-credentials
-  namespace: gnmic
-type: Opaque
-data:
-  username: Z25taWM=           # base64: gnmic
-  password: Z25taaWNQYXNz=     # base64: gnmicPass
+  provider:
+    http:
+      url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
+      method: GET
+      interval: 30m
+      timeout: 30s
+      authorization:
+        token:
+          scheme: Token
+          tokenSecretRef:
+            name: netbox-api-token
+            key: token
 ```
 
 ---
@@ -340,13 +348,13 @@ If NetBox is behind a reverse proxy with URL path rewriting:
 ### 3. Complex Jinja2 Logic
 
 - NetBox's Jinja2 sandbox restricts some Python functions for security.
-- **Solution**: Keep templates simple and use NetBox's built-in filters and objects. Test in the NetBox UI before deploying.
+- **Solution**: Keep templates simple and use NetBox's built-in filters and objects. Test URL with curl or similar before deploying.
 
 ---
 
 ## Template Troubleshooting
 
-### Missing Data in Output
+### Missing Targets in Kubernetes
 
 - **Check**: Are all required fields populated in NetBox? (e.g., `primary_ip4` may be `None` if not set)
 - **Solution**: Add conditional checks:
@@ -361,7 +369,6 @@ If NetBox is behind a reverse proxy with URL path rewriting:
 If you get a 403 error:
 
 - Verify the token is valid and not expired.
-- Check token permissions in NetBox admin (User > API Tokens).
 - Ensure the API token is enabled.
 
 ---
