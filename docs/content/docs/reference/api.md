@@ -172,7 +172,7 @@ description: >
 | `method` | string | No | GET | HTTP request method |
 | `headers` | map[string]string | No | - | HTTP headers to include in requests |
 | `body` | string | No | - | Request body for POST requests |
-| `authorization` | AuthorizationSpec | No | - | Authentication configuration for the HTTP endpoint |
+| `authentication` | AuthenticationSpec | No | - | Authentication configuration for the HTTP endpoint |
 | `interval` | duration | No | 6h | Polling interval used to refresh targets |
 | `timeout` | duration | No | 10s | Timeout for HTTP requests |
 | `tls` | ClientTLSConfig | No | - | Client TLS configuration for HTTPS endpoints |
@@ -187,7 +187,7 @@ description: >
 | `insecureSkipVerify` | bool | No | false | Skip verification of the server certificate |
 | `caBundleRef` | ConfigMapKeySelector | No | - | Reference to a ConfigMap containing a PEM CA bundle |
 
-### AuthorizationSpec
+### AuthenticationSpec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

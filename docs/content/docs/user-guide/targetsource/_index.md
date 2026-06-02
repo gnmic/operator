@@ -30,7 +30,7 @@ spec:
 |-------|------|----------|-------------|
 | `provider` | object | Yes | Provider-specific discovery configuration. Exactly one provider must be configured |
 | `targetPort` | int32 | No | Default port used when the discovered target does not provide a port |
-| `targetProfile` | string | Yes | Reference to `TargetProfile` applied to all discovered targets |
+| `targetProfile` | string | No | Reference to default `TargetProfile` applied to all discovered targets if no profile was discovered |
 | `targetLabels` | map[string]string | No | Labels added to all discovered targets |
 
 
