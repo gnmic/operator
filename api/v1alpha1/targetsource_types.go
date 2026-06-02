@@ -117,7 +117,7 @@ type BasicAuthSpec struct {
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
 	// +kubebuilder:validation:Required
-	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef"`
+	CredentialSecretRef *corev1.SecretKeySelector `json:"credentialSecretRef"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication

@@ -54,7 +54,7 @@ spec:
                           basic:
                             description: Basic authentication configuration
                             properties:
-                              credentialsSecretRef:
+                              credentialSecretRef:
                                 description: |-
                                   Reference to a Secret containing "username" and "password" keys to use for
                                   basic authentication when connecting to the Provider.
@@ -81,7 +81,7 @@ spec:
                                 type: object
                                 x-kubernetes-map-type: atomic
                             required:
-                            - credentialsSecretRef
+                            - credentialSecretRef
                             type: object
                           token:
                             description: Token-based authentication configuration
