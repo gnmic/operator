@@ -212,7 +212,7 @@ spec:
       method: GET
       interval: 30m
       timeout: 30s
-      authorization:
+      authentication:
         token:
           scheme: Token
           tokenSecretRef:
@@ -302,7 +302,7 @@ spec:
       method: GET
       interval: 30m
       timeout: 30s
-      authorization:
+      authentication:
         token:
           scheme: Token
           tokenSecretRef:

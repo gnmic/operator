@@ -116,7 +116,7 @@ spec:
       method: GET
       interval: 5m
       timeout: 30s
-      authorization:
+      authentication:
         token:
           scheme: Bearer
           tokenSecretRef:
@@ -226,7 +226,7 @@ spec:
       method: GET
       interval: 5m
       timeout: 30s
-      authorization:
+      authentication:
         token:
           scheme: Bearer
           tokenSecretRef:
