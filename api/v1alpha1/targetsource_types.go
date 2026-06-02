@@ -37,9 +37,8 @@ type TargetSourceSpec struct {
 	// +kubebuilder:validation:Optional
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
-	// The TargetProfile to use for targets discovered by this TargetSource
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// Optional TargetProfile to use for targets discovered by this TargetSource if not specified by the provider
+	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile"`
 }
 
@@ -82,7 +81,7 @@ type HTTPConfig struct {
 	//     X-Custom-Header: value
 	//
 	// Precedence:
-	// - Authorization configuration overrides any conflicting headers
+	// - Authentication configuration overrides any conflicting headers e.g. Authorization
 	//
 	// +kubebuilder:validation:Optional
 	Headers map[string]string `json:"headers,omitempty"`
@@ -105,11 +104,12 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	Body string `json:"body,omitempty"`
 
-	// Optional authorization configuration for accessing the HTTP endpoint
+	// Optional authentication configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
-	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+	Authentication *AuthenticationSpec `json:"authentication,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
+	// TODO: document about default value
 	// +kubebuilder:default="30m"
 	// +kubebuilder:validation:Optional
 	Interval *metav1.Duration `json:"interval,omitempty"`
@@ -149,9 +149,9 @@ type ClientTLSConfig struct {
 	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleRef,omitempty"`
 }
 
-// AuthorizationSpec defines the configuration for authentication
+// AuthenticationSpec defines the configuration for authentication
 // +kubebuilder:validation:ExactlyOneOf=basic;token
-type AuthorizationSpec struct {
+type AuthenticationSpec struct {
 	// Basic authentication configuration
 	Basic *BasicAuthSpec `json:"basic,omitempty"`
 	// Token-based authentication configuration
@@ -163,7 +163,7 @@ type BasicAuthSpec struct {
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
 	// +kubebuilder:validation:Required
-	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef"`
+	CredentialSecretRef *corev1.SecretKeySelector `json:"credentialSecretRef"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication
@@ -173,6 +173,7 @@ type TokenAuthSpec struct {
 	Scheme string `json:"scheme"`
 	// Reference to a Secret containing a key with the token value to use for
 	// authentication when connecting to the Provider.
+	// Mutually exclusive with Token.
 	// +kubebuilder:validation:Required
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }

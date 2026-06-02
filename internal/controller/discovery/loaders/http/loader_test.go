@@ -14,7 +14,6 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/go-logr/logr"
 )
 
 func TestBuildHTTPClientCases(t *testing.T) {
@@ -93,7 +92,7 @@ func TestFetchPageErrorsAndJSON(t *testing.T) {
 	}
 
 	// method missing
-	if _, _, err := loader.fetchPage(context.Background(), nil, "http://example.com", logr.Discard()); err == nil {
+	if _, _, err := loader.fetchPage(context.Background(), nil, "http://example.com"); err == nil {
 		t.Fatalf("expected method configuration error")
 	}
 
@@ -112,7 +111,7 @@ func TestFetchPageErrorsAndJSON(t *testing.T) {
 	client := mustBuildClient(t, loader)
 
 	// non-200
-	if _, _, err := loader.fetchPage(context.Background(), client, server.URL, logr.Discard()); err == nil {
+	if _, _, err := loader.fetchPage(context.Background(), client, server.URL); err == nil {
 		t.Fatalf("expected status code error")
 	}
 
@@ -122,7 +121,7 @@ func TestFetchPageErrorsAndJSON(t *testing.T) {
 		w.Write([]byte("not-json"))
 	})
 
-	if _, _, err := loader.fetchPage(context.Background(), client, server.URL, logr.Discard()); err == nil {
+	if _, _, err := loader.fetchPage(context.Background(), client, server.URL); err == nil {
 		t.Fatalf("expected JSON decode error")
 	}
 }
@@ -157,7 +156,7 @@ func TestFetchPagePOSTAndHeaders(t *testing.T) {
 	loader := makeLoader(spec, nil)
 	client := mustBuildClient(t, loader)
 
-	raw, headers, err := loader.fetchPage(context.Background(), client, server.URL, logr.Discard())
+	raw, headers, err := loader.fetchPage(context.Background(), client, server.URL)
 	if err != nil {
 		t.Fatalf("fetchPage failed: %v", err)
 	}

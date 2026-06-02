@@ -17,14 +17,14 @@ func (l *Loader) fetchSecret(ctx context.Context, sel *corev1.SecretKeySelector)
 	return l.loaderCfg.ResourceFetcher.GetSecretKey(ctx, l.loaderCfg.TargetsourceNN.Namespace, sel)
 }
 
-func (l *Loader) applyAuthorization(req *http.Request) error {
-	auth := l.spec.Authorization
+func (l *Loader) applyAuthentication(req *http.Request) error {
+	auth := l.spec.Authentication
 	if auth == nil {
 		return nil
 	}
 
 	if auth.Basic != nil {
-		return l.applyBasicAuth(req, auth.Basic.CredentialsSecretRef)
+		return l.applyBasicAuth(req, auth.Basic.CredentialSecretRef)
 	}
 
 	if auth.Token != nil {

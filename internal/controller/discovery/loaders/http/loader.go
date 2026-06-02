@@ -201,7 +201,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 		}
 		seen[currentURL] = struct{}{}
 
-		raw, headers, err := l.fetchPage(ctx, client, currentURL, logger)
+		raw, headers, err := l.fetchPage(ctx, client, currentURL)
 		if err != nil {
 			return allTargets, err // do not silently drop pages
 		}
@@ -230,7 +230,6 @@ func (l *Loader) fetchPage(
 	ctx context.Context,
 	client *http.Client,
 	url string,
-	logger logr.Logger,
 ) (any, http.Header, error) {
 
 	method := l.spec.Method
@@ -258,7 +257,7 @@ func (l *Loader) fetchPage(
 		req.Header.Set(key, val)
 	}
 
-	if err := l.applyAuthorization(req); err != nil {
+	if err := l.applyAuthentication(req); err != nil {
 		return nil, nil, err
 	}
 
