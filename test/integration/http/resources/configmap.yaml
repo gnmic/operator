@@ -23,6 +23,7 @@ data:
           "role": "leaf"
         }
       },
+<<<<<<< feature/discovery-e2e-implementation-push
       {
         "ip": "clab-t1-leaf2",
         "port": 57400,
@@ -32,4 +33,6 @@ data:
           "role": "leaf"
         }
       }
+=======
+>>>>>>> local
     ]
