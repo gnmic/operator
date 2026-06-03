@@ -1,7 +1,7 @@
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
-  name: netbox
+  name: netbox-noauth
   namespace: default
 spec:
   provider:
@@ -16,10 +16,7 @@ spec:
       push:
         enabled: true
         auth:
-          bearer:
-            tokenSecretRef:
-              name: gnmic-api-auth
-              key: bearer-token
+          noAuthentication: true
       interval: 30s
   targetPort: 57400
   targetProfile: default
