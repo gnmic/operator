@@ -22,7 +22,7 @@ type DiscoveryRegistryValue struct {
 type CommonLoaderConfig struct {
 	TargetsourceNN  types.NamespacedName
 	ChunkSize       int
-	AcceptPush      bool
+	Push            bool
 	Router          *gin.Engine
 	ResourceFetcher ResourceFetcher
 }

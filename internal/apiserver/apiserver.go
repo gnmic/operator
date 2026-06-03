@@ -51,12 +51,11 @@ func New(
 	discoveryChunksize int,
 	bearerToken string,
 ) (*APIServer, error) {
-	// router := gin.New()
-	// router.Use(gin.Recovery())
-	// gin.SetMode(gin.ReleaseMode)
-	router := gin.Default()
-
+	router := gin.New()
+	router.Use(gin.Recovery())
+	gin.SetMode(gin.ReleaseMode)
 	logger := log.Log.WithValues("component", "api-server")
+
 	a := &APIServer{
 		Server: &http.Server{
 			Addr:    addr,
@@ -126,6 +125,13 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 	}
 
 	registry, ok := a.DiscoveryRegistry.Get(getKey(url))
+	if registry.CommonLoaderConfig.Push == false {
+		err := fmt.Errorf("targetSource %s/%s has the Push interface turned off", url.Namespace, url.Name)
+		logger.Error(err, "POST request rejected")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " has the Push interface turned off"})
+		return
+	}
+
 	if !ok {
 		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
 		logger.Error(err, "TargetSource lookup failed")

@@ -23,7 +23,7 @@ import (
 
 const (
 	apiAuthSecretName = "gnmic-api-auth"
-	apiAuthSecretKey  = "bearer-token"
+	apiAuthSecretKey  = "bearer"
 )
 
 // InitializeBearerToken creates a new bearer token in form of a Kubernetes secret, only if it doesn't exist yet.

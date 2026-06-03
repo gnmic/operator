@@ -20,6 +20,7 @@ spec:
             tokenSecretRef:
               name: gnmic-api-auth
               key: bearer-token
+          
       interval: 30s
   targetPort: 57400
   targetProfile: default
