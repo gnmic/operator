@@ -6,4 +6,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: gnmic-operator
-  newTag: dev
+  newTag: ci
