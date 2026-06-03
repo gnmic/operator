@@ -47,14 +47,14 @@ spec:
                   http:
                     description: HTTP defines the configuration for a HTTP provider
                     properties:
-                      authorization:
-                        description: Optional authorization configuration for accessing
+                      authentication:
+                        description: Optional authentication configuration for accessing
                           the HTTP endpoint
                         properties:
                           basic:
                             description: Basic authentication configuration
                             properties:
-                              credentialsSecretRef:
+                              credentialSecretRef:
                                 description: |-
                                   Reference to a Secret containing "username" and "password" keys to use for
                                   basic authentication when connecting to the Provider.
@@ -81,7 +81,7 @@ spec:
                                 type: object
                                 x-kubernetes-map-type: atomic
                             required:
-                            - credentialsSecretRef
+                            - credentialSecretRef
                             type: object
                           token:
                             description: Token-based authentication configuration
@@ -127,8 +127,41 @@ spec:
                             be set
                           rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
                             == 1'
+                      body:
+                        description: |-
+                          Optional raw request body.
+
+                          Typically used with POST requests and contains JSON payload.
+
+                          Example:
+                            body: |
+                              {
+                                "limit": 100,
+                                "status": "active"
+                              }
+
+                          Notes:
+                          - Ignored for GET requests
+                          - User must set appropriate Content-Type header if needed
+                        type: string
+                      headers:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Optional HTTP headers to include in the request.
+
+                          These map directly to HTTP headers (key-value pairs).
+
+                          Example:
+                            headers:
+                              Content-Type: application/json
+                              X-Custom-Header: value
+
+                          Precedence:
+                          - Authentication configuration overrides any conflicting headers e.g. Authorization
+                        type: object
                       interval:
-                        default: 6h
+                        default: 30m
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
@@ -138,53 +171,121 @@ spec:
                         properties:
                           address:
                             description: |-
-                              CEL expression to extract the target Address from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target address.
+
+                              If not set, defaults to:
+                                item["address"]
+
+                              Example:
+                                "item.ip"
                             type: string
                           labels:
-                            additionalProperties:
-                              type: string
                             description: |-
-                              CEL expression to extract the target labels from the response
+                              CEL expression that returns a map of labels.
+                              The expression must evaluate to an object (map).
+
+                              Example:
+
+                                labels: |
+                                  {
+                                    "env": item.environment,
+                                    "region": self.meta.region,
+                                    item.dynamicKey: "value"
+                                  }
+
+                              If not set, defaults to:
+                                item["labels"]
+
+                              The resulting map will be converted into labels.
                               The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
                               with values from the response taking precedence in case of conflicts.
-                            type: object
+                            type: string
                           name:
                             description: |-
-                              CEL expression to extract the target name from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target name.
+
+                              If not set, defaults to:
+                                item["name"]
+
+                              Example:
+                                "item.hostname"
                             type: string
                           port:
                             description: |-
-                              CEL expression to extract the target port from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target port.
+
+                              If not set, defaults to:
+                                item["port"]
+
+                              Example:
+                                "item.port"
                             type: string
                           targetProfile:
                             description: |-
-                              CEL expression to extract the target profile from the response
-                              If TargetsField is specified, this should be relative to TargetsField
+                              CEL expression for the target profile.
+
+                              If not set, defaults to:
+                                item["targetProfile"]
+
+                              Example:
+                                "item.type == 'edge' ? 'edge-profile' : 'default'"
                             type: string
                           targetsField:
                             description: |-
-                              Field name in the JSON response that contains the list of items (targets).
-                              If not specified, the entire response is expected to be a list of items.
-                              All subsequent fields are specified relative to this field
-                              Example: "results" if the response is of the form {"results": [ ... list of items ... ]}
+                              CEL expression that selects the list of target objects from the response.
+
+                              This is evaluated once using:
+                                self -> full JSON response
+
+                              Example:
+                                targetsField: "self.results"
+
+                              If not set, the response itself must be a JSON array with the targets.
                             type: string
                         type: object
+                      method:
+                        default: GET
+                        description: |-
+                          HTTP method used for the request.
+
+                          Defaults to GET if not specified.
+
+                          Supported values:
+                          - GET  (default, no request body)
+                          - POST (supports request body)
+                        enum:
+                        - GET
+                        - POST
+                        type: string
                       pagination:
                         description: Optional pagination configuration for parsing
                           responses from the HTTP endpoint
                         properties:
                           nextField:
                             description: |-
-                              Field name in the JSON response that contains the next page reference.
-                              The value can be either:
-                              - a full URL (used directly for the next request), or
-                              - a pagination token (appended as a query parameter using this field name as the key).
+                              CEL expression used to extract the next page reference from the response.
 
-                              Must refer to a top-level key in the response object.
-                              Example: "next" or "nextToken"
+                              The expression is evaluated with:
+                                self -> full JSON response
+
+                              It must evaluate to either:
+                                - string (full URL OR token), or
+                                - null (indicates end of pagination)
+
+                              Examples:
+                                "self.next"
+                                "self.next_page_token"
+                                "self['@odata.nextLink']"
+                            type: string
+                          requestParam:
+                            description: |-
+                              Query parameter name used when the extracted value is a token.
+
+                              Required for token-based pagination.
+                              Ignored when NextField resolves to a full URL.
+
+                              Example:
+                                requestParam: "page_token"
                             type: string
                         type: object
                       push:
@@ -276,7 +377,7 @@ spec:
                         - enabled
                         type: object
                       timeout:
-                        default: 10s
+                        default: 30s
                         description: Optional timeout for HTTP requests to the endpoint
                         type: string
                       tls:
@@ -341,13 +442,11 @@ spec:
                 format: int32
                 type: integer
               targetProfile:
-                description: The TargetProfile to use for targets discovered by this
-                  TargetSource
-                minLength: 1
+                description: Optional TargetProfile to use for targets discovered
+                  by this TargetSource if not specified by the provider
                 type: string
             required:
             - provider
-            - targetProfile
             type: object
           status:
             description: TargetSourceStatus defines the observed state of TargetSource
