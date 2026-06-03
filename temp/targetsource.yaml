@@ -1,0 +1,25 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: netbox
+  namespace: default
+spec:
+  provider:
+    http:
+      url: http://srbsci-152:8081/api/dcim/devices/?export=GNMIc_operator_pull
+      interval: 1m
+      authentication:
+        token:
+          scheme: Bearer
+          tokenSecretRef:
+            name: netbox-api-token
+            key: netbox-api-token
+      push:
+        enabled: false
+
+    # see Discovery Providers section
+  targetPort: 57400
+  targetProfile: default
+  targetLabels:
+    source: inventory
+
