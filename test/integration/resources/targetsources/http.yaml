@@ -7,12 +7,12 @@ spec:
     http:
       url: http://http-svc.default.svc/targets.json
       push:
-          enabled: true
-          auth:
-            bearer:
-              tokenSecretRef:
-                name: gnmic-api-auth
-                key: bearer-token
+        enabled: true
+        auth:
+          bearer:
+            tokenSecretRef:
+              name: gnmic-api-auth
+              key: bearer-token
   targetLabels:
     integrationtest: http
   targetProfile: default
