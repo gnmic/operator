@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -79,6 +80,21 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
+		// Set TargetSource conditions to "Reconciling"
+		l.loaderCfg.Updater.UpdateStatus(
+			ctx,
+			core.StatusUpdate{
+				Conditions: []metav1.Condition{
+					{
+						Type:    core.ConditionTypeReconciling,
+						Status:  metav1.ConditionStatus("True"),
+						Reason:  string(core.ReasonSyncStarted),
+						Message: "Started fetching target source",
+					},
+				},
+			},
+		)
+
 		// Fetch targets from HTTP endpoint
 		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client, logger)
 		if err != nil {
@@ -86,6 +102,21 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				err,
 				"Failed to fetch targets from HTTP endpoint",
 				"url", l.spec.URL,
+			)
+
+			// Set TargetSource conditions to "Stalled" if endpoint is not available
+			l.loaderCfg.Updater.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeStalled,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncFailed),
+							Message: "HTTP endpoint not available",
+						},
+					},
+				},
 			)
 			return
 		}

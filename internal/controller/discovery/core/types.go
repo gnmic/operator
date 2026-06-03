@@ -22,7 +22,7 @@ type CommonLoaderConfig struct {
 	TargetsourceNN  types.NamespacedName
 	ChunkSize       int
 	AcceptPush      bool
-	Client          StatusUpdater
+	Updater         StatusUpdater
 	ResourceFetcher ResourceFetcher
 }
 

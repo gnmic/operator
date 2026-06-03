@@ -199,7 +199,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,
-		Client:         statusUpdater,
+		Updater:        statusUpdater,
 	}
 
 	// Cleanup function to cleanup discovery runtime of targetsource
