@@ -97,8 +97,13 @@ undeploy-test-http-server: ## Undeploy the http pod for testing
 
 .PHONY: send-target-to-apiserver
 send-target-to-apiserver:
-	BEARER_TOKEN := $(kubectl get secret gnmic-api-auth -n gnmic-system -o jsonpath='{.data.bearer-token}' | base64 --decode; echo)
-	curl -X POST "http://localhost:8082/api/v1/default/target-source/http-ts/applyTargets" -H "Authorization: Bearer $(BEARER_TOKEN)" -H "Content-Type: application/json" -d '[ { "address": "clab-t1-leaf2", "port": 57400, "name": "leaf2", "operation": "created", "targetProfile": "default", "labels": [{"key": "vendor", "value": "nokia_srlinux"},{"key": "role", "value": "leaf"}] } ]'
+	@BEARER_TOKEN=$$(kubectl get secret gnmic-api-auth -n gnmic-system \
+		-o jsonpath='{.data.bearer-token}' | base64 --decode); \
+	kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0 >/dev/null 2>&1 & \
+	curl -X POST "http://localhost:8082/api/v1/default/target-source/http-ts/applyTargets" \
+		-H "Authorization: Bearer $$BEARER_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d '[{"address":"clab-t1-leaf2","port":57400,"name":"leaf2","operation":"created","targetProfile":"default","labels":[{"key":"vendor","value":"nokia_srlinux"},{"key":"role","value":"leaf"}]}]'
 
 .PHONY: deploy-test-netbox-instance
 deploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Deploy the test netbox instance for testing
