@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/gin-gonic/gin"
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery"
 	discoveryTypes "github.com/gnmic/operator/internal/controller/discovery/core"
@@ -53,6 +54,8 @@ type TargetSourceReconciler struct {
 		types.NamespacedName,
 		discoveryTypes.DiscoveryRegistryValue,
 	]
+
+	APIRouter *gin.Engine
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=targetsources,verbs=get;list;watch;create;update;patch;delete
@@ -101,6 +104,11 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if err := r.startDiscovery(ctx, req.NamespacedName, targetSource, logger); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	targetSource.Status.ObservedGeneration = targetSource.Generation
+	if err := r.Status().Update(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -229,7 +237,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 
 	// Start target loader
 	go func() {
-		if err := loader.Run(ctx, targetChannel, targetSource.Spec); err != nil {
+		if err := loader.Run(ctx, targetChannel); err != nil {
 			logger.Error(err, "Target loader exited unexpectedly")
 		} else {
 			logger.Error(nil, "Target loader exited unexpectedly without error")

@@ -282,7 +282,7 @@ delete-outputs-dev-lab: ## Delete the outputs for the development lab cluster
 	kubectl delete -f lab/dev/resources/outputs
 
 .PHONY: apply-pipelines-dev-lab
-apply-pipelines-dev-lab: ## Apply the pipelines for the development lab cluster
+	§apply-pipelines-dev-lab: ## Apply the pipelines for the development lab cluster
 	kubectl apply -f lab/dev/resources/pipelines
 
 .PHONY: delete-pipelines-dev-lab

@@ -348,14 +348,7 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 			)
 		}
 	case core.EventApply:
-		target, unknownLabels := generateTargetResource(event.Target, m.targetSource)
-		for k, v := range unknownLabels {
-			logger.Info("unknown operator label for target",
-				"target", event.Target.Name,
-				"label", k,
-				"value", v,
-			)
-		}
+		target := generateTargetResource(event.Target, m.targetSource)
 
 		if err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
 			logger.Error(err, "error applying target",

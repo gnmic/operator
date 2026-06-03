@@ -2,8 +2,6 @@ package core
 
 import (
 	"context"
-
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
 // Loader defines a pluggable TargetSource loader interface
@@ -14,5 +12,5 @@ type Loader interface {
 
 	// Run begins discovery and pushes target snapshots or events into the out channel
 	// The loader must stop cleanly when ctx is canceled
-	Run(ctx context.Context, out chan<- []DiscoveryMessage, spec gnmicv1alpha1.TargetSourceSpec) error
+	Run(ctx context.Context, out chan<- []DiscoveryMessage) error
 }
