@@ -22,5 +22,5 @@ data:
           "vendor": "nokia_srlinux",
           "role": "leaf"
         }
-      },
+      }
     ]
