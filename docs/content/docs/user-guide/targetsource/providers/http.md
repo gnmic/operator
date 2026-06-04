@@ -7,7 +7,7 @@ description: >
 ---
 
 The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
-<!-- 
+
 ## Basic Configuration
 
 ```yaml
@@ -627,4 +627,4 @@ This configuration ensures:
 - Balanced polling interval for stable environments
 - Proper pagination handling for large device inventories
 - Rich label extraction from custom fields
-- Fallback to defaults when fields are missing -->
+- Fallback to defaults when fields are missing
