@@ -1,8 +1,15 @@
 package apiserver
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
+	"hash"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -15,13 +22,17 @@ import (
 
 // kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=supersecret
 
-//verifyAuthentication 
+// verifyAuthentication
 func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) bool {
 	if registry.CommonLoaderConfig.PushConfig.Auth != nil {
-		return a.verifyBearerToken(ctx, registry, logger)
+		if authenticated := a.verifyBearerToken(ctx, registry, logger); authenticated == false {
+			return false
+		}
 	}
 	if registry.CommonLoaderConfig.PushConfig.Signature != nil {
-		return a.verifySignature(ctx, registry, logger)
+		if authenticated :=  a.verifySignature(ctx, registry, logger); authenticated == false {
+			return false
+		}
 	}
 	if registry.CommonLoaderConfig.PushConfig.Auth == nil {
 		return true
@@ -29,8 +40,44 @@ func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.Discove
 	return false
 }
 
-// verifySignature verifies Signature
+// verifySignature verifies x-hook-signature from POST header with hmac from body and a kubernetes secret.
 func (a *APIServer) verifySignature(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) bool {
+	signatureHeader := ctx.GetHeader("x-hook-signature")
+	clc := registry.CommonLoaderConfig
+	secret, err := getSecret(clc, clc.PushConfig.Signature.SecretRef.Key, clc.PushConfig.Signature.SecretRef.Name)
+	
+	if err != nil {
+		logger.Error(err, "error calling getSecret")
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		return false
+	}
+	body, err := io.ReadAll(ctx.Request.Body)
+	if err != nil {
+		logger.Error(err, "failed to read request body")
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid request body"})
+		return false
+	}
+	ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
+
+	var mac hash.Hash
+	if registry.CommonLoaderConfig.PushConfig.Signature.Algorithm == "sha256" {
+		mac = hmac.New(sha256.New, []byte(secret))
+		signatureHeader = strings.TrimSpace(strings.TrimPrefix(signatureHeader, "sha256="))
+	} else {
+		mac = hmac.New(sha512.New, []byte(secret))
+		signatureHeader = strings.TrimSpace(strings.TrimPrefix(signatureHeader, "sha512="))
+	}
+
+	mac.Write(body)
+	signatureCalculated := mac.Sum(nil)
+	signatureProvided, err := hex.DecodeString(signatureHeader)
+	if err != nil {
+		logger.Error(err, "error decoding signatureHeader")
+	}
+
+	if hmac.Equal(signatureCalculated, signatureProvided) {
+		return true
+	}
 	return false
 }
 
@@ -45,7 +92,8 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, registry core.DiscoveryR
 		return false
 	}
 
-	bearerSecret, err := getSecret(registry.CommonLoaderConfig)
+	clc := registry.CommonLoaderConfig
+	bearerSecret, err := getSecret(clc, clc.PushConfig.Auth.Bearer.TokenSecretRef.Key, clc.PushConfig.Auth.Bearer.TokenSecretRef.Name)
 	if err != nil {
 		logger.Error(err, "error calling getSecret")
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
@@ -63,21 +111,17 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, registry core.DiscoveryR
 }
 
 // getSecret returns Kubernetes Opaque secret as string
-func getSecret(clc *core.CommonLoaderConfig) (string, error) {
+func getSecret(clc *core.CommonLoaderConfig, key string, name string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-
-	key := clc.PushConfig.Auth.Bearer.TokenSecretRef.Key
-	name := clc.PushConfig.Auth.Bearer.TokenSecretRef.Name
-	namespace := clc.TargetsourceNN.Namespace
 
 	selector := &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: name},
 		Key:                  key,
 	}
-	secret, err := clc.ResourceFetcher.GetSecretKey(ctx, namespace, selector)
+	secret, err := clc.ResourceFetcher.GetSecretKey(ctx, clc.TargetsourceNN.Namespace, selector)
 	if err != nil {
-		return "", fmt.Errorf("failed to get secret %s/%s key %q: %w", namespace, name, key, err)
+		return "", fmt.Errorf("failed to get secret %s/%s key %q: %w", clc.TargetsourceNN.Namespace, name, key, err)
 	}
 	return secret, nil
 }

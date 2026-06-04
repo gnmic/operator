@@ -343,7 +343,6 @@ spec:
                                 x-kubernetes-map-type: atomic
                             required:
                             - algorithm
-                            - secretRef
                             type: object
                         required:
                         - enabled

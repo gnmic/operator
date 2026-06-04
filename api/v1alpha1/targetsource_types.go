@@ -338,7 +338,7 @@ type PushBearerAuthSpec struct {
 
 // +kubebuilder:validation:Required
 type PushSignatureSpec struct {
-	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 
 	// +kubebuilder:default="sha512"
 	// +kubebuilder:validation:Enum=sha256;sha512

@@ -97,18 +97,18 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) ApplyTargets(c *gin.Context) {
-	url := parseURI(c)
+	header := parseURI(c)
 	logger := log.FromContext(c.Request.Context()).WithValues(
 		"component", "apiserver",
-		"namespace", url.Namespace,
-		"targetsource", url.Name,
+		"namespace", header.Namespace,
+		"targetsource", header.Name,
 	)
 	logger.Info("Received POST request for CreateTargets")
 
-	key := getKey(url)
+	key := getKey(header)
 	registry, ok := a.DiscoveryRegistry.Get(key)
 	if !ok {
-		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
+		err := fmt.Errorf("targetSource %s/%s does not exist", header.Namespace, header.Name)
 		logger.Error(err, "TargetSource lookup failed")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
@@ -118,7 +118,7 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 
 
 	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Enabled == false {
-		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", url.Namespace, url.Name)
+		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", header.Namespace, header.Name)
 		logger.Error(err, "POST request rejected")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
