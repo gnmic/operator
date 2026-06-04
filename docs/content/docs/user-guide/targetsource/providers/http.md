@@ -3,7 +3,7 @@ title: "HTTP Provider"
 linkTitle: "HTTP"
 weight: 2
 description: >
-  HTTP TargetSource Discovery Provider
+  The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
 ---
 
 The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
