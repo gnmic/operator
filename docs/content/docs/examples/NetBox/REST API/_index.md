@@ -266,7 +266,7 @@ If NetBox is behind a reverse proxy:
 
 For inventories with thousands of devices:
 
-- Consider using **Export Templates** (see [NetBox Export Templates]({{< relref "../Export Template" >}})) for better filtering and performance.
+<!-- - Consider using **Export Templates** (see [NetBox Export Templates]({{< relref "../Export Template" >}})) for better filtering and performance. -->
 - Implement filtering in the REST API URL (e.g., `?site=us-west&status=active`).
 
 ---
