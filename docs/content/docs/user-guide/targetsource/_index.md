@@ -17,13 +17,14 @@ metadata:
   name: targetsource-1
 spec:
   provider:
-    # Configure one of the supported providers:
-    # https://{{< relref "providers/_index.md" >}}
+    # Configure one of the supported providers
   targetPort: 57400
   targetProfile: default
   targetLabels:
     source: inventory
 ```
+
+The supported TargetSource providers are documented on the [TargetSource Provider](./providers/) page.
 
 ## Spec Fields
 
