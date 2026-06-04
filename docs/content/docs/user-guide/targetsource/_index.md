@@ -18,7 +18,7 @@ metadata:
 spec:
   provider:
     # Configure one of the supported providers:
-    # https://{{< relref "user-guide/targetsource/providers/_index.md" >}}
+    # https://{{< relref "providers/_index.md" >}}
   targetPort: 57400
   targetProfile: default
   targetLabels:
