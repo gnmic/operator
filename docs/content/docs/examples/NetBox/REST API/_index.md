@@ -42,27 +42,27 @@ Create a dedicated API token in NetBox for gNMIc Operator access.
 
 ### Step 1b: Store the Token in a Kubernetes Secret
 
-Create a Kubernetes Secret containing the token so it is not embedded in manifests.
+Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token so it is not embedded in manifests.
 
 ```bash
 # Substitute YOUR_NETBOX_API_TOKEN with your actual token
 # Bearer Token Format (v2): nbt_<key>.<token>
 kubectl create secret generic netbox-api-token \
   --from-literal=token=YOUR_NETBOX_API_TOKEN \
-  -n your-namespace
+  -n gnmic-system
 ```
 
 Verify the Secret was created:
 
 ```bash
-kubectl get secret netbox-api-token -n your-namespace -o yaml
+kubectl get secret netbox-api-token -n gnmic-system -o yaml
 ```
 
 ---
 
 ## Step 2: Create a TargetProfile
 
-Define how discovered targets should be configured. The `TargetProfile` points to a Secret containing device credentials, such as username/password or client certificates.
+Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates.
 
 Create a credentials Secret first, then reference it from the profile.
 
@@ -72,7 +72,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: device-credentials
-  namespace: your-namespace
+  namespace: gnmic-system
 type: Opaque
 stringData:
   username: YOUR_DEVICE_USERNAME
@@ -84,7 +84,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetProfile
 metadata:
   name: netbox-device
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   credentialsRef: device-credentials
   timeout: 10s
@@ -103,7 +103,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox-rest-source
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   targetPort: 57400
   targetProfile: netbox-device
@@ -122,6 +122,8 @@ spec:
           tokenSecretRef:
             name: netbox-api-token
             key: token
+      pagination:
+        nextField: "next"
       mapping:
         targetsField: "self.results"
         address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
@@ -134,30 +136,27 @@ spec:
           }
 ```
 
+> This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation.
 
-The HTTP loader supports `targetsField` and individual CEL expressions for:
-
-- `name`
-- `address`
-- `port`
-- `labels`
-- `targetProfile`
+The HTTP loader supports `targetsField` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `targetProfile`. See the HTTP provider docs "Response Mapping via CEL" section for more details: {{< relref "user-guide/targetsource/providers/http.md" >}}.
 
 Use `self` for the full response and `item` for each candidate object.
 
-
 ---
 
-## Step 4: Verify Target Discovery
+## Step 4: Apply and Verify Target Discovery
 
-Once the `TargetSource` is deployed, check that targets are being discovered and synced:
+Deploy the `TargetSource` and check that targets are being discovered and synced:
 
 ```bash
 # List discovered targets
-kubectl get targets -n your-namespace
+kubectl apply -f /path/to/targetsource.yaml -n gnmic-system
+
+# List discovered targets
+kubectl get targets -n gnmic-system
 
 # Check TargetSource status
-kubectl describe targetsource netbox-rest-source -n your-namespace
+kubectl describe targetsource netbox-rest-source -n gnmic-system
 ```
 
 Look for:
@@ -178,7 +177,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: netbox-api-token
-  namespace: your-namespace
+  namespace: gnmic-system
 type: Opaque
 data:
   # base64-encoded token (echo -n "YOUR_TOKEN" | base64)
@@ -190,7 +189,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: device-credentials
-  namespace: your-namespace
+  namespace: gnmic-system
 type: Opaque
 stringData:
   username: YOUR_DEVICE_USERNAME
@@ -202,7 +201,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetProfile
 metadata:
   name: netbox-device
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   credentialsRef: device-credentials
   timeout: 10s
@@ -213,7 +212,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox-rest-source
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   targetPort: 57400
   targetProfile: netbox-device
@@ -232,6 +231,8 @@ spec:
           tokenSecretRef:
             name: netbox-api-token
             key: token
+      pagination:
+        nextField: "next"
       mapping:
         targetsField: "self.results"
         address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
@@ -266,15 +267,15 @@ If NetBox is behind a reverse proxy:
 For inventories with thousands of devices:
 
 - Consider using **Export Templates** (see [NetBox Export Templates]({{< relref "../Export Template" >}})) for better filtering and performance.
-- Implement pagination or filtering in the REST API URL (e.g., `?site=us-west&status=active`).
+- Implement filtering in the REST API URL (e.g., `?site=us-west&status=active`).
 
 ---
 
 ## Security Considerations
 
-### Token Storage
+### Token and Credentials
 
-- **Never** embed plaintext tokens in manifests or YAML files.
+- **Never** embed plaintext tokens or credentials in manifests or YAML files.
 - Always store tokens in Kubernetes Secrets.
 - Restrict RBAC permissions on the Secret to only necessary service accounts.
 
@@ -293,7 +294,7 @@ If connecting to NetBox via HTTPS:
 ### Show TargetSource Errors
 
 ```bash
-kubectl describe targetsource netbox-rest-source -n your-namespace
+kubectl describe targetsource netbox-rest-source -n gnmic-system
 ```
 
 ### Targets Not Appearing

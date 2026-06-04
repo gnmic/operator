@@ -1,7 +1,7 @@
 ---
 title: "NetBox (Export Template)"
 linkTitle: "NetBox Export Template"
-weight: 3
+weight: 1
 description: >
   Discover targets from NetBox using HTTP provider with NetBox Export Template
 ---
@@ -19,7 +19,7 @@ An **Export Template** is a Jinja2 template defined in NetBox that:
 3. **Transforms** data into your desired output format (JSON, YAML, CSV, etc.)
 4. **Returns** the formatted output via a custom REST API endpoint
 
-When used with gNMIc's HTTP provider, the operator simply fetches the rendered template and parses the result — no additional gNMIc Operator transformation needed if done correctly.
+When used with gNMIc's HTTP provider, the operator simply fetches the rendered JSON template and parses the result — no additional gNMIc Operator transformation needed if done correctly.
 
 ---
 
@@ -48,20 +48,20 @@ Create a dedicated API token in NetBox for gNMIc Operator access.
 
 ### Step 1b: Store the Token in a Kubernetes Secret
 
-Create a Kubernetes Secret containing the token so it is not embedded in manifests.
+Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token.
 
 ```bash
 # Substitute YOUR_NETBOX_API_TOKEN with your actual token
 # Bearer Token Format (v2): nbt_<key>.<token>
 kubectl create secret generic netbox-api-token \
   --from-literal=token=YOUR_NETBOX_API_TOKEN \
-  -n your-namespace
+  -n gnmic-system
 ```
 
 Verify the Secret was created:
 
 ```bash
-kubectl get secret netbox-api-token -n your-namespace -o yaml
+kubectl get secret netbox-api-token -n gnmic-system -o yaml
 ```
 
 ---
@@ -84,6 +84,10 @@ Click **Add Export Template** and fill in the details:
 
 ### Step 2b: Template Code Example
 
+The following Export Templates only work for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox data model details, see the [NetBox Devices Data Model](https://netboxlabs.com/docs/netbox/models/dcim/device/) documentation.
+
+See the HTTP provider's "Default Response Format" section for the expected JSON structure: [HTTP Provider]({{< relref "user-guide/targetsource/providers/http.md" >}})
+
 #### Basic Template (All Devices)
 
 ```jinja2
@@ -91,10 +95,10 @@ Click **Add Export Template** and fill in the details:
   {% for device in queryset %}
   {
     "name": "{{ device.name }}",
-    "address": "{{ device.primary_ip4.address.split('/')[0] }}",
+    "address": "{{ device.primary_ip4.address.ip }}",
     "labels": {
       "site": "{{ device.site.name }}",
-      "role": "{{ device.device_role.name }}",
+      "role": "{{ device.role.name }}",
       "region": "{{ device.site.region.name }}",
       "type": "{{ device.device_type.model }}"
     }
@@ -107,13 +111,13 @@ Click **Add Export Template** and fill in the details:
 
 ```jinja2
 [
-  {% for device in queryset.filter(status='active', device_role__name__in=['leaf', 'spine']) %}
+  {% for device in queryset.filter(status='active', role__name__in=['leaf', 'spine']) %}
   {
     "name": "{{ device.name }}",
-    "address": "{{ device.primary_ip4.address.split('/')[0] }}",
+    "address": "{{ device.primary_ip4.address.ip }}",
     "labels": {
       "site": "{{ device.site.name }}",
-      "role": "{{ device.device_role.name }}",
+      "role": "{{ device.role.name }}",
       "region": "{{ device.site.region.name }}",
       "model": "{{ device.device_type.model }}",
       "serial": "{{ device.serial }}",
@@ -128,7 +132,7 @@ Click **Add Export Template** and fill in the details:
 
 - `queryset`: The filtered set of devices (all unless you add `.filter()`)
 - `device.name`: Device hostname
-- `device.primary_ip4.address.split('/')[0]`: Extract IP from CIDR (e.g., `192.0.2.1/24` to `192.0.2.1`)
+- `device.primary_ip4.address.ip`: Primary IPv4 address
 - `device.site.name`, `device.device_role.name`: NetBox relationships (site, role, etc.)
 - `loop.last`: Jinja2 loop variable to avoid trailing comma on last item
 
@@ -150,7 +154,28 @@ curl -H "Authorization: Bearer YOUR_NETBOX_API_TOKEN" \
   "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
 ```
 
-The response is a JSON array of targets ready for gNMIc.
+The response should be a JSON array of targets ready for the gNMIc Operator.
+
+Sample JSON output produced by the basic export template:
+
+```json
+[
+  
+  {
+    "name": "edge-rtr-01.dc1.example.com",
+    "address": "203.0.113.1",
+    "labels": {
+      "site": "DC1",
+      "role": "edge",
+      "region": "eu-central-1",
+      "type": "router"
+    }
+  },
+
+]
+```
+
+> Ensure the response is valid JSON and contains no hidden or invalid characters, otherwise the gNMIc Operator will fail to parse it.
 
 > If you instead return a JSON object with a nested array, add a mapping section such as `targetsField: "self.targets"` to the TargetSource CR.
 
@@ -158,9 +183,9 @@ The response is a JSON array of targets ready for gNMIc.
 
 ## Step 3: Create a TargetProfile
 
-Define how discovered targets should be configured. The `TargetProfile` points to a Secret containing device credentials, such as username/password or client certificates.
+Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates.
 
-Create a credentials Secret first, then reference it from the profile.
+Create a credentials Secret first, then reference it from the TargetProfile.
 
 ```yaml
 # Replace YOUR_DEVICE_USERNAME and YOUR_DEVICE_PASSWORD with your corresponding default device username and password
@@ -168,7 +193,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: device-credentials
-  namespace: your-namespace
+  namespace: gnmic-system
 type: Opaque
 stringData:
   username: YOUR_DEVICE_USERNAME
@@ -180,7 +205,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetProfile
 metadata:
   name: netbox-device
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   credentialsRef: device-credentials
   timeout: 10s
@@ -199,7 +224,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox-export-source
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   targetPort: 57400
   targetProfile: netbox-device
@@ -228,10 +253,10 @@ Once the `TargetSource` is deployed, verify that targets are being discovered:
 
 ```bash
 # List discovered targets
-kubectl get targets -n your-namespace
+kubectl get targets -n gnmic-system
 
 # Check TargetSource status and sync details
-kubectl describe targetsource netbox-export-source -n your-namespace
+kubectl describe targetsource netbox-export-source -n gnmic-system
 ```
 
 Successful sync shows:
@@ -253,7 +278,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: netbox-api-token
-  namespace: your-namespace
+  namespace: gnmic-system
 type: Opaque
 data:
   # base64-encoded token (echo -n "YOUR_TOKEN" | base64)
@@ -265,7 +290,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: device-credentials
-  namespace: your-namespace
+  namespace: gnmic-system
 type: Opaque
 stringData:
   username: YOUR_DEVICE_USERNAME
@@ -277,7 +302,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetProfile
 metadata:
   name: netbox-device
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   credentialsRef: device-credentials
   timeout: 10s
@@ -289,7 +314,7 @@ apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
   name: netbox-export-source
-  namespace: your-namespace
+  namespace: gnmic-system
 spec:
   targetPort: 57400
   targetProfile: netbox-device
@@ -348,7 +373,7 @@ If NetBox is behind a reverse proxy with URL path rewriting:
 ### 3. Complex Jinja2 Logic
 
 - NetBox's Jinja2 sandbox restricts some Python functions for security.
-- **Solution**: Keep templates simple and use NetBox's built-in filters and objects. Test URL with curl or similar before deploying.
+- **Solution**: Keep templates simple and use NetBox's built-in filters and objects. Test the URL with curl or similar before deploying.
 
 ---
 
@@ -360,7 +385,7 @@ If NetBox is behind a reverse proxy with URL path rewriting:
 - **Solution**: Add conditional checks:
   ```jinja2
   {% if device.primary_ip4 %}
-    "address": "{{ device.primary_ip4.address.split('/')[0] }}"
+    "address": "{{ device.primary_ip4.address.ip }}"
   {% endif %}
   ```
 
