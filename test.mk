@@ -95,6 +95,10 @@ deploy-test-http-server: ## Deploy a test http pod with a static file inventory
 undeploy-test-http-server: ## Undeploy the http pod for testing
 	kubectl delete -f test/integration/http/resources/
 
+.PHONY: create-secrets-for-apiserver
+	kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=secureSecret
+	kubectl create secret generic gnmic-signature --from-literal=signature=1879
+
 .PHONY: send-target-to-apiserver
 send-target-to-apiserver:
 	@BEARER_TOKEN=$$(kubectl get secret gnmic-api-auth -n gnmic-system \
@@ -104,6 +108,7 @@ send-target-to-apiserver:
 	curl --retry 3 --retry-delay 1 --retry-connrefused -X POST "http://localhost:8082/api/v1/default/target-source/http-ts/applyTargets" \
 		-H "Authorization: Bearer $$BEARER_TOKEN" \
 		-H "Content-Type: application/json" \
+		-H "x-hook-signature: cec95fd6d3a350ebcf9b25d2d715384ca673ee3a3cd67ed22e212179d9ee20abe724cbed7f93028c5b0e12e5ce6dd791482f2a1045d47253e8cddd637f0f8d7d"
 		-d '[{"address":"clab-t1-leaf2","port":57400,"name":"leaf2","operation":"created","targetProfile":"default","labels":[{"key":"vendor","value":"nokia_srlinux"},{"key":"role","value":"leaf"}]}]'; \
 
 .PHONY: deploy-test-netbox-instance
