@@ -102,7 +102,7 @@ create-secrets-for-apiserver:
 
 .PHONY: send-target-to-apiserver
 send-target-to-apiserver:
-	@BEARER_TOKEN=$$(kubectl get secret gnmic-api-auth -n gnmic-system \
+	@BEARER_TOKEN=$$(kubectl get secret gnmic-api-auth \
 		-o jsonpath='{.data.bearer-token}' | base64 --decode); \
 	kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0 >/dev/null 2>&1 & \
 	sleep 3; \
