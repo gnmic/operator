@@ -21,10 +21,11 @@ spec:
     http:
       url: http://inventory-service:8080/targets
       authentication:
-        basic:
-          credentialSecretRef:
-            name: inventory-credentials
-            key: username
+        token:
+          scheme: Bearer
+          tokenSecretRef:
+            name: inventory-token
+            key: token
       # Enable push mode
       push:
         enabled: true
@@ -78,7 +79,7 @@ Exactly one authentication method can be configured.
 
 #### Basic Authentication
 
-Credentials are referenced from a Secret.
+Credentials are referenced from a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/).
 
 ```yaml
 spec:
@@ -94,7 +95,7 @@ spec:
 
 #### Token Authentication
 
-Token authentication is configured using a Secret reference.
+Token authentication is configured using a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) reference.
 
 ```yaml
 spec:
@@ -130,7 +131,7 @@ spec:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `insecureSkipVerify` | bool | No | Skip verification of the server certificate. Defaults to `false` |
-| `caBundleRef` | object | No | Reference to a ConfigMap containing a PEM-encoded CA bundle |
+| `caBundleRef` | object | No | Reference to a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) containing a PEM-encoded CA bundle |
 
 ### Pagination
 
@@ -505,7 +506,7 @@ tls:
 ```
 
 **For authenticated APIs:**
-- Store credentials in Kubernetes Secrets
+- Store credentials in [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)
 - Rotate credentials periodically
 - Use token-based auth when possible (simpler secret rotation)
 
