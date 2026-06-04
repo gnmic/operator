@@ -78,15 +78,15 @@ func (a *APIServer) Router() *gin.Engine {
 
 // GetClusterPlan returns cluster plan
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
-	url := parseURI(c)
+	uri := parseURI(c)
 	logger := log.FromContext(c.Request.Context()).WithValues(
 		"component", "apiserver",
-		"namespace", url.Namespace,
-		"cluster", url.Name,
+		"namespace", uri.Namespace,
+		"cluster", uri.Name,
 	)
 	logger.Info("Received GET request for GetClusterPlan")
 
-	plan, err := a.clusterReconciler.GetClusterPlan(url.Namespace, url.Name)
+	plan, err := a.clusterReconciler.GetClusterPlan(uri.Namespace, uri.Name)
 	if err != nil {
 		logger.Error(err, "Failed to get cluster plan")
 		c.String(404, err.Error())
@@ -97,42 +97,40 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) ApplyTargets(c *gin.Context) {
-	header := parseURI(c)
+	uri := parseURI(c)
 	logger := log.FromContext(c.Request.Context()).WithValues(
 		"component", "apiserver",
-		"namespace", header.Namespace,
-		"targetsource", header.Name,
+		"namespace", uri.Namespace,
+		"targetsource", uri.Name,
 	)
 	logger.Info("Received POST request for CreateTargets")
 
-	key := getKey(header)
+	key := getKey(uri)
 	registry, ok := a.DiscoveryRegistry.Get(key)
 	if !ok {
-		err := fmt.Errorf("targetSource %s/%s does not exist", header.Namespace, header.Name)
+		err := fmt.Errorf("targetSource %s/%s does not exist", uri.Namespace, uri.Name)
 		logger.Error(err, "TargetSource lookup failed")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
 
-	logger.Info("Loaded push config", "pushConfig", registry.CommonLoaderConfig.PushConfig)
-
-
 	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Enabled == false {
-		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", header.Namespace, header.Name)
+		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", uri.Namespace, uri.Name)
 		logger.Error(err, "POST request rejected")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
 
-	if !a.verifyAuthentication(c, registry, logger) {
-		logger.Info("Unauthorized request for CreateTargets")
+	if authenticated, err := a.verifyAuthentication(c, registry, logger); authenticated == false {
+		logger.Info("Unauthorized request for CreateTargets", "error", err.Error())
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		return
 	}
 
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		logger.Error(err, "Failed to bind request payload")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
 
@@ -142,6 +140,7 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
+
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
 	c.JSON(http.StatusOK, payloadTargets)
 }
