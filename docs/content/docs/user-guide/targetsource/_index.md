@@ -17,7 +17,8 @@ metadata:
   name: targetsource-1
 spec:
   provider:
-    # see Discovery Providers section
+    # Configure one of the supported providers:
+    # https://{{< relref "providers" >}}
   targetPort: 57400
   targetProfile: default
   targetLabels:
@@ -34,13 +35,12 @@ spec:
 | `targetLabels` | map[string]string | No | Labels added to all discovered targets |
 
 
-## Discovery Providers
-
-`TargetSource` supports the following discovery providers:
+<!-- ## Discovery Providers
+The following providers are currently supported:
 
 | Provider | Description |
 |----------|-------------|
-| `http` | Discover targets from an HTTP JSON endpoint or receive webhook updates. [Configuration]({{< relref "http.md" >}}) |
+| `http` | Discover targets from an HTTP JSON endpoint or receive webhook updates. Link to [provider configuration]({{< relref "providers/http.md" >}})| -->
 
 
 <!-- ## Example: Multi-Source Discovery
