@@ -8,6 +8,32 @@ description: >
 
 The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
 
+## Basic Configuration
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: targetsource-1
+spec:
+  provider:
+  provider:
+    http:
+      url: http://inventory-service:8080/targets
+      authentication:
+        basic:
+          credentialSecretRef:
+            name: inventory-credentials
+            key: username
+      # Enable push mode
+      push:
+        enabled: true
+  targetPort: 57400
+  targetProfile: default
+  targetLabels:
+    source: inventory
+```
+
 ## HTTP Spec Fields
 
 | Field | Type | Required | Default | Description |
@@ -43,27 +69,14 @@ In pull mode, the operator sends HTTP requests to the configured url at a fixed 
 3. Targets are created, updated, or removed based on the returned data
 4. This process repeats according to the configured interval
 
-## Push Mode
 
-The HTTP provider supports webhook-based target updates via `spec.provider.http.push`.
-
-```yaml
-spec:
-  provider:
-    http:
-      push:
-        enabled: true
-```
-
-When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
-
-## Authentication
+### Authentication
 
 The HTTP provider supports authenticated requests to the inventory endpoint.
 
 Exactly one authentication method can be configured.
 
-### Basic Authentication
+#### Basic Authentication
 
 Credentials are referenced from a Secret.
 
@@ -79,7 +92,7 @@ spec:
             key: username
 ```
 
-### Token Authentication
+#### Token Authentication
 
 Token authentication is configured using a Secret reference.
 
@@ -96,7 +109,7 @@ spec:
             key: token
 ```
 
-## TLS
+### TLS
 
 TLS settings can be configured for HTTPS endpoints.
 
@@ -112,14 +125,14 @@ spec:
           key: ca.crt
 ```
 
-### TLS Fields
+#### TLS Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `insecureSkipVerify` | bool | No | Skip verification of the server certificate. Defaults to `false` |
 | `caBundleRef` | object | No | Reference to a ConfigMap containing a PEM-encoded CA bundle |
 
-## Pagination
+### Pagination
 
 Pagination enables the operator to retrieve complete result sets from APIs that return data in multiple pages. The operator automatically follows pagination until no further pages are available.
 
@@ -132,7 +145,7 @@ spec:
         nextField: "self.next"
 ```
 
-### Pagination Fields
+#### Pagination Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -143,11 +156,11 @@ The `nextField` value may either contain:
 - A full URL for the next request
 - A pagination token appended as a query parameter to the original URL
 
-### How Pagination Works
+#### How Pagination Works
 
 The operator handles the following pagination patterns:
 
-#### 1. Link Header Pagination
+##### 1. Link Header Pagination
 If the API provides a Link response header with `rel="next"`, the operator will automatically follow it.
 
 Example response header:
@@ -163,7 +176,7 @@ Request 3: GET /devices?page=3
 ...
 ```
 
-#### 2. URL-Based Pagination
+##### 2. URL-Based Pagination
 If the response contains a full URL in the body (e.g. `"next": "https://..."`), it will be used directly.
 
 Example response:
@@ -174,7 +187,7 @@ Example response:
 }
 ```
 
-#### 3. Token-Based Pagination
+##### 3. Token-Based Pagination
 If the response contains a pagination token, the operator appends it as a query parameter.
 
 Example:
@@ -191,7 +204,7 @@ GET /devices
 GET /devices?page_token=abc123
 ```
 
-#### CEL-Based Extraction
+##### CEL-Based Extraction
 The nextField is evaluated as a CEL expression using:
 - `self` -> entire JSON response
 
@@ -203,7 +216,7 @@ pagination:
 
 This allows extracting values from nested or special keys.
 
-## Response Processing
+### Response Processing
 
 The HTTP provider supports two response processing modes:
 
@@ -212,7 +225,7 @@ The HTTP provider supports two response processing modes:
 
 If `mapping` is configured, the custom mapping rules are used. Otherwise, the response itself must be a JSON array.
 
-### Default Response Format
+#### Default Response Format
 
 If `mapping` is not configured, the endpoint must return a JSON array of objects with the following structure:
 
@@ -256,7 +269,7 @@ Example response:
 ]
 ```
 
-### Response Mapping via CEL
+#### Response Mapping via CEL
 
 When your inventory API's JSON structure differs from the default format, use CEL (Common Expression Language) mapping to extract target fields.
 
@@ -274,7 +287,7 @@ spec:
         labels: "{'role': item.metadata.role, 'site': item.metadata.site}"
 ```
 
-#### Understanding `targetsField`
+##### Understanding `targetsField`
 
 The `targetsField` expression tells the operator where to find the list of target objects in your API response. It's particularly important when your API wraps the target list in a data structure.
 
@@ -313,7 +326,7 @@ Usage: `targetsField: "self.results"`
 ```
 Usage: `targetsField: "self.data.devices"`
 
-#### Mapping Fields
+##### Mapping Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -324,13 +337,13 @@ Usage: `targetsField: "self.data.devices"`
 | `labels` | string | No | CEL expression returning a map of labels |
 | `targetProfile` | string | No | CEL expression for the target profile |
 
-#### CEL Variables
+##### CEL Variables
 
 The mapping expressions support the following variables:
 - `item`: the current target object being processed
 - `self`: the complete unprocessed response from the HTTP endpoint
 
-### Performance: CEL vs Direct Mapping
+#### Performance: CEL vs Direct Mapping
 
 Understanding the performance implications helps optimize your configurations:
 
@@ -351,7 +364,7 @@ Understanding the performance implications helps optimize your configurations:
 - Combine CEL and direct mapping for efficiency (see hybrid mapping below)
 - Use CEL extensions (see reference table below) to reduce complexity and improve readability
 
-### CEL Extensions
+#### CEL Extensions
 
 The operator includes a set of standard CEL extensions from the official [CEL Go library](https://github.com/google/cel-go) to enable more advanced expressions.
 
@@ -386,7 +399,7 @@ mapping:
     }
 ```
 
-### Combining CEL and Direct Mapping (Hybrid Approach)
+#### Combining CEL and Direct Mapping (Hybrid Approach)
 
 You don't need to map all fields with CEL. The operator supports mixing CEL expressions and direct field lookups for maximum efficiency:
 
@@ -422,11 +435,25 @@ mapping:
 
 In this example, only `address` and `labels` use CEL expressions; `name`, `port`, and `targetProfile` use direct field lookups for efficiency.
 
-### Using YAML `|` for Complex CEL Expressions
+#### Using YAML `|` for Complex CEL Expressions
 
 When writing more complex CEL expressions, it is recommended to use YAML’s pipe (`|`) literal block instead of inline strings.
 
 This is especially useful for expressions that span multiple lines or contain nested logic.
+
+## Push Mode
+
+The HTTP provider supports webhook-based target updates via `spec.provider.http.push`.
+
+```yaml
+spec:
+  provider:
+    http:
+      push:
+        enabled: true
+```
+
+When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
 
 #### Recommended pattern (labels example)
 
