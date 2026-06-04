@@ -63,3 +63,89 @@ Verify the Secret was created:
 ```bash
 kubectl get secret netbox-api-token -n gnmic-system -o yaml
 ```
+
+---
+
+## Step 2: Create a TargetProfile
+
+Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates.
+
+Create a credentials Secret first, then reference it from the profile.
+
+```yaml
+# Replace YOUR_DEVICE_USERNAME and YOUR_DEVICE_PASSWORD with your corresponding default device username and password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: device-credentials
+  namespace: gnmic-system
+type: Opaque
+stringData:
+  username: YOUR_DEVICE_USERNAME
+  password: YOUR_DEVICE_PASSWORD
+```
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: netbox-device
+  namespace: gnmic-system
+spec:
+  credentialsRef: device-credentials
+  timeout: 10s
+```
+
+For more TargetProfile options and credential handling, see the operator documentation for `TargetProfile`.
+
+---
+
+## Step 3: Create a TargetSource Using REST API
+
+The following `TargetSource` queries NetBox's REST API to discover devices:
+
+```yaml
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: netbox-rest-source
+  namespace: gnmic-system
+spec:
+  targetPort: 57400
+  targetProfile: netbox-device
+  targetLabels:
+    inventory: netbox
+    sync-source: rest-api
+  provider:
+    http:
+      url: "http://netbox.example.com:8000/api/dcim/devices/?limit=1000"
+      method: GET
+      interval: 5m
+      timeout: 30s
+      authentication:
+        token:
+          scheme: Bearer
+          tokenSecretRef:
+            name: netbox-api-token
+            key: token
+      pagination:
+        nextField: "next"
+      mapping:
+        targetsField: "self.results"
+        address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
+        labels: |
+          {
+            "site": item.site.name,
+            "role": item.device_role.name,
+            "model": item.device_type.model,
+            "status": item.status.value
+          }
+```
+
+> This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation.
+
+The HTTP loader supports `targetsField` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `targetProfile`. See the HTTP provider docs "Response Mapping via CEL" section for more details: {{< relref "user-guide/targetsource/providers/http.md" >}}.
+
+Use `self` for the full response and `item` for each candidate object.
+
+---
