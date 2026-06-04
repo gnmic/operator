@@ -1,29 +1,35 @@
 ---
-title: "NetBox (REST API)"
-linkTitle: "NetBox REST"
-weight: 2
+title: "NetBox (Export Template)"
+linkTitle: "NetBox Export Template"
+weight: 1
 description: >
-  Discover targets from NetBox using the HTTP provider and NetBox REST API
+  Discover targets from NetBox using HTTP provider with NetBox Export Template
 ---
 
-This guide shows how to configure the HTTP provider to discover targets from NetBox using its REST API.
+This guide shows how to use **NetBox Export Templates** with the HTTP provider to discover and sync targets.
 
-The REST API approach is direct and straightforward — query NetBox's standard API endpoints to retrieve devices that match your criteria.
+Export Templates offer powerful filtering, transformation, and formatting directly in NetBox, reducing the load on the operator.
+
+## Overview
+
+An **Export Template** is a Jinja2 template defined in NetBox that:
+
+1. **Queries** NetBox's internal database (devices, interfaces, etc.)
+2. **Filters** results based on custom criteria
+3. **Transforms** data into your desired output format (JSON, YAML, CSV, etc.)
+4. **Returns** the formatted output via a custom REST API endpoint
+
+When used with gNMIc's HTTP provider, the operator simply fetches the rendered JSON template and parses the result — no additional gNMIc Operator transformation needed if done correctly.
+
+---
 
 ## Prerequisites
 
 - A running Kubernetes cluster with gNMIc Operator installed
 - `kubectl` access to your cluster
-- A reachable NetBox instance (inside or outside the cluster)
+- A reachable NetBox instance with permissions to create Export Templates
 - A NetBox API token
-
-## Overview
-
-The HTTP `TargetSource` loader performs these steps:
-
-1. **Fetch** JSON device data from a NetBox REST API endpoint (`/api/dcim/devices/`)
-2. **Transform** each device record into a gNMIc target using CEL expressions
-3. **Create** or **update** `Target` resources in Kubernetes with the extracted data
+- Familiarity with Jinja2 templates
 
 ---
 
@@ -42,7 +48,7 @@ Create a dedicated API token in NetBox for gNMIc Operator access.
 
 ### Step 1b: Store the Token in a Kubernetes Secret
 
-Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token so it is not embedded in manifests.
+Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token.
 
 ```bash
 # Substitute YOUR_NETBOX_API_TOKEN with your actual token
@@ -60,11 +66,126 @@ kubectl get secret netbox-api-token -n gnmic-system -o yaml
 
 ---
 
-## Step 2: Create a TargetProfile
+## Step 2: Create an Export Template in NetBox
+
+Log in to your NetBox instance and navigate to **Customization > Export Templates**.
+
+### Step 2a: Create a New Template
+
+Click **Add Export Template** and fill in the details:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| **Name** | `gNMIc Device Export` | Descriptive name for your template |
+| **Content Type** | `dcim > device` | Export template applies to Device objects |
+| **Template Code** | (see below) | Jinja2 template |
+| **File Extension** | `json` | Output format |
+| **Mime Type** | `application/json` | Correct MIME type for JSON |
+
+### Step 2b: Template Code Example
+
+The following Export Templates only work for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox data model details, see the [NetBox Devices Data Model](https://netboxlabs.com/docs/netbox/models/dcim/device/) documentation.
+
+See the HTTP provider's "Default Response Format" section for the expected JSON structure: [HTTP provider docs](../../user-guide/targetsource/providers/http.md)
+
+#### Basic Template (All Devices)
+
+```jinja2
+[
+  {% for device in queryset %}
+  {
+    "name": "{{ device.name }}",
+    "address": "{{ device.primary_ip4.address.ip }}",
+    "labels": {
+      "site": "{{ device.site.name }}",
+      "role": "{{ device.role.name }}",
+      "region": "{{ device.site.region.name }}",
+      "type": "{{ device.device_type.model }}"
+    }
+  }{{ "," if not loop.last }}
+  {% endfor %}
+]
+```
+
+#### Advanced Template (Filtered by Status and Role)
+
+```jinja2
+[
+  {% for device in queryset.filter(status='active', role__name__in=['leaf', 'spine']) %}
+  {
+    "name": "{{ device.name }}",
+    "address": "{{ device.primary_ip4.address.ip }}",
+    "labels": {
+      "site": "{{ device.site.name }}",
+      "role": "{{ device.role.name }}",
+      "region": "{{ device.site.region.name }}",
+      "model": "{{ device.device_type.model }}",
+      "serial": "{{ device.serial }}",
+      "asset_tag": "{{ device.asset_tag }}"
+    }
+  }{{ "," if not loop.last }}
+  {% endfor %}
+]
+```
+
+**Key template elements:**
+
+- `queryset`: The filtered set of devices (all unless you add `.filter()`)
+- `device.name`: Device hostname
+- `device.primary_ip4.address.ip`: Primary IPv4 address
+- `device.site.name`, `device.device_role.name`: NetBox relationships (site, role, etc.)
+- `loop.last`: Jinja2 loop variable to avoid trailing comma on last item
+
+### Step 2c: Save and Access the Template
+
+Once saved, NetBox exposes the template via:
+
+```
+http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc+Device+Export
+```
+
+Or fetch it directly:
+
+```bash
+# Replace with your NetBox URL and template name
+# Substitute YOUR_NETBOX_API_TOKEN with your actual token
+# Bearer Token Format (v2): nbt_<key>.<token>
+curl -H "Authorization: Bearer YOUR_NETBOX_API_TOKEN" \
+  "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
+```
+
+The response should be a JSON array of targets ready for the gNMIc Operator.
+
+Sample JSON output produced by the basic export template:
+
+```json
+[
+  
+  {
+    "name": "edge-rtr-01.dc1.example.com",
+    "address": "203.0.113.1",
+    "labels": {
+      "site": "DC1",
+      "role": "edge",
+      "region": "eu-central-1",
+      "type": "router"
+    }
+  },
+
+]
+```
+
+> Ensure the response is valid JSON and contains no hidden or invalid characters, otherwise the gNMIc Operator will fail to parse it.
+
+> If you instead return a JSON object with a nested array, add a mapping section such as `targetsField: "self.targets"` to the TargetSource CR.
+
+---
+
+## Step 3: Create a TargetProfile
 
 Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates.
 
-Create a credentials Secret first, then reference it from the profile.
+Create a credentials Secret first, then reference it from the TargetProfile.
 
 ```yaml
 # Replace YOUR_DEVICE_USERNAME and YOUR_DEVICE_PASSWORD with your corresponding default device username and password
@@ -94,81 +215,61 @@ For more TargetProfile options and credential handling, see the operator documen
 
 ---
 
-## Step 3: Create a TargetSource Using REST API
+## Step 4: Create a TargetSource Using Export Template
 
-The following `TargetSource` queries NetBox's REST API to discover devices:
+Create a `TargetSource` that references your NetBox export template endpoint:
 
 ```yaml
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
-  name: netbox-rest-source
+  name: netbox-export-source
   namespace: gnmic-system
 spec:
   targetPort: 57400
   targetProfile: netbox-device
   targetLabels:
     inventory: netbox
-    sync-source: rest-api
+    sync-source: export-template
   provider:
     http:
-      url: "http://netbox.example.com:8000/api/dcim/devices/?limit=1000"
+      url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
       method: GET
-      interval: 5m
+      interval: 30m
       timeout: 30s
       authentication:
         token:
-          scheme: Bearer
+          scheme: Token
           tokenSecretRef:
             name: netbox-api-token
             key: token
-      pagination:
-        nextField: "next"
-      mapping:
-        targetsField: "self.results"
-        address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
-        labels: |
-          {
-            "site": item.site.name,
-            "role": item.device_role.name,
-            "model": item.device_type.model,
-            "status": item.status.value
-          }
 ```
-
-> This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation.
-
-The HTTP loader supports `targetsField` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `targetProfile`. See the [HTTP provider docs](../../user-guide/targetsource/providers/http.md) "Response Mapping via CEL" section for more details.
-
-Use `self` for the full response and `item` for each candidate object.
 
 ---
 
-## Step 4: Apply and Verify Target Discovery
+## Step 5: Verify Target Discovery
 
-Deploy the `TargetSource` and check that targets are being discovered and synced:
+Once the `TargetSource` is deployed, verify that targets are being discovered:
 
 ```bash
 # List discovered targets
-kubectl apply -f /path/to/targetsource.yaml -n gnmic-system
-
-# List discovered targets
 kubectl get targets -n gnmic-system
 
-# Check TargetSource status
-kubectl describe targetsource netbox-rest-source -n gnmic-system
+# Check TargetSource status and sync details
+kubectl describe targetsource netbox-export-source -n gnmic-system
 ```
 
-Look for:
+Successful sync shows:
+
 - `status.status`: "success" (or similar) <!-- todo: to be verivied -->
-- `status.targetsCount`: number of discovered devices
+- `status.targetsCount`: number of devices
 - `status.lastSync`: recent timestamp
 
 ---
 
 ## Example: Complete Setup
 
-Here's a complete example combining all resources:
+Here's a full example combining all components:
 
 ```yaml
 ---
@@ -206,114 +307,93 @@ spec:
   credentialsRef: device-credentials
   timeout: 10s
 
+
 ---
-# TargetSource with REST API
+# TargetSource using Export Template
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: TargetSource
 metadata:
-  name: netbox-rest-source
+  name: netbox-export-source
   namespace: gnmic-system
 spec:
   targetPort: 57400
   targetProfile: netbox-device
   targetLabels:
     inventory: netbox
-    sync-source: rest-api
+    sync-source: export-template
   provider:
     http:
-      url: "http://netbox.example.com:8000/api/dcim/devices/?limit=1000"
+      url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
       method: GET
-      interval: 5m
+      interval: 30m
       timeout: 30s
       authentication:
         token:
-          scheme: Bearer
+          scheme: Token
           tokenSecretRef:
             name: netbox-api-token
             key: token
-      pagination:
-        nextField: "next"
-      mapping:
-        targetsField: "self.results"
-        address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
-        labels: |
-          {
-            "site": item.site.name,
-            "role": item.device_role.name,
-            "model": item.device_type.model,
-            "status": item.status.value
-          }
 ```
 
 ---
 
-## Performance Considerations & Limitations
+## Advantages of Export Templates
 
-### REST API Query Limits
-
-- **Query Size**: The example uses `limit=1000`. Adjust based on your NetBox instance's pagination settings and response size limits.
-- **Response Timeout**: Large device lists can take time. Set appropriate timeouts in your `TargetSource`.
-
-### Reverse Proxy Considerations
-
-If NetBox is behind a reverse proxy:
-
-- **Base URL**: Ensure the reverse proxy correctly handles the `/api/dcim/devices/` path.
-- **Authentication**: Some proxies may require additional headers; verify with your proxy and NetBox admin.
-- **HTTPS**: If using HTTPS, ensure certificates are trusted by the operator or else use the `tls` setting.
-
-### Large Inventories
-
-For inventories with thousands of devices:
-
-- Consider using **Export Templates** (see [NetBox Export Templates]({{< relref "../Export Template" >}})) for better filtering and performance.
-- Implement filtering in the REST API URL (e.g., `?site=us-west&status=active`).
+- **Powerful Filtering**: Filter devices by site, status, role, tags, etc. directly in NetBox  
+- **Reduced Operator Load**: NetBox handles data transformation; operator just fetches JSON  
+- **Reusability**: One template can serve multiple consumers  
+- **Maintainability**: Update discovery logic in NetBox without changing Kubernetes manifests  
+- **Performance**: Avoids REST API pagination for large inventories  
 
 ---
 
-## Security Considerations
+## Limitations & Considerations
 
-### Token and Credentials
+### 1. Reverse Proxy and URL Path Rewriting
 
-- **Never** embed plaintext tokens or credentials in manifests or YAML files.
-- Always store tokens in Kubernetes Secrets.
-- Restrict RBAC permissions on the Secret to only necessary service accounts.
+If NetBox is behind a reverse proxy with URL path rewriting:
 
-### HTTPS and Certificates
+- **Issue**: The export template endpoint uses query parameters that may not survive proxy transformation.
+- **Solution**: 
+  - Ensure the proxy preserves query strings exactly.
+  - Test the export URL directly:
+    ```bash
+    curl -H "Authorization: Token YOUR_TOKEN" \
+      "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
+    ```
+  - If the proxy blocks or modifies parameters, consider using a direct NetBox endpoint without proxying.
 
-If connecting to NetBox via HTTPS:
+### 2. Large Inventory Rendering
 
-- Ensure cluster DNS resolves the hostname correctly.
-- Mount CA certificates if using self-signed certificates.
-- Verify the operator's HTTP client configuration for certificate validation.
+- Very large device counts can cause NetBox to take time rendering the template.
+- **Solution**:
+  - Use `.filter()` in your template to limit results.
+  - Create separate export templates for different device groups (e.g., by site or role).
+
+### 3. Complex Jinja2 Logic
+
+- NetBox's Jinja2 sandbox restricts some Python functions for security.
+- **Solution**: Keep templates simple and use NetBox's built-in filters and objects. Test the URL with curl or similar before deploying.
 
 ---
 
-## Troubleshooting
+## Template Troubleshooting
 
-### Show TargetSource Errors
+### Missing Targets in Kubernetes
 
-```bash
-kubectl describe targetsource netbox-rest-source -n gnmic-system
-```
-
-### Targets Not Appearing
-
-- Check that the `TargetProfile` exists and is correctly referenced.
-- Verify labels and addresses are being extracted correctly from the NetBox response.
-- Review operator logs for parsing errors:
-  ```bash
-  kubectl logs -l app=gnmic-operator -n gnmic-operator-system
+- **Check**: Are all required fields populated in NetBox? (e.g., `primary_ip4` may be `None` if not set)
+- **Solution**: Add conditional checks:
+  ```jinja2
+  {% if device.primary_ip4 %}
+    "address": "{{ device.primary_ip4.address.ip }}"
+  {% endif %}
   ```
 
-### Rate Limiting or Timeouts
+### Authorization Fails
 
-Increase the sync interval in your `TargetSource` or adjust timeouts:
+If you get a 403 error:
 
-```yaml
-spec:
-  provider:
-    http:
-      interval: 1h
-      timeout: 1m
-```
+- Verify the token is valid and not expired.
+- Ensure the API token is enabled.
+
+---
