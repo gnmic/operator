@@ -153,30 +153,111 @@ description: >
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `http` | HTTPConfig | No | - | HTTP endpoint for target discovery |
-| `consul` | ConsulConfig | No | - | Consul service discovery config |
-| `configMap` | string | No | - | ConfigMap name containing targets |
-| `podSelector` | LabelSelector | No | - | Select Kubernetes Pods as targets |
-| `serviceSelector` | LabelSelector | No | - | Select Kubernetes Services as targets |
-| `labels` | map[string]string | No | - | Labels to apply to discovered targets |
+| `provider` | ProviderSpec | Yes | - | Provider-specific discovery configuration |
+| `targetPort` | int32 | No | - | Default port used when the discovered target does not provide a port |
+| `targetProfile` | string | Yes | - | Reference to `TargetProfile` applied to discovered targets |
+| `targetLabels` | map[string]string | No | - | Labels added to all discovered targets |
+
+### ProviderSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `http` | HTTPConfig | No | HTTP provider configuration |
 
 ### HTTPConfig
 
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `url` | string | No | - | HTTP endpoint used to pull targets. Required unless push is enabled |
+| `method` | string | No | GET | HTTP request method |
+| `headers` | map[string]string | No | - | HTTP headers to include in requests |
+| `body` | string | No | - | Request body for POST requests |
+| `authentication` | AuthenticationSpec | No | - | Authentication configuration for the HTTP endpoint |
+| `interval` | duration | No | 6h | Polling interval used to refresh targets |
+| `timeout` | duration | No | 10s | Timeout for HTTP requests |
+| `tls` | ClientTLSConfig | No | - | Client TLS configuration for HTTPS endpoints |
+| `pagination` | PaginationSpec | No | - | Pagination settings for parsing responses |
+| `mapping` | ResponseMappingSpec | No | - | Response mapping configuration for JSON responses |
+| `push` | PushSpec | No | - | Push-based update configuration |
+
+### ClientTLSConfig
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `insecureSkipVerify` | bool | No | false | Skip verification of the server certificate |
+| `caBundleRef` | ConfigMapKeySelector | No | - | Reference to a ConfigMap containing a PEM CA bundle |
+
+### AuthenticationSpec
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | Yes | URL of the HTTP endpoint |
+| `basic` | BasicAuthSpec | No | Basic authentication configuration |
+| `token` | TokenAuthSpec | No | Token authentication configuration |
 
-### ConsulConfig
+### BasicAuthSpec
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | Yes | Consul server URL |
+| `credentialsSecretRef` | SecretKeySelector | Yes | Reference to a Secret containing username/password keys |
+
+### TokenAuthSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scheme` | string | Yes | Token scheme, e.g. Bearer |
+| `tokenSecretRef` | SecretKeySelector | Yes | Reference to a Secret containing the token |
+
+### PaginationSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `nextField` | string | No | JSON field containing the next page reference or pagination token |
+
+### ResponseMappingSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `targetsField` | string | No | CEL expression selecting the list of targets from the response |
+| `name` | string | No | CEL expression for the target name |
+| `address` | string | No | CEL expression for the target address |
+| `port` | string | No | CEL expression for the target port |
+| `labels` | string | No | CEL expression returning a map of labels |
+| `targetProfile` | string | No | CEL expression for the target profile |
+
+### PushSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | bool | No | Enable push updates |
+| `auth` | PushAuthSpec | No | Push authentication configuration |
+
+### PushAuthSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `bearer` | PushBearerAuthSpec | No | Bearer token authentication configuration |
+| `signature` | PushSignatureAuthSpec | No | Signature authentication configuration |
+
+### PushBearerAuthSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tokenSecretRef` | SecretKeySelector | Yes | Reference to a Secret containing the bearer token |
+
+### PushSignatureAuthSpec
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `secretRef` | SecretKeySelector | Yes | Reference to a Secret used to verify request signatures |
+| `header` | string | Yes | Header containing the signature |
+| `algorithm` | string | No | Signature algorithm |
 
 ### TargetSourceStatus
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | string | Sync status (Synced, Error, Pending) |
+| `observedGeneration` | int64 | Observed generation of the spec |
 | `targetsCount` | int32 | Number of discovered targets |
 | `lastSync` | Time | Last successful sync timestamp |
 
