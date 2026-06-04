@@ -24,7 +24,7 @@ type CommonLoaderConfig struct {
 	ChunkSize       int
 	Push            bool
 	Router          *gin.Engine
-	ResourceFetcher ResourceFetcher
+	ResourceFetcher ResourceFetcher 
 }
 
 // EventAction represents the type of a discovery event

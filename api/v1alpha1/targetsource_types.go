@@ -320,13 +320,14 @@ type PushSpec struct {
 
 	// +kubebuilder:validation:Optional
 	Auth *PushAuthSpec `json:"auth,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Signature *PushSignatureSpec`json:"signature,omitempty"`
 }
 
 // +kubebuilder:validation:ExactlyOneOf:=bearer;signature;noAuthentication
 type PushAuthSpec struct {
-	Bearer           *PushBearerAuthSpec    `json:"bearer,omitempty"`
-	Signature        *PushSignatureAuthSpec `json:"signature,omitempty"`
-	NoAuthentication bool                   `json:"noAuthentication,omitempty"`
+	Bearer           *PushBearerAuthSpec `json:"bearer,omitempty"`
 }
 
 // +kubebuilder:validation:Required
@@ -335,7 +336,7 @@ type PushBearerAuthSpec struct {
 }
 
 // +kubebuilder:validation:Required
-type PushSignatureAuthSpec struct {
+type PushSignatureSpec struct {
 	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
 
 	// +kubebuilder:default="sha512"

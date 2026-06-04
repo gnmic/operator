@@ -1,11 +1,15 @@
 package apiserver
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -105,4 +109,23 @@ func parseURI(c *gin.Context) (url urlStruct) {
 		return
 	}
 	return u
+}
+
+
+func (a *APIServer) getTargetSourceSpec(ctx context.Context, key types.NamespacedName) (*gnmicv1alpha1.TargetSourceSpec, error) {
+	// Potentially replace this with registry.CommonLoaderConfig as well
+	var targetSource gnmicv1alpha1.TargetSource
+	if err := a.clusterReconciler.Get(ctx, key, &targetSource); err != nil {
+		return nil, fmt.Errorf("failed to fetch targetSource %s/%s from Kubernetes API: %w", key.Namespace, key.Name, err)
+	}
+	return &targetSource.Spec, nil
+}
+
+// getRandomString returns a base64 encoded string used for the bearer token and signature.
+func getRandomString() (string, error) {
+	b := make([]byte, 48)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate bearer token: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }

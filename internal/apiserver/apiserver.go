@@ -105,14 +105,29 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 	)
 	logger.Info("Received POST request for CreateTargets")
 
-	targetSource, err := a.fetchTargetSource(c.Request.Context(), getKey(url))
+	key := getKey(url)
+	registry, ok := a.DiscoveryRegistry.Get(key)
+	if registry.CommonLoaderConfig.Push == false {
+		err := fmt.Errorf("targetSource %s/%s has the Push interface turned off", url.Namespace, url.Name)
+		logger.Error(err, "POST request rejected")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " has the Push interface turned off"})
+		return
+	}
+	if !ok {
+		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
+		logger.Error(err, "TargetSource lookup failed")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
+		return
+	}
+
+	targetSourceSpec, err := a.getTargetSourceSpec(c.Request.Context(), key)
 	if err != nil {
-		logger.Error(err, "Failed to fetch TargetSource")
+		logger.Error(err, "Failed to get targetSourceSpec")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if !a.verifyAuthentication(c, a.clusterReconciler, targetSource) {
+	if !a.verifyAuthentication(c, targetSourceSpec, registry) {
 		logger.Info("Unauthorized request for CreateTargets")
 		return
 	}
@@ -121,21 +136,6 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		logger.Error(err, "Failed to bind request payload")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	registry, ok := a.DiscoveryRegistry.Get(getKey(url))
-	if registry.CommonLoaderConfig.Push == false {
-		err := fmt.Errorf("targetSource %s/%s has the Push interface turned off", url.Namespace, url.Name)
-		logger.Error(err, "POST request rejected")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " has the Push interface turned off"})
-		return
-	}
-
-	if !ok {
-		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
-		logger.Error(err, "TargetSource lookup failed")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
 		return
 	}
 
