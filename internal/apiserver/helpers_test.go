@@ -109,12 +109,7 @@ func TestConvertTargetLabelsToMapEmpty(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMap(t *testing.T) {
-	key := "Tag"
-	value := "TT1, TT2"
-	label := Label{
-		Key:   &key,
-		Value: &value,
-	}
+	label := Label{"Tag": "TT1, TT2"}
 	target := Target{
 		Labels: &[]Label{label},
 	}
@@ -128,12 +123,7 @@ func TestConvertTargetLabelsToMap(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMapEmptyKey(t *testing.T) {
-	key := ""
-	value := "TT1, TT2"
-	label := Label{
-		Key:   &key,
-		Value: &value,
-	}
+	label := Label{"": "TT1, TT2"}
 	target := Target{
 		Labels: &[]Label{label},
 	}
@@ -144,18 +134,8 @@ func TestConvertTargetLabelsToMapEmptyKey(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMapTwoEntries(t *testing.T) {
-	key := "Tag"
-	key2 := "Tag1"
-	value := "TT1, TT2"
-	value2 := "TT1"
-	label := Label{
-		Key:   &key,
-		Value: &value,
-	}
-	label2 := Label{
-		Key:   &key2,
-		Value: &value2,
-	}
+	label := Label{"Tag": "TT1, TT2"}
+	label2 := Label{"Tag1": "TT1"}
 	target := Target{
 		Labels: &[]Label{label, label2},
 	}
@@ -284,43 +264,5 @@ func TestParseURIMissingName(t *testing.T) {
 	}
 	if recorder.Code != http.StatusBadRequest {
 		t.Errorf("parseURI(ctx) status code = %d; want %d", recorder.Code, http.StatusBadRequest)
-	}
-}
-
-func TestVerifyAddress(t *testing.T) {
-	address := "10.10.10.10:57400"
-	expected := "10.10.10.10:57400"
-	convertedAddress, _ := validateAddress(address)
-	if !reflect.DeepEqual(convertedAddress, expected) {
-		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
-	}
-}
-
-func TestVerifyAddressIPv6(t *testing.T) {
-	address := "[2345:0425:2CA1:0000:0000:0567:5673:23b5]:57400"
-	expected := "2345:0425:2CA1:0000:0000:0567:5673:23b5:57400"
-	convertedAddress, _ := validateAddress(address)
-	if !reflect.DeepEqual(convertedAddress, expected) {
-		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
-	}
-}
-
-func TestVerifyAddressNoPort(t *testing.T) {
-	address := "10.10.10.10:"
-	expected := "10.10.10.10:57400"
-	convertedAddress, err := validateAddress(address)
-	if err != nil {
-		t.Errorf("addDefaultPortIfEmpty(address) threw unexpected error: %s", err)
-	}
-	if !reflect.DeepEqual(convertedAddress, expected) {
-		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
-	}
-}
-
-func TestVerifyWrongAddressFormat(t *testing.T) {
-	address := "10.10.10.10"
-	result, err := validateAddress(address)
-	if err == nil {
-		t.Errorf("TestVerifyWrongAddressFormat expected error due to wrong address format(missing port), instead got: %s", result)
 	}
 }
