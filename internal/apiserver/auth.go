@@ -5,30 +5,30 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 	corev1 "k8s.io/api/core/v1"
 )
+
+// kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=supersecret
 
 const (
 	apiAuthSecretName = "gnmic-api-auth"
 	apiAuthSecretKey  = "bearer-token"
 )
 
-func (a *APIServer) verifyAuthentication(ctx *gin.Context, targetSourceSpec *gnmicv1alpha1.TargetSourceSpec, registry core.DiscoveryRegistryValue) bool {
-	if targetSourceSpec.Provider.HTTP.Push.Auth == nil {
-		return false
-	}
-	if targetSourceSpec.Provider.HTTP.Push.Auth.Bearer != nil {
+func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.DiscoveryRegistryValue) bool {
+	if registry.CommonLoaderConfig.PushConfig.Auth != nil {
 		return a.verifyBearerToken(ctx, registry)
 	}
-	if targetSourceSpec.Provider.HTTP.Push.Signature != nil {
+	if registry.CommonLoaderConfig.PushConfig.Signature != nil {
 		return a.verifySignature(ctx)
+	}
+	if registry.CommonLoaderConfig.PushConfig.Auth == nil {
+		return true
 	}
 	return false
 }
@@ -39,7 +39,7 @@ func (a *APIServer) verifySignature(ctx *gin.Context) bool {
 }
 
 // verifyBearerToken verifies bearer token from authorization header with value stored in kubernetes secret.
-func (a *APIServer) verifyBearerToken(ctx *gin.Context, registryValue core.DiscoveryRegistryValue) bool {
+func (a *APIServer) verifyBearerToken(ctx *gin.Context, registry core.DiscoveryRegistryValue) bool {
 	const bearerPrefix = "Bearer "
 	authHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
 	if !strings.HasPrefix(authHeader, bearerPrefix) {
@@ -47,7 +47,7 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, registryValue core.Disco
 		return false
 	}
 
-	tokenSecret, err := getBearerToken(registryValue.CommonLoaderConfig.ResourceFetcher)
+	tokenSecret, err := getSecret(registry)
 	if err != nil {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, err)
 		return false
@@ -61,20 +61,19 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, registryValue core.Disco
 	return true
 }
 
-// getBearerToken returns bearer token stored as kubernetes secret.
-func getBearerToken(resourceFetcher core.ResourceFetcher) ([]byte, error) {
-	namespace := strings.TrimSpace(os.Getenv("POD_NAMESPACE"))
+// getSecret returns bearer token stored as kubernetes secret.
+func getSecret(registry core.DiscoveryRegistryValue) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	selector := &corev1.SecretKeySelector{
-		LocalObjectReference: corev1.LocalObjectReference{Name: apiAuthSecretName},
-		Key:                  apiAuthSecretKey,
+		LocalObjectReference: corev1.LocalObjectReference{Name: registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key},
+		Key:                  registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key,
 	}
 
-	token, err := resourceFetcher.GetSecretKey(ctx, namespace, selector)
+	token, err := registry.CommonLoaderConfig.ResourceFetcher.GetSecretKey(ctx, registry.CommonLoaderConfig.TargetsourceNN.Namespace, selector)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get secret %s/%s key %q: %w", namespace, apiAuthSecretName, apiAuthSecretKey, err)
+		return nil, fmt.Errorf("failed to get secret %s/%s key %q: %w", registry.CommonLoaderConfig.TargetsourceNN.Namespace, registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key, registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key, err)
 	}
 	return []byte(token), nil
 }

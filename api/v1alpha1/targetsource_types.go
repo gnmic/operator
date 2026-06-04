@@ -315,6 +315,7 @@ type ResponseMappingSpec struct {
 
 // PushSpec defines the settings for event-based update mechanism (i.e. webhooks sent from the server)
 type PushSpec struct {
+	// +kubebuilder:validation:Required
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
@@ -322,12 +323,12 @@ type PushSpec struct {
 	Auth *PushAuthSpec `json:"auth,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	Signature *PushSignatureSpec`json:"signature,omitempty"`
+	Signature *PushSignatureSpec `json:"signature,omitempty"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf:=bearer;signature;noAuthentication
+// +kubebuilder:validation:Optional
 type PushAuthSpec struct {
-	Bearer           *PushBearerAuthSpec `json:"bearer,omitempty"`
+	Bearer *PushBearerAuthSpec `json:"bearer,omitempty"`
 }
 
 // +kubebuilder:validation:Required

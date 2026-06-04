@@ -107,12 +107,6 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 
 	key := getKey(url)
 	registry, ok := a.DiscoveryRegistry.Get(key)
-	if registry.CommonLoaderConfig.PushConfig.Enabled == false {
-		err := fmt.Errorf("targetSource %s/%s has the Push interface turned off", url.Namespace, url.Name)
-		logger.Error(err, "POST request rejected")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " has the Push interface turned off"})
-		return
-	}
 	if !ok {
 		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
 		logger.Error(err, "TargetSource lookup failed")
@@ -120,14 +114,16 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 		return
 	}
 
-	targetSourceSpec, err := a.getTargetSourceSpec(c.Request.Context(), key)
-	if err != nil {
-		logger.Error(err, "Failed to get targetSourceSpec")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	logger.Info("Loaded push config", "pushConfig", registry.CommonLoaderConfig.PushConfig)
+
+	if registry.CommonLoaderConfig.PushConfig != nil && registry.CommonLoaderConfig.PushConfig.Enabled == false {
+		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", url.Namespace, url.Name)
+		logger.Error(err, "POST request rejected")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " has the push interface turned off"})
 		return
 	}
 
-	if !a.verifyAuthentication(c, targetSourceSpec, registry) {
+	if !a.verifyAuthentication(c, registry) {
 		logger.Info("Unauthorized request for CreateTargets")
 		return
 	}

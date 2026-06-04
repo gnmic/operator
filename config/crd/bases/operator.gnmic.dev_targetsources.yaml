@@ -305,11 +305,6 @@ spec:
                                     x-kubernetes-map-type: atomic
                                 type: object
                             type: object
-                            x-kubernetes-validations:
-                            - message: exactly one of the fields in [bearer signature
-                                noAuthentication] must be set
-                              rule: '[has(self.bearer),has(self.signature),has(self.noAuthentication)].filter(x,x==true).size()
-                                == 1'
                           enabled:
                             default: false
                             type: boolean
