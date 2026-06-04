@@ -315,18 +315,20 @@ type ResponseMappingSpec struct {
 
 // PushSpec defines the settings for event-based update mechanism (i.e. webhooks sent from the server)
 type PushSpec struct {
+	// +kubebuilder:validation:Required
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
 	// +kubebuilder:validation:Optional
 	Auth *PushAuthSpec `json:"auth,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Signature *PushSignatureSpec `json:"signature,omitempty"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf:=bearer;signature;noAuthentication
+// +kubebuilder:validation:Optional
 type PushAuthSpec struct {
-	Bearer           *PushBearerAuthSpec    `json:"bearer,omitempty"`
-	Signature        *PushSignatureAuthSpec `json:"signature,omitempty"`
-	NoAuthentication bool                   `json:"noAuthentication,omitempty"`
+	Bearer *PushBearerAuthSpec `json:"bearer,omitempty"`
 }
 
 // +kubebuilder:validation:Required
@@ -335,15 +337,11 @@ type PushBearerAuthSpec struct {
 }
 
 // +kubebuilder:validation:Required
-type PushSignatureAuthSpec struct {
-	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
-
-	// Header containing the signature
-	// +kubebuilder:validation:MinLength=1
-	Header string `json:"header"`
+type PushSignatureSpec struct {
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 
 	// +kubebuilder:default="sha512"
-	// +kubebuilder:validation:Enum=sha1;sha256;sha512
+	// +kubebuilder:validation:Enum=sha256;sha512
 	Algorithm string `json:"algorithm"`
 }
 

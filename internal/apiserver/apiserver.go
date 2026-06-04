@@ -3,9 +3,7 @@ package apiserver
 //go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
 // To generate code, install openapi-codegen from https://github.com/oapi-codegen/oapi-codegen)
 // Then use: go generate ./internal/apiserver
-//
-// kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0
-
+// To generate documentation
 // docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/internal/apiserver/openapi.yaml -g markdown -o /local/docs/content/docs/user-guide/rest-api
 
 import (
@@ -51,12 +49,11 @@ func New(
 	discoveryChunksize int,
 	bearerToken string,
 ) (*APIServer, error) {
-	// router := gin.New()
-	// router.Use(gin.Recovery())
-	// gin.SetMode(gin.ReleaseMode)
-	router := gin.Default()
-
+	router := gin.New()
+	router.Use(gin.Recovery())
+	gin.SetMode(gin.ReleaseMode)
 	logger := log.Log.WithValues("component", "api-server")
+
 	a := &APIServer{
 		Server: &http.Server{
 			Addr:    addr,
@@ -79,15 +76,15 @@ func (a *APIServer) Router() *gin.Engine {
 
 // GetClusterPlan returns cluster plan
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
-	url := parseURI(c)
+	uri := parseURI(c)
 	logger := log.FromContext(c.Request.Context()).WithValues(
 		"component", "apiserver",
-		"namespace", url.Namespace,
-		"cluster", url.Name,
+		"namespace", uri.Namespace,
+		"cluster", uri.Name,
 	)
 	logger.Info("Received GET request for GetClusterPlan")
 
-	plan, err := a.clusterReconciler.GetClusterPlan(url.Namespace, url.Name)
+	plan, err := a.clusterReconciler.GetClusterPlan(uri.Namespace, uri.Name)
 	if err != nil {
 		logger.Error(err, "Failed to get cluster plan")
 		c.String(404, err.Error())
@@ -98,38 +95,40 @@ func (a *APIServer) GetClusterPlan(c *gin.Context) {
 
 // CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
 func (a *APIServer) ApplyTargets(c *gin.Context) {
-	url := parseURI(c)
+	uri := parseURI(c)
 	logger := log.FromContext(c.Request.Context()).WithValues(
 		"component", "apiserver",
-		"namespace", url.Namespace,
-		"targetsource", url.Name,
+		"namespace", uri.Namespace,
+		"targetsource", uri.Name,
 	)
 	logger.Info("Received POST request for CreateTargets")
 
-	targetSource, err := a.fetchTargetSource(c.Request.Context(), getKey(url))
-	if err != nil {
-		logger.Error(err, "Failed to fetch TargetSource")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	key := getKey(uri)
+	registry, ok := a.DiscoveryRegistry.Get(key)
+	if !ok {
+		err := fmt.Errorf("targetSource %s/%s does not exist", uri.Namespace, uri.Name)
+		logger.Error(err, "TargetSource lookup failed")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
 
-	if !a.verifyAuthentication(c, a.clusterReconciler, targetSource) {
-		logger.Info("Unauthorized request for CreateTargets")
+	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Enabled == false {
+		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", uri.Namespace, uri.Name)
+		logger.Error(err, "POST request rejected")
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
+
+	if authenticated, err := a.verifyAuthentication(c, registry, logger); authenticated == false {
+		logger.Info("Unauthorized request for CreateTargets", "error", err.Error())
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		return
 	}
 
 	var payloadTargets Targets
 	if err := c.ShouldBind(&payloadTargets); err != nil {
 		logger.Error(err, "Failed to bind request payload")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	registry, ok := a.DiscoveryRegistry.Get(getKey(url))
-	if !ok {
-		err := fmt.Errorf("targetSource %s/%s does not exist", url.Namespace, url.Name)
-		logger.Error(err, "TargetSource lookup failed")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " does not exist"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
 
@@ -139,6 +138,7 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
 		return
 	}
+
 	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
 	c.JSON(http.StatusOK, payloadTargets)
 }

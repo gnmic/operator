@@ -17,7 +17,9 @@ func NewLoader(ctx context.Context, c client.Client, cfg *core.CommonLoaderConfi
 	switch {
 	case spec.Provider.HTTP != nil:
 		httpSpec := *spec.Provider.HTTP
-		cfg.AcceptPush = httpSpec.Push != nil && httpSpec.Push.Enabled
+		if httpSpec.Push != nil {
+			cfg.PushConfig = httpSpec.Push
+		}
 		cfg.ResourceFetcher = newK8sResourceFetcher(c)
 		return http.New(*cfg, httpSpec), nil
 	default:

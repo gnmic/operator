@@ -304,60 +304,46 @@ spec:
                                     type: object
                                     x-kubernetes-map-type: atomic
                                 type: object
-                              noAuthentication:
-                                type: boolean
-                              signature:
-                                properties:
-                                  algorithm:
-                                    default: sha512
-                                    enum:
-                                    - sha1
-                                    - sha256
-                                    - sha512
-                                    type: string
-                                  header:
-                                    description: Header containing the signature
-                                    minLength: 1
-                                    type: string
-                                  secretRef:
-                                    description: SecretKeySelector selects a key of
-                                      a Secret.
-                                    properties:
-                                      key:
-                                        description: The key of the secret to select
-                                          from.  Must be a valid secret key.
-                                        type: string
-                                      name:
-                                        default: ""
-                                        description: |-
-                                          Name of the referent.
-                                          This field is effectively required, but due to backwards compatibility is
-                                          allowed to be empty. Instances of this type with an empty value here are
-                                          almost certainly wrong.
-                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                        type: string
-                                      optional:
-                                        description: Specify whether the Secret or
-                                          its key must be defined
-                                        type: boolean
-                                    required:
-                                    - key
-                                    type: object
-                                    x-kubernetes-map-type: atomic
-                                required:
-                                - algorithm
-                                - header
-                                - secretRef
-                                type: object
                             type: object
-                            x-kubernetes-validations:
-                            - message: exactly one of the fields in [bearer signature
-                                noAuthentication] must be set
-                              rule: '[has(self.bearer),has(self.signature),has(self.noAuthentication)].filter(x,x==true).size()
-                                == 1'
                           enabled:
                             default: false
                             type: boolean
+                          signature:
+                            properties:
+                              algorithm:
+                                default: sha512
+                                enum:
+                                - sha256
+                                - sha512
+                                type: string
+                              secretRef:
+                                description: SecretKeySelector selects a key of a
+                                  Secret.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            required:
+                            - algorithm
+                            type: object
                         required:
                         - enabled
                         type: object
