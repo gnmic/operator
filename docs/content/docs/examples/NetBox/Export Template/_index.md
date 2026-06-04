@@ -86,7 +86,7 @@ Click **Add Export Template** and fill in the details:
 
 The following Export Templates only work for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox data model details, see the [NetBox Devices Data Model](https://netboxlabs.com/docs/netbox/models/dcim/device/) documentation.
 
-See the HTTP provider's "Default Response Format" section for the expected JSON structure: [HTTP Provider]({{< relref "user-guide/targetsource/providers/http.md" >}})
+<!-- See the HTTP provider's "Default Response Format" section for the expected JSON structure: [HTTP Provider]({{< relref "user-guide/targetsource/providers/http.md" >}}) -->
 
 #### Basic Template (All Devices)
 
