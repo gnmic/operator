@@ -42,7 +42,7 @@ Create a dedicated API token in NetBox for gNMIc Operator access.
 
 ### Step 1b: Store the Token in a Kubernetes Secret
 
-Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token so it is not embedded in manifests.
+<!-- Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token so it is not embedded in manifests. -->
 
 ```bash
 # Substitute YOUR_NETBOX_API_TOKEN with your actual token
@@ -62,7 +62,7 @@ kubectl get secret netbox-api-token -n gnmic-system -o yaml
 
 ## Step 2: Create a TargetProfile
 
-Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates.
+<!-- Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates. -->
 
 Create a credentials Secret first, then reference it from the profile.
 
@@ -136,7 +136,7 @@ spec:
           }
 ```
 
-> This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation.
+<!-- > This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation. -->
 
 <!-- The HTTP loader supports `targetsField` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `targetProfile`. See the HTTP provider docs "Response Mapping via CEL" section for more details: {{< relref "user-guide/targetsource/providers/http.md" >}}. -->
 

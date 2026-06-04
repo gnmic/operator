@@ -48,7 +48,7 @@ Create a dedicated API token in NetBox for gNMIc Operator access.
 
 ### Step 1b: Store the Token in a Kubernetes Secret
 
-Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token.
+<!-- Create a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing the token. -->
 
 ```bash
 # Substitute YOUR_NETBOX_API_TOKEN with your actual token
@@ -84,7 +84,7 @@ Click **Add Export Template** and fill in the details:
 
 ### Step 2b: Template Code Example
 
-The following Export Templates only work for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox data model details, see the [NetBox Devices Data Model](https://netboxlabs.com/docs/netbox/models/dcim/device/) documentation.
+<!-- The following Export Templates only work for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox data model details, see the [NetBox Devices Data Model](https://netboxlabs.com/docs/netbox/models/dcim/device/) documentation. -->
 
 <!-- See the HTTP provider's "Default Response Format" section for the expected JSON structure: [HTTP Provider]({{< relref "user-guide/targetsource/providers/http.md" >}}) -->
 
@@ -183,7 +183,7 @@ Sample JSON output produced by the basic export template:
 
 ## Step 3: Create a TargetProfile
 
-Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates.
+<!-- Define how discovered targets should be configured. The `TargetProfile` points to a [Kubernetes Secret](https://kubernetes.io/docs/concepts/configuration/secret/) containing device credentials, such as username/password or client certificates. -->
 
 Create a credentials Secret first, then reference it from the TargetProfile.
 
