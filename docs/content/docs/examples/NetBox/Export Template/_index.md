@@ -143,9 +143,3 @@ spec:
 ```
 
 > This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation.
-
-The HTTP loader supports `targetsField` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `targetProfile`. See the HTTP provider docs "Response Mapping via CEL" section for more details: {{< relref "user-guide/targetsource/providers/http.md" >}}.
-
-Use `self` for the full response and `item` for each candidate object.
-
----
