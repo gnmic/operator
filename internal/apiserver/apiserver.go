@@ -116,7 +116,8 @@ func (a *APIServer) ApplyTargets(c *gin.Context) {
 
 	logger.Info("Loaded push config", "pushConfig", registry.CommonLoaderConfig.PushConfig)
 
-	if registry.CommonLoaderConfig.PushConfig != nil && registry.CommonLoaderConfig.PushConfig.Enabled == false {
+
+	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Enabled == false {
 		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", url.Namespace, url.Name)
 		logger.Error(err, "POST request rejected")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "TargetSource " + url.Namespace + " / " + url.Name + " has the push interface turned off"})

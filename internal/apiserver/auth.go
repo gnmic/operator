@@ -2,7 +2,6 @@ package apiserver
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,11 +13,6 @@ import (
 )
 
 // kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=supersecret
-
-const (
-	apiAuthSecretName = "gnmic-api-auth"
-	apiAuthSecretKey  = "bearer-token"
-)
 
 func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.DiscoveryRegistryValue) bool {
 	if registry.CommonLoaderConfig.PushConfig.Auth != nil {
@@ -54,7 +48,7 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, registry core.DiscoveryR
 	}
 
 	tokenHeader := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
-	if subtle.ConstantTimeCompare([]byte(tokenHeader), tokenSecret) != 1 {
+	if tokenHeader != tokenSecret {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid bearer token"})
 		return false
 	}
@@ -62,18 +56,18 @@ func (a *APIServer) verifyBearerToken(ctx *gin.Context, registry core.DiscoveryR
 }
 
 // getSecret returns bearer token stored as kubernetes secret.
-func getSecret(registry core.DiscoveryRegistryValue) ([]byte, error) {
+func getSecret(registry core.DiscoveryRegistryValue) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	selector := &corev1.SecretKeySelector{
-		LocalObjectReference: corev1.LocalObjectReference{Name: registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key},
+		LocalObjectReference: corev1.LocalObjectReference{Name: registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Name},
 		Key:                  registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key,
 	}
 
 	token, err := registry.CommonLoaderConfig.ResourceFetcher.GetSecretKey(ctx, registry.CommonLoaderConfig.TargetsourceNN.Namespace, selector)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get secret %s/%s key %q: %w", registry.CommonLoaderConfig.TargetsourceNN.Namespace, registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key, registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key, err)
+		return "", fmt.Errorf("failed to get secret %s/%s key %q: %w", registry.CommonLoaderConfig.TargetsourceNN.Namespace, registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key, registry.CommonLoaderConfig.PushConfig.Auth.Bearer.TokenSecretRef.Key, err)
 	}
-	return []byte(token), nil
+	return token, nil
 }
