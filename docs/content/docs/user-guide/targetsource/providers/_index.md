@@ -1,7 +1,7 @@
 ---
 title: "TargetSource Provider"
 linkTitle: "TargetSourceProvider"
-weight: 4
+weight: 1
 description: >
   Configuring TargetSource discovery providers
 ---

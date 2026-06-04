@@ -1,7 +1,7 @@
 ---
 title: "HTTP Provider"
 linkTitle: "HTTP"
-weight: 4
+weight: 2
 description: >
   HTTP TargetSource Discovery Provider
 ---
