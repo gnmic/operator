@@ -3,6 +3,8 @@ package core
 import (
 	"context"
 
+	"github.com/gin-gonic/gin"
+	"github.com/gnmic/operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -19,9 +21,11 @@ type DiscoveryRegistryValue struct {
 }
 
 type CommonLoaderConfig struct {
-	TargetsourceNN types.NamespacedName
-	ChunkSize      int
-	AcceptPush     bool
+	TargetsourceNN  types.NamespacedName
+	ChunkSize       int
+	PushConfig      *v1alpha1.PushSpec
+	Router          *gin.Engine
+	ResourceFetcher ResourceFetcher 
 }
 
 // EventAction represents the type of a discovery event
@@ -37,9 +41,11 @@ const (
 // DiscoveredTarget represents a target discovered from an external source
 // before it is materialized as a Kubernetes Target CR
 type DiscoveredTarget struct {
-	Name    string
-	Address string
-	Labels  map[string]string
+	Name          string
+	Address       string
+	Port          int32
+	Labels        map[string]string
+	TargetProfile string
 }
 
 type DiscoveryEvent struct {

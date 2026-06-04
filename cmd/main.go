@@ -18,7 +18,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
 	"time"
 
@@ -125,12 +127,22 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Pipeline")
 		os.Exit(1)
 	}
+
+	var api *apiserver.APIServer
+	if apiAddr != "" {
+		api, err = apiserver.New(apiAddr, clusterReconciler, discoveryRegistry, discoveryChunkSize, os.Getenv("API_BEARER_TOKEN"))
+		if err != nil {
+			setupLog.Error(err, "unable to initialize API server")
+			os.Exit(1)
+		}
+	}
 	if err := (&controller.TargetSourceReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
 		BufferSize:        discoveryBufferSize,
 		ChunkSize:         discoveryChunkSize,
 		DiscoveryRegistry: discoveryRegistry,
+		APIRouter:         api.Router(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetSource")
 		os.Exit(1)
@@ -230,21 +242,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	if apiAddr != "" {
-		apiServer := apiserver.New(apiAddr, clusterReconciler)
-		apiServer.DiscoveryRegistry = discoveryRegistry
+	if api != nil {
 		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
 			errCh := make(chan error)
 			go func() {
-				errCh <- apiServer.Server.ListenAndServe()
+				err := api.Server.ListenAndServe()
+				if err != nil && !errors.Is(err, http.ErrServerClosed) {
+					errCh <- err
+				}
+				close(errCh)
 			}()
+
 			select {
-			case err := <-errCh:
+			case err, ok := <-errCh:
+				if !ok {
+					return nil
+				}
 				return err
 			case <-ctx.Done():
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				return apiServer.Server.Shutdown(ctx)
+				return api.Server.Shutdown(ctx)
 			}
 		}))
 		if err != nil {
