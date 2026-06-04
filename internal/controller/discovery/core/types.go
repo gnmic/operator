@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gnmic/operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -22,7 +23,7 @@ type DiscoveryRegistryValue struct {
 type CommonLoaderConfig struct {
 	TargetsourceNN  types.NamespacedName
 	ChunkSize       int
-	Push            bool
+	PushConfig      *v1alpha1.PushSpec
 	Router          *gin.Engine
 	ResourceFetcher ResourceFetcher 
 }
