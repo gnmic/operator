@@ -9,7 +9,7 @@ description: >
 This guide shows how to configure the HTTP provider to discover targets from NetBox using its REST API.
 
 The REST API approach is direct and straightforward — query NetBox's standard API endpoints to retrieve devices that match your criteria.
-
+<!-- 
 ## Prerequisites
 
 - A running Kubernetes cluster with gNMIc Operator installed
@@ -316,4 +316,4 @@ spec:
     http:
       interval: 1h
       timeout: 1m
-```
+``` -->

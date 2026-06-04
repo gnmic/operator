@@ -9,7 +9,7 @@ description: >
 This guide shows how to use **NetBox Export Templates** with the HTTP provider to discover and sync targets.
 
 Export Templates offer powerful filtering, transformation, and formatting directly in NetBox, reducing the load on the operator.
-
+<!-- 
 ## Overview
 
 An **Export Template** is a Jinja2 template defined in NetBox that:
@@ -396,4 +396,4 @@ If you get a 403 error:
 - Verify the token is valid and not expired.
 - Ensure the API token is enabled.
 
----
+--- -->
