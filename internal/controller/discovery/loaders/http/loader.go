@@ -57,14 +57,16 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
 				targets := []core.DiscoveredTarget{
 					{
-						Name:    "ceos1",
-						Address: "clab-3-nodes-ceos1:6030",
+						Name:    "spine1",
+						Address: "clab-t1-spine1",
+						Port:    57400,
 						Labels:  map[string]string{},
 					},
 					{
 						Name:    "leaf1",
-						Address: "clab-3-nodes-leaf1:57400",
-						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+						Address: "clab-leaf1",
+						Port:    57400,
+						Labels:  map[string]string{},
 					},
 				}
 
@@ -75,14 +77,16 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
 				targets := []core.DiscoveredTarget{
 					{
-						Name:    "ceos1",
-						Address: "clab-3-nodes-ceos1:6030",
-						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+						Name:    "spine1",
+						Address: "clab-t1-spine1",
+						Port:    57400,
+						Labels:  map[string]string{},
 					},
 					{
 						Name:    "leaf2",
-						Address: "clab-3-nodes-leaf2:57400",
-						Labels:  map[string]string{"gnmic_operator_target_profile": "default1"},
+						Address: "clab-t1-leaf2",
+						Port:    57400,
+						Labels:  map[string]string{},
 					},
 				}
 
@@ -94,9 +98,22 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				snapshotID := fmt.Sprintf("%s-%s-%s", l.commonCfg.TargetsourceNN.Namespace, l.commonCfg.TargetsourceNN.Name, uuid.NewString())
 				targets := []core.DiscoveredTarget{
 					{
-						Name:    "ceos1",
-						Address: "clab-3-nodes-ceos2:6030",
-						Labels:  map[string]string{"gnmic_operator_target_profile": "default2"},
+						Name:    "spine1",
+						Address: "clab-t1-spine1",
+						Port:    57400,
+						Labels:  map[string]string{},
+					},
+					{
+						Name:    "leaf1",
+						Address: "clab-t1-leaf1",
+						Port:    57400,
+						Labels:  map[string]string{},
+					},
+					{
+						Name:    "leaf2",
+						Address: "clab-t1-leaf2",
+						Port:    57400,
+						Labels:  map[string]string{},
 					},
 				}
 
