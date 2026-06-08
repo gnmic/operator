@@ -3,6 +3,8 @@ package discovery
 import (
 	"fmt"
 	"maps"
+	"net"
+	"strconv"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -26,7 +28,7 @@ func generateTargetResource(d core.DiscoveredTarget, ts *gnmicv1alpha1.TargetSou
 	if d.Port != 0 {
 		targetPort = d.Port
 	}
-	t.Spec.Address = fmt.Sprintf("%s:%d", d.Address, targetPort)
+	t.Spec.Address = net.JoinHostPort(d.Address, strconv.Itoa(int(targetPort)))
 
 	// Add discovered Target Profile or use TargetSource.spec.targetProfile
 	targetProfile := ts.Spec.TargetProfile
