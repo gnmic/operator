@@ -1,3 +1,11 @@
+---
+title: "Documentation for gNMIc Operator REST API"
+linkTitle: "REST API interface"
+weight: 3
+description: >
+  Documentation of REST API interface according to openAPI standard.
+---
+
 # Documentation for gNMIc Operator REST API
 
 <a name="documentation-for-api-endpoints"></a>
