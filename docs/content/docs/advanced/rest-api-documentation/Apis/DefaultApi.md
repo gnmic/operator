@@ -12,8 +12,8 @@ All URIs are relative to *http://localhost:8082*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**applyTargets**](defaultapi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-| [**getClusterPlan**](defaultapi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| **applyTargets** | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+| **getClusterPlan** | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="applyTargets"></a>

@@ -20,5 +20,3 @@ Network device to be monitored. Properties not marked as optional must be in JSO
 | **labels** | [**List**](map.md) | Input of labels as key:value pair. | [optional] [default to null] |
 | **operation** | **String** | Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target. | [default to null] |
 
-[[Back to Model list]](/docs/advanced/rest-api-documentation/#documentation-for-models) [[Back to API list]](/docs/advanced/rest-api-documentation/#documentation-for-api-endpoints) [[Back to README]](/docs/advanced/rest-api-documentation/)
-
