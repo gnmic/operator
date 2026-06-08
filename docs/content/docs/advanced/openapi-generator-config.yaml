@@ -1,7 +1,7 @@
 # docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate  -c /local/docs/content/docs/advanced/openapi-generator-config.yaml
 
 generatorName: markdown
-inputSpec: /local/docs/content/docs/advanced/openapi.yaml
+inputSpec: /local/internal/apiserver/openapi.yaml
 outputDir: /local/docs/content/docs/advanced/rest-api-documentation
 templateDir: /local/docs/content/docs/advanced/openapi-templates/markdown-documentation
 files:
