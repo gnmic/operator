@@ -1,0 +1,82 @@
+openapi: 3.0.3
+info:
+  title: "gNMIc Operator REST API"
+  version: "0.0.1"
+paths:
+  /clusters/:namespace/:name/plan:
+    get:
+      summary: "Get cluster plan."
+      operationId: "getClusterPlan"
+      responses:
+        '200':
+          description: "ClusterPlan returned"
+  /api/v1/:namespace/target-source/:name/applyTargets:
+    post:
+      summary: "Targets received are applied in gNMIc Operator."
+      operationId: "applyTargets"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Targets'
+      responses:
+        '201':
+          description: "Targets applied successfully"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Targets'
+        '401':
+          description: Access token is missing or invalid
+
+components:
+  schemas:
+    Targets:
+      type: array
+      items:
+        $ref: '#/components/schemas/Target'
+    Label:
+      description: TBD
+      type: object
+      additionalProperties:
+        description: Label must be passed as key:value pair. Multiple values per key possible
+        type: string
+    Target:
+      type: object
+      required:
+        - name
+        - ip
+        - operation
+      properties:
+        name:
+          type: string
+          description: Routername
+        address:
+          type: string
+          description: IPv4 or IPv6
+        port:
+          type: integer
+          description: gNMIc port
+        targetProfile:
+          type: string
+          description: TargetProfile applied to specific router
+        labels:
+          type: array
+          description: Input of labels through key:value pair
+          items:
+            $ref: '#/components/schemas/Label'
+        operation:
+          type: string
+          enum:
+            - created
+            - updated
+            - deleted
+          description: Either created, updated or deleted. created and updated internally is the same operation (apply)
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      

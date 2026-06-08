@@ -1,0 +1,4 @@
+.openapi-generator-ignore
+Apis/DefaultApi.md
+Models/Target.md
+README.md
