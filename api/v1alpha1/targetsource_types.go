@@ -42,8 +42,11 @@ type TargetSourceSpec struct {
 	TargetProfile string `json:"targetProfile"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf=http;consul
+// ProviderSpec defines the source of targets for a TargetSource
+// Only one provider can be specified per TargetSource
+// +kubebuilder:validation:ExactlyOneOf=http
 type ProviderSpec struct {
+	// HTTP defines the configuration for a HTTP provider
 	HTTP *HTTPConfig `json:"http,omitempty"`
 }
 

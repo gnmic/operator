@@ -45,8 +45,7 @@ spec:
                   Only one provider can be specified per TargetSource
                 properties:
                   http:
-                    description: HTTPConfig defines the configuration for the HTTP
-                      provider
+                    description: HTTP defines the configuration for a HTTP provider
                     properties:
                       authentication:
                         description: Optional authentication configuration for accessing
@@ -429,9 +428,8 @@ spec:
                         >= 1'
                 type: object
                 x-kubernetes-validations:
-                - message: exactly one of the fields in [http consul] must be set
-                  rule: '[has(self.http),has(self.consul)].filter(x,x==true).size()
-                    == 1'
+                - message: exactly one of the fields in [http] must be set
+                  rule: '[has(self.http)].filter(x,x==true).size() == 1'
               targetLabels:
                 additionalProperties:
                   type: string
