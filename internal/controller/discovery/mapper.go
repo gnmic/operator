@@ -1,7 +1,6 @@
 package discovery
 
 import (
-	"fmt"
 	"maps"
 	"net"
 	"strconv"
