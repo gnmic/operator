@@ -1,4 +1,4 @@
-package core
+package discovery
 
 import (
 	"context"
@@ -9,18 +9,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
-// DiscoveryKubernetesClient is a client which fulfills the StatusUpdater interface
-type DiscoveryKubernetesClient struct {
+// k8sStatusUpdater is a client which fulfills the StatusUpdater interface
+type k8sStatusUpdater struct {
 	client       client.Client
 	scheme       *runtime.Scheme
 	targetSource *gnmicv1alpha1.TargetSource
 }
 
-// Returns an instance of DiscoveryKubernetesClient
-func NewDiscoveryKubernetesClient(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource) *DiscoveryKubernetesClient {
-	return &DiscoveryKubernetesClient{
+// Returns an instance of k8sStatusUpdater
+func NewK8sStatusUpdater(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource) *k8sStatusUpdater {
+	return &k8sStatusUpdater{
 		client:       c,
 		scheme:       s,
 		targetSource: ts,
@@ -30,7 +31,7 @@ func NewDiscoveryKubernetesClient(c client.Client, s *runtime.Scheme, ts *gnmicv
 // UpdateStatus takes a StatusUpdate holding Conditions and a pointer referencing the TargetsCount.
 // If TargetsCount is set, the LastSync time gets set to metav1.Now().
 // Replaces LastTransitionTime of each Condition with metav1.Now().
-func (c *DiscoveryKubernetesClient) UpdateStatus(ctx context.Context, update StatusUpdate) error {
+func (c *k8sStatusUpdater) UpdateStatus(ctx context.Context, update core.StatusUpdate) error {
 
 	return c.patchStatus(ctx, func(
 		ts *gnmicv1alpha1.TargetSource,
@@ -51,7 +52,7 @@ func (c *DiscoveryKubernetesClient) UpdateStatus(ctx context.Context, update Sta
 }
 
 // patchStatus is an internal function to update the Kubernetes object
-func (c *DiscoveryKubernetesClient) patchStatus(ctx context.Context, mutate func(*gnmicv1alpha1.TargetSource)) error {
+func (c *k8sStatusUpdater) patchStatus(ctx context.Context, mutate func(*gnmicv1alpha1.TargetSource)) error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		latest := &gnmicv1alpha1.TargetSource{}
 		if err := c.client.Get(ctx, client.ObjectKeyFromObject(c.targetSource), latest); err != nil {

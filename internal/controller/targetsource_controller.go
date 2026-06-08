@@ -182,7 +182,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	statusUpdater := discoveryTypes.NewDiscoveryKubernetesClient(r.Client, r.Scheme, targetSource)
+	statusUpdater := discovery.NewK8sStatusUpdater(r.Client, r.Scheme, targetSource)
 	if err := statusUpdater.UpdateStatus(ctx, discoveryTypes.StatusUpdate{
 		Conditions: []metav1.Condition{
 			{
