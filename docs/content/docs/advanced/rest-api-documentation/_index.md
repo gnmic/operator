@@ -3,7 +3,7 @@ title: "REST API interface"
 linkTitle: "REST API interface"
 weight: 3
 description: >
-  The gNMIc Operator has a REST API endpoint. This documentation explains what routes are available and how to use them.
+  This document describes the REST API exposed by the gNMIc Operator, including the available endpoints, request formats, and usage examples.
 ---
 
 <a name="documentation-for-api-endpoints"></a>
@@ -13,8 +13,8 @@ All URIs are relative to *http://localhost:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *DefaultApi* | [**applyTargets**](/docs/advanced/rest-api-documentation/DefaultApi) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-*DefaultApi* | [**getClusterPlan**](/docs/advanced/rest-api-documentation/DefaultApi) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| *DefaultApi* | [**applyTargets**](/docs/advanced/rest-api-documentation/apis/DefaultApi) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+*DefaultApi* | [**getClusterPlan**](/docs/advanced/rest-api-documentation/apis/DefaultApi) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="documentation-for-models"></a>
@@ -30,4 +30,11 @@ All URIs are relative to *http://localhost:8082*
 ### bearerAuth
 
 - **Type**: HTTP Bearer Token authentication
+
+<a name="signature"></a>
+### signature
+
+- **Type**: API key
+- **API key parameter name**: X-Hook-Signature
+- **Location**: HTTP header
 

@@ -34,7 +34,7 @@ Interface for real-time target updates, usually using a webhook. Targets are app
 
 ### Authorization
 
-[bearerAuth](/docs/advanced/rest-api-documentation/#bearerAuth)
+[signature](/docs/advanced/rest-api-documentation/#signature), [bearerAuth](/docs/advanced/rest-api-documentation/#bearerAuth)
 
 ### HTTP request headers
 

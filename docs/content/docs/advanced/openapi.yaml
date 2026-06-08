@@ -16,6 +16,7 @@ paths:
       operationId: "applyTargets"
       security:
         - bearerAuth: []
+          signature: []
       requestBody:
         required: true
         content:
@@ -80,4 +81,10 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+      description: HTTP authentication using Bearer token
+    signature:
+      name: X-Hook-Signature
+      type: apiKey
+      in: header
+      description: HMAC signature of the request payload
       
