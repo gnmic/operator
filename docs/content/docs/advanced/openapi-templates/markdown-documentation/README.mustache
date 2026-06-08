@@ -3,7 +3,7 @@ title: "REST API interface"
 linkTitle: "REST API interface"
 weight: 3
 description: >
-  The gNMIc Operator has a REST API endpoint. This documentation explains what routes are avaiable and how to use them.
+  The gNMIc Operator has a REST API endpoint. This documentation explains what routes are available and how to use them.
 ---
 
 {{#generateApiDocs}}
@@ -14,7 +14,7 @@ All URIs are relative to *{{{basePath}}}:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-{{#apiInfo}}{{#apis}}{{#operations}}| {{#operation}}*{{classname}}* | [**{{operationId}}**](/docs/advanced/rest-api-documentation/Apis/{{apiDocPath}}{{classname}}/#{{operationId}}) | **{{httpMethod}}** {{path}} | {{{summary}}}{{^summary}}{{{notes}}}{{/summary}} |
+{{#apiInfo}}{{#apis}}{{#operations}}| {{#operation}}*{{classname}}* | [**{{operationId}}**](/docs/advanced/rest-api-documentation/{{apiDocPath}}{{classname}}) | **{{httpMethod}}** {{path}} | {{{summary}}}{{^summary}}{{{notes}}}{{/summary}} |
 {{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 {{/generateApiDocs}}
 
