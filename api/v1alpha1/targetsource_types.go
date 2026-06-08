@@ -44,12 +44,128 @@ type TargetSourceSpec struct {
 
 // +kubebuilder:validation:ExactlyOneOf=http;consul
 type ProviderSpec struct {
-	HTTP   *HTTPConfig   `json:"http,omitempty"`
+	HTTP *HTTPConfig `json:"http,omitempty"`
 }
 
 // HTTPConfig defines the configuration for the HTTP provider
 // +kubebuilder:validation:AtLeastOneOf:=url;push
 type HTTPConfig struct {
+	// URL of the HTTP endpoint to pull targets from
+	// If defined, the loader will periodically poll this endpoint for targets
+	// +kubebuilder:validation:Optional
+	URL string `json:"url,omitempty"`
+
+	// HTTP method used for the request.
+	//
+	// Defaults to GET if not specified.
+	//
+	// Supported values:
+	// - GET  (default, no request body)
+	// - POST (supports request body)
+	//
+	// +kubebuilder:validation:Enum=GET;POST
+	// +kubebuilder:default="GET"
+	// +kubebuilder:validation:Optional
+	Method string `json:"method,omitempty"`
+
+	// Optional HTTP headers to include in the request.
+	//
+	// These map directly to HTTP headers (key-value pairs).
+	//
+	// Example:
+	//   headers:
+	//     Content-Type: application/json
+	//     X-Custom-Header: value
+	//
+	// Precedence:
+	// - Authentication configuration overrides any conflicting headers e.g. Authorization
+	//
+	// +kubebuilder:validation:Optional
+	Headers map[string]string `json:"headers,omitempty"`
+
+	// Optional raw request body.
+	//
+	// Typically used with POST requests and contains JSON payload.
+	//
+	// Example:
+	//   body: |
+	//     {
+	//       "limit": 100,
+	//       "status": "active"
+	//     }
+	//
+	// Notes:
+	// - Ignored for GET requests
+	// - User must set appropriate Content-Type header if needed
+	//
+	// +kubebuilder:validation:Optional
+	Body string `json:"body,omitempty"`
+
+	// Optional authentication configuration for accessing the HTTP endpoint
+	// +kubebuilder:validation:Optional
+	Authentication *AuthenticationSpec `json:"authentication,omitempty"`
+
+	// Optional interval for polling the HTTP endpoint for targets
+	// TODO: document about default value
+	// +kubebuilder:default="30m"
+	// +kubebuilder:validation:Optional
+	Interval *metav1.Duration `json:"interval,omitempty"`
+
+	// Optional timeout for HTTP requests to the endpoint
+	// +kubebuilder:default="30s"
+	// +kubebuilder:validation:Optional
+	Timeout *metav1.Duration `json:"timeout,omitempty"`
+
+	// Optional TLS configuration for connecting to the HTTP endpoint
+	// If it is an HTTP endpoint, this will be ignored
+	// +kubebuilder:validation:Optional
+	TLS *ClientTLSConfig `json:"tls,omitempty"`
+
+	// Optional pagination configuration for parsing responses from the HTTP endpoint
+	// +kubebuilder:validation:Optional
+	Pagination *PaginationSpec `json:"pagination,omitempty"`
+
+	// Optional mapping configuration for parsing responses from the HTTP endpoint
+	// +kubebuilder:validation:Optional
+	ResponseMapping *ResponseMappingSpec `json:"mapping,omitempty"`
+
+	// Optional configuration to enable push
+	// +kubebuilder:validation:Optional
+	Push *PushSpec `json:"push,omitempty"`
+}
+
+type ClientTLSConfig struct {
+	// Skip TLS verification of the Provider's certificate.
+	// +kubebuilder:default:=false
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+
+	// Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
+	// verifying the certificate chain presented by the Provider when using HTTPS.
+	// Mutually exclusive with CABundle.
+	// +kubebuilder:validation:Optional
+	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleRef,omitempty"`
+}
+
+// AuthenticationSpec defines the configuration for authentication
+// +kubebuilder:validation:ExactlyOneOf=basic;token
+type AuthenticationSpec struct {
+	// Basic authentication configuration
+	Basic *BasicAuthSpec `json:"basic,omitempty"`
+	// Token-based authentication configuration
+	Token *TokenAuthSpec `json:"token,omitempty"`
+}
+
+// BasicAuthSpec defines the configuration for basic authentication
+type BasicAuthSpec struct {
+	// Reference to a Secret containing "username" and "password" keys to use for
+	// basic authentication when connecting to the Provider.
+	// +kubebuilder:validation:Required
+	CredentialSecretRef *corev1.SecretKeySelector `json:"credentialSecretRef"`
+}
+
+// TokenAuthSpec defines the configuration for token-based authentication
+type TokenAuthSpec struct {
+	// Scheme for the token, e.g. "Bearer"
 	// +kubebuilder:validation:MinLength=1
 	Scheme string `json:"scheme"`
 	// Reference to a Secret containing a key with the token value to use for
