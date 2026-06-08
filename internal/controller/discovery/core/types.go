@@ -25,7 +25,7 @@ type CommonLoaderConfig struct {
 	AcceptPush      bool
 	Router          *gin.Engine
 	ResourceFetcher ResourceFetcher
-	Client          StatusUpdater
+	Updater         StatusUpdater
 }
 
 // EventAction represents the type of a discovery event

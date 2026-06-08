@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -236,10 +237,36 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 		switch event.Event {
 		case core.EventApply:
 			m.targetCount++
-			m.updater.SetSuccessfulSync(ctx, m.targetCount)
+			m.updater.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeReady,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncSucceeded),
+							Message: "Successfully synced all targets",
+						},
+					},
+					TargetsCount: &m.targetCount,
+				},
+			)
 		case core.EventDelete:
 			m.targetCount--
-			m.updater.SetSuccessfulSync(ctx, m.targetCount)
+			m.updater.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeReady,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncSucceeded),
+							Message: "Successfully synced all targets",
+						},
+					},
+					TargetsCount: &m.targetCount,
+				},
+			)
 		}
 	} else {
 		// m.updateStatus(ctx, gnmicv1alpha1.SyncStatusError, err)
@@ -325,9 +352,20 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 	} else {
 		// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
 		m.targetCount = int32(len(allTargets))
-		if err := m.updater.SetSuccessfulSync(ctx, m.targetCount); err != nil {
-			logger.Error(err, "error updating TargetSource status")
-		}
+		m.updater.UpdateStatus(
+			ctx,
+			core.StatusUpdate{
+				Conditions: []metav1.Condition{
+					{
+						Type:    core.ConditionTypeReady,
+						Status:  metav1.ConditionStatus("True"),
+						Reason:  string(core.ReasonSyncSucceeded),
+						Message: "Successfully synced all targets",
+					},
+				},
+				TargetsCount: &m.targetCount,
+			},
+		)
 	}
 
 	// Replay deferred events
