@@ -6,8 +6,6 @@ description: >
   The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
 ---
 
-The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
-
 ## Basic Configuration
 
 ```yaml
@@ -16,7 +14,6 @@ kind: TargetSource
 metadata:
   name: targetsource-1
 spec:
-  provider:
   provider:
     http:
       url: http://inventory-service:8080/targets
