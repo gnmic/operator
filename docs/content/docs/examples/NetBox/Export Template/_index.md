@@ -1,6 +1,6 @@
 ---
-title: "NetBox (Export Template)"
-linkTitle: "NetBox Export Template"
+title: "Pull with Export Template"
+linkTitle: "Pull with Export Template"
 weight: 1
 description: >
   Discover targets from NetBox using HTTP provider with NetBox Export Template
@@ -12,14 +12,14 @@ Export Templates offer powerful filtering, transformation, and formatting direct
 
 ## Overview
 
-An **Export Template** is a Jinja2 template defined in NetBox that:
+An **Export Template** is a Jinja2 template that:
 
 1. **Queries** NetBox's internal database (devices, interfaces, etc.)
 2. **Filters** results based on custom criteria
-3. **Transforms** data into your desired output format (JSON, YAML, CSV, etc.)
-4. **Returns** the formatted output via a custom REST API endpoint
+3. **Transforms** data into your desired output format
+4. **Returns** the formatted output via REST API endpoint
 
-When used with gNMIc's HTTP provider, the operator simply fetches the rendered JSON template and parses the result — no additional gNMIc Operator transformation needed if done correctly.
+When used with gNMIc's HTTP provider, the operator fetches the rendered JSON template and parses the result with no further transformation needed by the gNMIc Operator.
 
 ---
 

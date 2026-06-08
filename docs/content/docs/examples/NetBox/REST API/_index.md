@@ -1,6 +1,6 @@
 ---
-title: "NetBox (REST API)"
-linkTitle: "NetBox REST"
+title: "Pull with REST API"
+linkTitle: "Pull with REST API""
 weight: 2
 description: >
   Discover targets from NetBox using the HTTP provider and NetBox REST API

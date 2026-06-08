@@ -26,6 +26,8 @@ All URIs are relative to *http://localhost:8082*
 <a name="documentation-for-authorization"></a>
 ## Documentation for Authorization
 
+For a detailed explanation on how to configure the required secrets within the gNMIc Operator, refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
+
 <a name="bearerAuth"></a>
 ### bearerAuth
 

@@ -40,15 +40,19 @@ The REST API endpoint runs on `http://cluster-address:8082/api/v1/:namespace/tar
 - `:namespace`: Namespace the TargetSource is created in.
 - `:name`: Name of the TargetSource.
 
-See [real-time target update with webhook](/docs/examples/netbox/webhook) for an on how to configure the URI.
+See [Push mode with webhook](/docs/examples/netbox/webhook) for an example on how to configure the URL.
 
 ## REST API
 
-Refer to the [REST API documentation](/docs/advanced/rest-api-documentation/) for the expected request schema and payload format. Any system or automation capable of sending HTTP POST requests can integrate with this interface. Compatibility has been validated using a [Netbox webhook](/docs/examples/netbox/webhook).
+Refer to the [REST API documentation](/docs/advanced/rest-api-documentation/) for the expected request schema and payload format. 
+
+Any system or script capable of sending HTTP POST requests can integrate with this interface. 
 
 ## Security
 
 The API supports Bearer Token authentication and X-Hook-Signature, both are optional and turned off by default. They can be used in combination and are enabled by adding them to the specification.
+
+An example configuration of both is documented in the [Netbox webhook](/docs/examples/netbox/webhook) example.
 
 ### Bearer Authentication
 
@@ -86,13 +90,9 @@ HTTP request must contain the Bearer token in the header in the format:
 Authorization: Bearer Secret...
 ```
 
-#### Reverse Proxy
-
-Use one.
-
 ### Signature
 
-Signature verification requires an Opaque Kubernetes secret that stores the shared key (see Bearer Authentication). For each request, the HMAC generated from the request body and shared key must be provided in the `X-Hook-Signature` header. Refer to the [Netbox webhook](/docs/examples/netbox/webhook) example for a configuration reference.
+Signature verification requires an Opaque Kubernetes secret that stores the shared key (see Bearer Authentication). For each request, the HMAC generated from the request body and shared key must be provided in the `X-Hook-Signature` header.
 
 ```yaml
 spec:
@@ -107,3 +107,7 @@ spec:
             name: gnmic-signature
             key: signature
 ```
+
+#### Reverse Proxy
+
+In order to have a secure setup, the HTTP post requests must be sent using TLS. The REST API interface does not support HTTPS, at least not directly. It is recommended to terminate the TLS connection at the reverse proxy and forward a plain HTTP request to the gNMIc Operator.
