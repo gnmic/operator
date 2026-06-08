@@ -3,12 +3,16 @@ title: "Model"
 linkTitle: "Model"
 weight: 4
 description: >
-  Todo
+  Documentation for OpenAPI models and their schema-defined properties.
 ---
 
 {{#models}}
 {{#model}}
 # {{{classname}}}
+{{#description}}
+{{{description}}}
+{{/description}}
+
 ## Properties
 
 | Name | Type | Description | Notes |
@@ -21,7 +25,7 @@ description: >
 {{#vars}}| **{{name}}** | {{#isPrimitiveType}}**{{dataType}}**{{/isPrimitiveType}}{{^isPrimitiveType}}[**{{dataType}}**]({{complexType}}.md){{/isPrimitiveType}} | {{{description}}} | {{^required}}[optional] {{/required}}{{#readOnly}}[readonly] {{/readOnly}}{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}} |
 {{/vars}}
 
-[[Back to Model list]](../_index.md#documentation-for-models) [[Back to API list]](../_index.md#documentation-for-api-endpoints) [[Back to README]](../_index.md)
+[[Back to Model list]](/docs/advanced/rest-api-documentation/#documentation-for-models) [[Back to API list]](/docs/advanced/rest-api-documentation/#documentation-for-api-endpoints) [[Back to README]](/docs/advanced/rest-api-documentation/)
 
     {{/model}}
 {{/models}}

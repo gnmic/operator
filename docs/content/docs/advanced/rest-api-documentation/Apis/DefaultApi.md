@@ -26,15 +26,15 @@ Interface for real-time target updates, usually using a webhook. Targets are app
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **Target** | [**List**](../Models/Target.md)|  | |
+| **Target** | [**List**](/docs/advanced/rest-api-documentation/Models/Target/)|  | |
 
 ### Return type
 
-[**List**](../Models/Target.md)
+[**List**](/docs/advanced/rest-api-documentation/Models/Target/)
 
 ### Authorization
 
-[bearerAuth](../_index.md#bearerAuth)
+[bearerAuth](/docs/advanced/rest-api-documentation/#bearerAuth)
 
 ### HTTP request headers
 

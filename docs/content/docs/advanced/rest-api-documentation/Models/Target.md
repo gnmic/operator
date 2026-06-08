@@ -3,10 +3,12 @@ title: "Model"
 linkTitle: "Model"
 weight: 4
 description: >
-  Todo
+  Documentation for OpenAPI models and their schema-defined properties.
 ---
 
 # Target
+Network device to be monitored. Properties not marked as optional must be in JSON body.
+
 ## Properties
 
 | Name | Type | Description | Notes |
@@ -18,5 +20,5 @@ description: >
 | **labels** | [**List**](map.md) | Input of labels as key:value pair. | [optional] [default to null] |
 | **operation** | **String** | Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target. | [default to null] |
 
-[[Back to Model list]](../_index.md#documentation-for-models) [[Back to API list]](../_index.md#documentation-for-api-endpoints) [[Back to README]](../_index.md)
+[[Back to Model list]](/docs/advanced/rest-api-documentation/#documentation-for-models) [[Back to API list]](/docs/advanced/rest-api-documentation/#documentation-for-api-endpoints) [[Back to README]](/docs/advanced/rest-api-documentation/)
 

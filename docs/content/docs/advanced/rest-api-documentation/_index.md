@@ -1,26 +1,26 @@
 ---
-title: "Documentation for gNMIc Operator REST API"
+title: "REST API interface"
 linkTitle: "REST API interface"
 weight: 3
 description: >
-  Documentation of REST API interface according to openAPI standard.
+  The gNMIc Operator has a REST API endpoint. This documentation explains what routes are avaiable and how to use them.
 ---
 
 <a name="documentation-for-api-endpoints"></a>
 ## Documentation for API Endpoints
 
-All URIs are relative to *http://localhost*
+All URIs are relative to *http://localhost:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *DefaultApi* | [**applyTargets**](Apis/DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-*DefaultApi* | [**getClusterPlan**](Apis/DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| *DefaultApi* | [**applyTargets**](/docs/advanced/rest-api-documentation/Apis/DefaultApi/#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+*DefaultApi* | [**getClusterPlan**](/docs/advanced/rest-api-documentation/Apis/DefaultApi/#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="documentation-for-models"></a>
 ## Documentation for Models
 
- - [Target](./Models/Target.md)
+ - [Target](/docs/advanced/rest-api-documentation/Models/Target/)
 
 
 <a name="documentation-for-authorization"></a>

@@ -1,20 +1,20 @@
 ---
-title: "Documentation for gNMIc Operator REST API"
+title: "REST API interface"
 linkTitle: "REST API interface"
 weight: 3
 description: >
-  Documentation of REST API interface according to openAPI standard.
+  The gNMIc Operator has a REST API endpoint. This documentation explains what routes are avaiable and how to use them.
 ---
 
 {{#generateApiDocs}}
 <a name="documentation-for-api-endpoints"></a>
 ## Documentation for API Endpoints
 
-All URIs are relative to *{{{basePath}}}*
+All URIs are relative to *{{{basePath}}}:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-{{#apiInfo}}{{#apis}}{{#operations}}| {{#operation}}*{{classname}}* | [**{{operationId}}**](Apis/{{apiDocPath}}{{classname}}.md#{{operationId}}) | **{{httpMethod}}** {{path}} | {{{summary}}}{{^summary}}{{{notes}}}{{/summary}} |
+{{#apiInfo}}{{#apis}}{{#operations}}| {{#operation}}*{{classname}}* | [**{{operationId}}**](/docs/advanced/rest-api-documentation/Apis/{{apiDocPath}}{{classname}}/#{{operationId}}) | **{{httpMethod}}** {{path}} | {{{summary}}}{{^summary}}{{{notes}}}{{/summary}} |
 {{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 {{/generateApiDocs}}
 
@@ -23,7 +23,7 @@ All URIs are relative to *{{{basePath}}}*
 ## Documentation for Models
 
 {{#modelPackage}}
-{{#models}}{{#model}} - [{{{classname}}}](./{{{modelPackage}}}/{{modelDocPath}}{{{classFilename}}}.md)
+{{#models}}{{#model}} - [{{{classname}}}](/docs/advanced/rest-api-documentation/{{{modelPackage}}}/{{modelDocPath}}{{{classFilename}}}/)
 {{/model}}{{/models}}
 {{/modelPackage}}
 {{^modelPackage}}
