@@ -235,7 +235,6 @@ func mustNewEnv() *cel.Env {
 		cel.Variable("item", cel.DynType),
 		// Required for ext.Regex
 		cel.OptionalTypes(),
-		// TODO: document what extensions are included
 		// Include standard CEL declarations for common operations and types
 		ext.Strings(),
 		ext.Math(),
