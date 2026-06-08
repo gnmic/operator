@@ -13,14 +13,14 @@ All URIs are relative to *http://localhost*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *DefaultApi* | [**applyTargets**](Apis/DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-*DefaultApi* | [**getClusterPlan**](Apis/DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| *DefaultApi* | [**applyTargets**](../Apis/DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+*DefaultApi* | [**getClusterPlan**](../Apis/DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="documentation-for-models"></a>
 ## Documentation for Models
 
- - [Target](./Models/Target.md)
+ - [Target](../Models/Target.md)
 
 
 <a name="documentation-for-authorization"></a>
