@@ -4,7 +4,7 @@ All URIs are relative to *http://localhost*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**applyTargets**](DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Targets received are applied in gNMIc Operator. |
+| [**applyTargets**](DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
 | [**getClusterPlan**](DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
@@ -12,7 +12,7 @@ All URIs are relative to *http://localhost*
 # **applyTargets**
 > List applyTargets(Target)
 
-Targets received are applied in gNMIc Operator.
+Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator.
 
 ### Parameters
 
@@ -26,7 +26,7 @@ Targets received are applied in gNMIc Operator.
 
 ### Authorization
 
-[bearerAuth](../README.md#bearerAuth)
+[bearerAuth](../rest-api-documentation.md#bearerAuth)
 
 ### HTTP request headers
 

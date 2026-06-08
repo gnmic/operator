@@ -12,7 +12,7 @@ paths:
           description: "ClusterPlan returned"
   /api/v1/:namespace/target-source/:name/applyTargets:
     post:
-      summary: "Targets received are applied in gNMIc Operator."
+      summary: "Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator."
       operationId: "applyTargets"
       security:
         - bearerAuth: []
@@ -42,30 +42,31 @@ components:
       description: TBD
       type: object
       additionalProperties:
-        description: Label must be passed as key:value pair. Multiple values per key possible
+        description: Label must be passed as key:value pair, multiple values per key possible.
         type: string
     Target:
+      description: Network device to be monitored. Properties not marked as optional must be in JSON body.
       type: object
       required:
         - name
-        - ip
+        - address
         - operation
       properties:
         name:
           type: string
-          description: Routername
+          description: Name of device to be monitored.
         address:
           type: string
-          description: IPv4 or IPv6
+          description: IPv4/IPv6 address or hostname.
         port:
           type: integer
-          description: gNMIc port
+          description: gNMIc port.
         targetProfile:
           type: string
-          description: TargetProfile applied to specific router
+          description: TargetProfile applied to apply to this router.
         labels:
           type: array
-          description: Input of labels through key:value pair
+          description: Input of labels as key:value pair.
           items:
             $ref: '#/components/schemas/Label'
         operation:
@@ -74,7 +75,7 @@ components:
             - created
             - updated
             - deleted
-          description: Either created, updated or deleted. created and updated internally is the same operation (apply)
+          description: "Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target."
   securitySchemes:
     bearerAuth:
       type: http
