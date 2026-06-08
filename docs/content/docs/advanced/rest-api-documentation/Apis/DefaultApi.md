@@ -6,14 +6,14 @@ description: >
   Available HTTP routes on the gNMIc Operator API interface.
 ---
 
-# DefaultApi
+# defaultapi
 
 All URIs are relative to *http://localhost:8082*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**applyTargets**](DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-| [**getClusterPlan**](DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| [**applyTargets**](defaultapi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+| [**getClusterPlan**](defaultapi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="applyTargets"></a>
@@ -26,11 +26,11 @@ Interface for real-time target updates, usually using a webhook. Targets are app
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **Target** | [**List**](/docs/advanced/rest-api-documentation/Models/Target/)|  | |
+| **Target** | [**List**](/docs/advanced/rest-api-documentation/models/target/)| Target must be passed as a list, multiple targets possible. | |
 
 ### Return type
 
-[**List**](/docs/advanced/rest-api-documentation/Models/Target/)
+[**List**](/docs/advanced/rest-api-documentation/models/target/)
 
 ### Authorization
 

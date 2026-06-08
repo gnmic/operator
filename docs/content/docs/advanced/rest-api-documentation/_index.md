@@ -13,14 +13,14 @@ All URIs are relative to *http://localhost:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *DefaultApi* | [**applyTargets**](/docs/advanced/rest-api-documentation/apis/DefaultApi) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-*DefaultApi* | [**getClusterPlan**](/docs/advanced/rest-api-documentation/apis/DefaultApi) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| *defaultapi* | [**applyTargets**](/docs/advanced/rest-api-documentation/apis/defaultapi) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+*defaultapi* | [**getClusterPlan**](/docs/advanced/rest-api-documentation/apis/defaultapi) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="documentation-for-models"></a>
 ## Documentation for Models
 
- - [Target](/docs/advanced/rest-api-documentation/Models/Target/)
+ - [target](/docs/advanced/rest-api-documentation/models/target/)
 
 
 <a name="documentation-for-authorization"></a>

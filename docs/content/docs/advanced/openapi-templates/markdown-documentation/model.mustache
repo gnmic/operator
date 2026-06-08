@@ -8,7 +8,7 @@ description: >
 
 {{#models}}
 {{#model}}
-# {{{classname}}}
+# {{#lambda.lowercase}}{{{classname}}}{{/lambda.lowercase}}
 {{#description}}
 {{{description}}}
 {{/description}}
@@ -19,10 +19,10 @@ description: >
 |------------ | ------------- | ------------- | -------------|
 {{#parent}}
 {{#parentVars}}
-| **{{name}}** | {{#isPrimitiveType}}**{{dataType}}**{{/isPrimitiveType}}{{^isPrimitiveType}}[**{{dataType}}**]({{complexType}}.md){{/isPrimitiveType}} | {{{description}}} | {{^required}}[optional] {{/required}}{{#readOnly}}[readonly] {{/readOnly}}{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}} |
+| **{{name}}** | {{#isPrimitiveType}}**{{dataType}}**{{/isPrimitiveType}}{{^isPrimitiveType}}[**{{dataType}}**]({{#lambda.lowercase}}{{complexType}}{{/lambda.lowercase}}.md){{/isPrimitiveType}} | {{{description}}} | {{^required}}[optional] {{/required}}{{#readOnly}}[readonly] {{/readOnly}}{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}} |
 {{/parentVars}}
 {{/parent}}
-{{#vars}}| **{{name}}** | {{#isPrimitiveType}}**{{dataType}}**{{/isPrimitiveType}}{{^isPrimitiveType}}[**{{dataType}}**]({{complexType}}.md){{/isPrimitiveType}} | {{{description}}} | {{^required}}[optional] {{/required}}{{#readOnly}}[readonly] {{/readOnly}}{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}} |
+{{#vars}}| **{{name}}** | {{#isPrimitiveType}}**{{dataType}}**{{/isPrimitiveType}}{{^isPrimitiveType}}[**{{dataType}}**]({{#lambda.lowercase}}{{complexType}}{{/lambda.lowercase}}.md){{/isPrimitiveType}} | {{{description}}} | {{^required}}[optional] {{/required}}{{#readOnly}}[readonly] {{/readOnly}}{{#defaultValue}}[default to {{{.}}}]{{/defaultValue}} |
 {{/vars}}
 
 [[Back to Model list]](/docs/advanced/rest-api-documentation/#documentation-for-models) [[Back to API list]](/docs/advanced/rest-api-documentation/#documentation-for-api-endpoints) [[Back to README]](/docs/advanced/rest-api-documentation/)

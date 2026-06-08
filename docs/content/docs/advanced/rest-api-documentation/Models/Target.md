@@ -6,7 +6,7 @@ description: >
   Documentation for OpenAPI models and their schema-defined properties.
 ---
 
-# Target
+# target
 Network device to be monitored. Properties not marked as optional must be in JSON body.
 
 ## Properties
