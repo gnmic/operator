@@ -37,7 +37,7 @@ spec:
 The REST API endpoint runs on `http://cluster-address:8082/api/v1/:namespace/target-source/:name/applyTargets`.
 
 - `cluster-address`: Adress of your cluster, localhost during development.
-- `:namespace`: Namespace the gNMIc controller runs in.
+- `:namespace`: Namespace the TargetSource is created in.
 - `:name`: Name of the TargetSource.
 
 See [real-time target update with webhook](/docs/examples/netbox/webhook) for an on how to configure the URI.
@@ -85,6 +85,10 @@ HTTP request must contain the Bearer token in the header in the format:
 ```yaml
 Authorization: Bearer Secret...
 ```
+
+#### Reverse Proxy
+
+Use one.
 
 ### Signature
 
