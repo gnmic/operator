@@ -1,3 +1,11 @@
+---
+title: "REST API definition"
+linkTitle: "REST API definition"
+weight: 4
+description: >
+  Gives REST API definition with available options.
+---
+
 # DefaultApi
 
 All URIs are relative to *http://localhost*
@@ -26,7 +34,7 @@ Interface for real-time target updates, usually using a webhook. Targets are app
 
 ### Authorization
 
-[bearerAuth](../rest-api-documentation.md#bearerAuth)
+[bearerAuth](../_index.md#bearerAuth)
 
 ### HTTP request headers
 

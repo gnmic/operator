@@ -1,7 +1,7 @@
 generatorName: markdown
 inputSpec: /local/docs/content/docs/advanced/openapi.yaml
-outputDir: /local/docs/content/docs/advanced
+outputDir: /local/docs/content/docs/advanced/rest-api-documentation
 templateDir: /local/docs/content/docs/advanced/openapi-templates/markdown-documentation
 files:
   README.mustache:
-    destinationFilename: rest-api-documentation.md
+    destinationFilename: _index.md
