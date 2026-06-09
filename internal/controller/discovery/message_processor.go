@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -31,15 +33,17 @@ type MessageProcessor struct {
 	// Events are deferred while snapshot is in progress
 	deferredEvents []core.DiscoveryEvent
 	targetCount    int32
+	updater        core.StatusUpdater
 }
 
 // NewMessageProcessor wires a MessageProcessor instance
-func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *MessageProcessor {
+func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage, u core.StatusUpdater) *MessageProcessor {
 	return &MessageProcessor{
 		client:       c,
 		scheme:       s,
 		targetSource: ts,
 		in:           in,
+		updater:      u,
 	}
 }
 
@@ -229,16 +233,46 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 	}
 
 	// Apply events
-	err := m.applyEvent(ctx, event, logger)
+	result, err := m.applyEvent(ctx, event, logger)
 	if err == nil {
 		switch event.Event {
 		case core.EventApply:
-			m.targetCount++
-			m.updateStatus(ctx, logger)
+			if result == controllerutil.OperationResultCreated {
+				m.targetCount++
+			}
+			m.updater.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeReady,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncSucceeded),
+							Message: "Successfully synced all targets",
+						},
+					},
+					TargetsCount: &m.targetCount,
+				},
+			)
 		case core.EventDelete:
 			m.targetCount--
-			m.updateStatus(ctx, logger)
+			m.updater.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeReady,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncSucceeded),
+							Message: "Successfully synced all targets",
+						},
+					},
+					TargetsCount: &m.targetCount,
+				},
+			)
 		}
+	} else {
+		// m.updateStatus(ctx, gnmicv1alpha1.SyncStatusError, err)
 	}
 
 	return err
@@ -309,8 +343,32 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		"numOfDelete", nDelete,
 	)
 
+	errCount := 0
 	for _, e := range events {
-		m.applyEvent(ctx, e, logger)
+		_, err = m.applyEvent(ctx, e, logger)
+		if err != nil {
+			errCount++
+		}
+	}
+	if errCount != 0 {
+		// m.updateStatus(ctx, gnmicv1alpha1.SyncStatusSyncedWithErrors, err)
+	} else {
+		// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
+		m.targetCount = int32(len(allTargets))
+		m.updater.UpdateStatus(
+			ctx,
+			core.StatusUpdate{
+				Conditions: []metav1.Condition{
+					{
+						Type:    core.ConditionTypeReady,
+						Status:  metav1.ConditionStatus("True"),
+						Reason:  string(core.ReasonSyncSucceeded),
+						Message: "Successfully synced all targets",
+					},
+				},
+				TargetsCount: &m.targetCount,
+			},
+		)
 	}
 
 	// Replay deferred events
@@ -325,53 +383,42 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 
-	// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
-	m.targetCount = int32(len(allTargets))
-	m.updateStatus(ctx, logger)
-
 	m.resetSnapshot()
 	m.deferredEvents = nil
 	return nil
 }
 
-func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+// applyEvent applies a DiscoveryEvent to the Kubernetes cluster and returns controllerutil.OperationResult to identify create or update events. Returns controllerutil.OperationResultNone for delete or on errors
+func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) (controllerutil.OperationResult, error) {
 	switch event.Event {
 	case core.EventDelete:
 		if err := deleteTarget(ctx, m.client, event.Target.Name, m.targetSource.Namespace); err != nil {
 			logger.Error(err, "error deleting target",
 				"targetName", event.Target.Name,
 			)
-			return err
+			return controllerutil.OperationResultNone, err
 		} else {
 			logger.Info("deleted target object",
 				"name", event.Target.Name,
 			)
+			return controllerutil.OperationResultNone, err
 		}
 	case core.EventApply:
 		target := generateTargetResource(event.Target, m.targetSource)
 
-		if err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
+		if result, err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)
-			return err
+			return controllerutil.OperationResultNone, err
 		} else {
 			logger.Info("applied target object",
 				"name", event.Target.Name,
 			)
+			return result, nil
 		}
-	}
-
-	return nil
-}
-
-func (m *MessageProcessor) updateStatus(ctx context.Context, logger logr.Logger) {
-	if err := updateTargetSourceStatus(ctx, m.client, m.targetSource, m.targetCount); err != nil {
-		logger.Error(err, "error updating TargetSource status")
-	} else {
-		logger.Info("updated target source status",
-			"targetCount", m.targetCount,
-		)
+	default:
+		return controllerutil.OperationResultNone, fmt.Errorf("unknown event type %s", event.Event)
 	}
 }
 

@@ -20,8 +20,10 @@ import (
 	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -104,8 +106,8 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	targetSource.Status.ObservedGeneration = targetSource.Generation
-	if err := r.Status().Update(ctx, targetSource); err != nil {
+	// Update TargetSource Status for new generation
+	if err := r.updateObservedGeneration(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -179,9 +181,25 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
+
+	statusUpdater := discovery.NewK8sStatusUpdater(r.Client, r.Scheme, targetSource)
+	if err := statusUpdater.UpdateStatus(ctx, discoveryTypes.StatusUpdate{
+		Conditions: []metav1.Condition{
+			{
+				Type:    discoveryTypes.ConditionTypeReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  string(discoveryTypes.ReasonWaitingForSync),
+				Message: "Waiting for initial sync",
+			},
+		},
+	}); err != nil {
+		logger.Error(err, "updating targetsource status failed")
+	}
+
 	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,
+		Updater:        statusUpdater,
 	}
 
 	// Cleanup function to cleanup discovery runtime of targetsource
@@ -195,8 +213,9 @@ func (r *TargetSourceReconciler) startDiscovery(
 		r.Scheme,
 		targetSource,
 		targetChannel,
+		statusUpdater,
 	)
-	loader, err := discovery.NewLoader(&loaderConfig, targetSource.Spec)
+	loader, err := discovery.NewLoader(ctx, r.Client, &loaderConfig, targetSource.Spec)
 	if err != nil {
 		logger.Error(err, "Target loader could not be created")
 		cleanup()
@@ -236,6 +255,22 @@ func (r *TargetSourceReconciler) startDiscovery(
 	}()
 
 	return nil
+}
+
+func (r *TargetSourceReconciler) updateObservedGeneration(ctx context.Context, ts *gnmicv1alpha1.TargetSource) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &gnmicv1alpha1.TargetSource{}
+		if err := r.Client.Get(ctx, client.ObjectKeyFromObject(ts), latest); err != nil {
+			return err
+		}
+
+		patch := client.MergeFrom(latest.DeepCopy())
+		latest.Status.ObservedGeneration = ts.Generation
+
+		return r.Client.Status().Patch(ctx, latest, patch)
+	})
+
+	return err
 }
 
 // SetupWithManager sets up the controller with the Manager.
