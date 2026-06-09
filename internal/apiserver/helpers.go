@@ -20,7 +20,7 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 			if target.Name == "" {
 				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Name.", i)
 			}
-			if target.Ip == "" {
+			if target.Address == "" {
 				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Ip.", i)
 			}
 			event, err := getEvent(target, i)
@@ -28,14 +28,10 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 				return nil, err
 			}
 
-			if err != nil {
-				return nil, err
-			}
-
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:          target.Name,
-					Address:       target.Ip,
+					Address:       target.Address,
 					Port:          int32(*target.Port),
 					Labels:        convertTargetLabelsToMap(target),
 					TargetProfile: *target.TargetProfile,

@@ -49,7 +49,7 @@ type Label struct {
 
 // Target defines model for Target.
 type Target struct {
-	Ip            string          `json:"ip"`
+	Address       string          `json:"address"`
 	Labels        *[]Label        `json:"labels,omitempty"`
 	Name          string          `json:"name"`
 	Operation     TargetOperation `json:"operation"`

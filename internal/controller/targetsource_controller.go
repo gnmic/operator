@@ -109,11 +109,6 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	targetSource.Status.ObservedGeneration = targetSource.Generation
-	if err := r.Status().Update(ctx, targetSource); err != nil {
-		return ctrl.Result{}, err
-	}
-
 	// Update TargetSource Status for new generation
 	if err := r.updateObservedGeneration(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
