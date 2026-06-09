@@ -89,7 +89,9 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if !targetSource.DeletionTimestamp.IsZero() {
-		return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
+		if err := r.reconcileDeletion(ctx, req.NamespacedName, targetSource); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if err := r.ensureFinalizer(ctx, targetSource); err != nil {
@@ -98,7 +100,9 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if r.DiscoveryRegistry.Exists(req.NamespacedName) {
 		if targetSource.Generation != targetSource.Status.ObservedGeneration {
-			return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
+			if err := r.reconcileDeletion(ctx, req.NamespacedName, targetSource); err != nil {
+				return ctrl.Result{}, err
+			}
 		} else {
 			logger.Info("Discovery runtime already running; reconciliation completed")
 			return ctrl.Result{}, nil
@@ -128,7 +132,7 @@ func (r *TargetSourceReconciler) fetchTargetSource(ctx context.Context, key type
 }
 
 // reconcileDeletion stops the discovery runtime and removes the finalizer
-func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
+func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) error {
 	logger := log.FromContext(ctx).WithValues(
 		"targetsource", key.Name,
 		"namespace", key.Namespace,
@@ -143,13 +147,13 @@ func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key type
 	if controllerutil.ContainsFinalizer(targetSource, LabelTargetSourceFinalizer) {
 		controllerutil.RemoveFinalizer(targetSource, LabelTargetSourceFinalizer)
 		if err := r.Update(ctx, targetSource); err != nil {
-			return ctrl.Result{}, err
+			return err
 		}
 
 		logger.Info("Removed TargetSource finalizer")
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // ensureFinalizer adds the finalizer if not present and updates the TargetSource

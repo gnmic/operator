@@ -39,15 +39,11 @@ components:
       items:
         $ref: '#/components/schemas/Target'
     Label:
-      description: Label must be passed as key:value pair. Multiple values per key possible
+      description: TBD
       type: object
-      properties:
-        key:
-          description: key value, e.g. vendor
-          type: string
-        value:
-          type: string
-          description: value, e.g. srlinux
+      additionalProperties:
+        description: Label must be passed as key:value pair. Multiple values per key possible
+        type: string
     Target:
       type: object
       required:
@@ -58,7 +54,7 @@ components:
         name:
           type: string
           description: Routername
-        ip:
+        address:
           type: string
           description: IPv4 or IPv6
         port:

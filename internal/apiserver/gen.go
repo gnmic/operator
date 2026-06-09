@@ -41,23 +41,31 @@ func (e TargetOperation) Valid() bool {
 	}
 }
 
-// Label defines model for Label.
-type Label struct {
-	Key   *string `json:"key,omitempty"`
-	Value *string `json:"value,omitempty"`
-}
+// Label TBD
+type Label map[string]string
 
 // Target defines model for Target.
 type Target struct {
-	Address       string          `json:"address"`
-	Labels        *[]Label        `json:"labels,omitempty"`
-	Name          string          `json:"name"`
-	Operation     TargetOperation `json:"operation"`
-	Port          *int            `json:"port,omitempty"`
-	TargetProfile *string         `json:"targetProfile,omitempty"`
+	// Address IPv4 or IPv6
+	Address *string `json:"address,omitempty"`
+
+	// Labels Input of labels through key:value pair
+	Labels *[]Label `json:"labels,omitempty"`
+
+	// Name Routername
+	Name string `json:"name"`
+
+	// Operation Either created, updated or deleted. created and updated internally is the same operation (apply)
+	Operation TargetOperation `json:"operation"`
+
+	// Port gNMIc port
+	Port *int `json:"port,omitempty"`
+
+	// TargetProfile TargetProfile applied to specific router
+	TargetProfile *string `json:"targetProfile,omitempty"`
 }
 
-// TargetOperation defines model for Target.Operation.
+// TargetOperation Either created, updated or deleted. created and updated internally is the same operation (apply)
 type TargetOperation string
 
 // Targets defines model for Targets.
@@ -68,10 +76,10 @@ type ApplyTargetsJSONRequestBody = Targets
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Create targets in the gNMIc Operator
+	// Targets received are applied in gNMIc Operator.
 	// (POST /api/v1/:namespace/target-source/:name/applyTargets)
 	ApplyTargets(c *gin.Context)
-	// Get cluster plan
+	// Get cluster plan.
 	// (GET /clusters/:namespace/:name/plan)
 	GetClusterPlan(c *gin.Context)
 }
@@ -147,16 +155,18 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7SUTW/bPAzHv4rA5zl6cdrt5FtWDEWBvRRrb0UOqswkam1JI6kARuHvPkhyUwdJgV52",
-	"CiPx5c8fKb+A8X3wDp0wNC/AZoe9zuZ3/YhdMgL5gCQW8/EzDulHhoDQAAtZt4Wxgr3uIp65GavXE//4",
-	"hEaS772mLcppbhvOpu6SkuIg2Gfjf8INNPBf/Sa/nrTXRfhbXU2kh/Tf6R7PFkgatFjv0i262EPzAIZQ",
-	"C7ZQQQztZLXYYbLW1WmS4Elm2a0T3CJlHbndW/Ib272DiPBPtIRtKpxlVgnGXNn6XY4fJzNxP0EzVsBo",
-	"IlkZ7pJrmcYjakJaRdkdNiPFlGM45NiJBBhTDus2PrdnJfUJ258/boz6lVvwpH5/u7tXq9sbqGCPxBk3",
-	"LBfLxcU0A6eDhQY+Ly4XS6ggaNllIbUOtt5f1E0iw0EbrAvST+wjGSwXtQ6hG2ZIguc8kAPDmxYaWM29",
-	"Cnhk+erbvNbGO0GXw1I6a3Jg/cRlNwrIj2HmAuVtskIR8wEH77gwvlxe/JuyLbIhG8pSvy6KysmxVRyN",
-	"QeZN7Lr8Mr4UGcdBq+yjxD+jU5ZVb5mt2ypPyrq97mx7tDnQPBzvzMN6XFfAse81DdDAVX5QSiYt1inZ",
-	"oTpekpyxNl1kQeL5xMuMQ6czkenzcTzaa5SrEnmb3E5QL097nPkrQonkcOrqIPsaRU2CVC4/juP4NwAA",
-	"//9oPXG9OAUAAA==",
+	"H4sIAAAAAAAC/7SUz44bNwzGX4Vge2iBqcfbBD3MbdMGgYGmNZK9LXyQZ2hbiUZSScqAEfjdC0lT/1m7",
+	"wF5yG4sfxY8/Uv6GfRhj8ORVsPuG0u9oNOXzT7Mmlz/MMFi1wRu35BCJ1VIRDCQ925hD2FU5jEkU1gTR",
+	"iNAARuArHbq9cSmfWZ7Bx+TURkdQDgUicdZADCJ27Qgb1EMk7FCUrd/isXlR6endH2dRWH+hXrPoyfCW",
+	"NBuLVzbNMDDJHceL5f4tBIbFcv/bvaoud3Qvz8ekEDZQBaA7Dmm7e9EpNmiVxpL/I9MGO/yhPcNuJ9Jt",
+	"xXw81TfM5pB/ezPSbfFPISlxid2xnPs2Vfky8b3VHTH0TEZpaCDFIX9kAAM5Uhpm/wXB+OEUt77Uc+4A",
+	"NvdKIGYkOFWCn0yM7vAzNkg+jdg943QNNjhdgnmEpQau7riOgfXW8Pavj4seSuyUk81siQuuMu4lh411",
+	"dzg9XYYhW7Q0gAaQSL3d2B64kLyleGyQ6Z9kmYbczITaRrzEu/rfBSwDf9Xkp4W9Gf2xQaE+sdXD5yyt",
+	"a7wmw8SPSXend5pz6vG5i51qxGO+w/pNyFK1mgFNPP8uLQSGT+8/P8HjcoEN7omlUpvP5rOHaZG8iRY7",
+	"fDObz95gg9HorhhpTbTt/qHtMhmJpqe2zuIXCYl7qoG2bMUFkhikDPnEcDFgh4+XqgqeRN+F4ZC1ffBK",
+	"vqSVCfYlsf0idcEryNdhlgrlPFnlROVAYvBSGf86f/g+Ze/tppy2UlLfk8gmOVde/ttq4zrpsWhAw1fy",
+	"+SWOVsT6bX6/1u+Ns8PV5mD3fL0zz6vjqkFJ42j4cGGCqSe7z4+ez+/Eerhel1m5vO1dEiWWy+HXcUdn",
+	"CpzpL/h6yh9If6+Zyyy7oT6/bfdCD0ya2NPU4KmDD6QwGYJcPns8Hv8NAAD//3nSQLbSBgAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
