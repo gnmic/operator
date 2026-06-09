@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"context"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -8,6 +9,13 @@ import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
+
+type fakeStatusUpdater struct {
+}
+
+func (f fakeStatusUpdater) UpdateStatus(ctx context.Context, update core.StatusUpdate) error {
+	return nil
+}
 
 func mockDiscoveredTargetList(len int) []core.DiscoveredTarget {
 	targets := make([]core.DiscoveredTarget, len)

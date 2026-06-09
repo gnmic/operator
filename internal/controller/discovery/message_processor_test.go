@@ -39,7 +39,7 @@ func mockMessageProcessor(opts ...func(*MessageProcessor)) *MessageProcessor {
 		scheme,
 		&targetSource,
 		targetChannel,
-		nil,
+		fakeStatusUpdater{},
 	)
 
 	for _, opt := range opts {
