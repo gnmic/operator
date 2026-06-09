@@ -442,22 +442,7 @@ When writing more complex CEL expressions, it is recommended to use YAML’s pip
 
 This is especially useful for expressions that span multiple lines or contain nested logic.
 
-## Push Mode
-
-The HTTP provider supports webhook-based target updates via `spec.provider.http.push`.
-
-```yaml
-spec:
-  provider:
-    http:
-      push:
-        enabled: true
-```
-
-When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
-
-#### Recommended pattern (labels example)
-
+**Labels example:**
 ```yaml
 mapping:
   labels: |
@@ -473,6 +458,20 @@ mapping:
 - **Readability**: Multi-line expressions are easier to understand
 - **Maintainability**: Complex CEL expressions don't require escaping
 - **YAML best practice**: Literal blocks handle special characters naturally
+
+## Push Mode
+
+The HTTP provider supports webhook-based target updates via `spec.provider.http.push`.
+
+```yaml
+spec:
+  provider:
+    http:
+      push:
+        enabled: true
+```
+
+When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
 
 ## Recommended Production Settings
 
