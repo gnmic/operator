@@ -5,6 +5,7 @@ go 1.25.5
 require (
 	github.com/cert-manager/cert-manager v1.19.3
 	github.com/go-logr/logr v1.4.3
+	github.com/go-openapi/testify/v2 v2.0.2
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
