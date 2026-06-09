@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -232,11 +233,13 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 	}
 
 	// Apply events
-	err := m.applyEvent(ctx, event, logger)
+	result, err := m.applyEvent(ctx, event, logger)
 	if err == nil {
 		switch event.Event {
 		case core.EventApply:
-			m.targetCount++
+			if result == controllerutil.OperationResultCreated {
+				m.targetCount++
+			}
 			m.updater.UpdateStatus(
 				ctx,
 				core.StatusUpdate{
@@ -342,7 +345,7 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 
 	errCount := 0
 	for _, e := range events {
-		err = m.applyEvent(ctx, e, logger)
+		_, err = m.applyEvent(ctx, e, logger)
 		if err != nil {
 			errCount++
 		}
@@ -385,35 +388,38 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 	return nil
 }
 
-func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) error {
+// applyEvent applies a DiscoveryEvent to the Kubernetes cluster and returns controllerutil.OperationResult to identify create or update events. Returns controllerutil.OperationResultNone for delete or on errors
+func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryEvent, logger logr.Logger) (controllerutil.OperationResult, error) {
 	switch event.Event {
 	case core.EventDelete:
 		if err := deleteTarget(ctx, m.client, event.Target.Name, m.targetSource.Namespace); err != nil {
 			logger.Error(err, "error deleting target",
 				"targetName", event.Target.Name,
 			)
-			return err
+			return controllerutil.OperationResultNone, err
 		} else {
 			logger.Info("deleted target object",
 				"name", event.Target.Name,
 			)
+			return controllerutil.OperationResultNone, err
 		}
 	case core.EventApply:
 		target := generateTargetResource(event.Target, m.targetSource)
 
-		if err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
+		if result, err := applyTarget(ctx, m.client, m.scheme, target, m.targetSource); err != nil {
 			logger.Error(err, "error applying target",
 				"targetName", event.Target.Name,
 			)
-			return err
+			return controllerutil.OperationResultNone, err
 		} else {
 			logger.Info("applied target object",
 				"name", event.Target.Name,
 			)
+			return result, nil
 		}
+	default:
+		return controllerutil.OperationResultNone, fmt.Errorf("unknown event type %s", event.Event)
 	}
-
-	return nil
 }
 
 func (m *MessageProcessor) resetSnapshot() {

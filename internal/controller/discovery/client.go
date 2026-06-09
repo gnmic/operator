@@ -36,7 +36,7 @@ func fetchExistingTargets(
 	return targetList.Items, nil
 }
 
-func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desired *gnmicv1alpha1.Target, ts *gnmicv1alpha1.TargetSource) error {
+func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desired *gnmicv1alpha1.Target, ts *gnmicv1alpha1.TargetSource) (controllerutil.OperationResult, error) {
 	existing := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      desired.Name,
@@ -44,14 +44,14 @@ func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desire
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, c, existing, func() error {
+	result, err := controllerutil.CreateOrUpdate(ctx, c, existing, func() error {
 		existing.Spec = desired.Spec
 		existing.Labels = desired.Labels
 
 		return controllerutil.SetControllerReference(ts, existing, s)
 	})
 
-	return err
+	return result, err
 }
 
 func deleteTarget(ctx context.Context, c client.Client, name string, namespace string) error {
