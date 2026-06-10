@@ -133,4 +133,4 @@ spec:
 
 #### Reverse Proxy
 
-In order to have a secure setup, the HTTP post requests must be sent using TLS. The REST API interface does not support HTTPS, at least not directly. It is recommended to terminate the TLS connection at the reverse proxy and forward a plain HTTP request to the gNMIc Operator.
+In order to have a secure setup, the HTTP post requests must be sent using TLS. The REST API interface does not support HTTPS, at least not directly. It is recommended to terminate the TLS connection at the reverse proxy and forward a HTTP request to the gNMIc Operator.
