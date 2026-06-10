@@ -315,35 +315,45 @@ type ResponseMappingSpec struct {
 
 // PushSpec defines the settings for event-based update mechanism (i.e. webhooks sent from the server)
 type PushSpec struct {
+	// Enables the applyTargets endpoint; when disabled, incoming requests are rejected.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
+	// Enables Authentication; when empty, authentication is not checked
 	// +kubebuilder:validation:Optional
 	Auth *PushAuthSpec `json:"auth,omitempty"`
 
+	// Enables Signature verification; when empty, signature is not checked
 	// +kubebuilder:validation:Optional
 	Signature *PushSignatureSpec `json:"signature,omitempty"`
 }
 
 // +kubebuilder:validation:Optional
 type PushAuthSpec struct {
+	// Spec for Bearer Token authentication
 	Bearer *PushBearerAuthSpec `json:"bearer,omitempty"`
 }
 
 // +kubebuilder:validation:Required
 type PushBearerAuthSpec struct {
+	// Reference to a secret containing a token that is checked to the Bearer token found in the
+	// authorization header of the incoming HTTP request.
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
 // +kubebuilder:validation:Required
 type PushSignatureSpec struct {
+	// Reference to a secret containing a signature key. HMAC calculated with secret and HTTP body
+	// to calculate X-Hook-Signature. Compared with X-Hook-Signature in HTTP header
 	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 
+	// Enum to select hashing algorithm during HMAC calculation
 	// +kubebuilder:default="sha512"
 	// +kubebuilder:validation:Enum=sha256;sha512
 	Algorithm string `json:"algorithm"`
 }
+
 
 // TargetSourceStatus defines the observed state of TargetSource
 type TargetSourceStatus struct {

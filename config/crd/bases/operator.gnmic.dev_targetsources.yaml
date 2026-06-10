@@ -275,12 +275,16 @@ spec:
                         description: Optional configuration to enable push
                         properties:
                           auth:
+                            description: Enables Authentication; when empty, authentication
+                              is not checked
                             properties:
                               bearer:
+                                description: Spec for Bearer Token authentication
                                 properties:
                                   tokenSecretRef:
-                                    description: SecretKeySelector selects a key of
-                                      a Secret.
+                                    description: |-
+                                      Reference to a secret containing a token that is checked to the Bearer token found in the
+                                      authorization header of the incoming HTTP request.
                                     properties:
                                       key:
                                         description: The key of the secret to select
@@ -307,18 +311,25 @@ spec:
                             type: object
                           enabled:
                             default: false
+                            description: Enables the applyTargets endpoint; when disabled,
+                              incoming requests are rejected.
                             type: boolean
                           signature:
+                            description: Enables Signature verification; when empty,
+                              signature is not checked
                             properties:
                               algorithm:
                                 default: sha512
+                                description: Enum to select hashing algorithm during
+                                  HMAC calculation
                                 enum:
                                 - sha256
                                 - sha512
                                 type: string
                               secretRef:
-                                description: SecretKeySelector selects a key of a
-                                  Secret.
+                                description: |-
+                                  Reference to a secret containing a signature key. HMAC calculated with secret and HTTP body
+                                  to calculate X-Hook-Signature. Compared with X-Hook-Signature in HTTP header
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
