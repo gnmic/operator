@@ -6,8 +6,6 @@ description: >
   The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
 ---
 
-The HTTP provider discovers targets from an HTTP endpoint returning JSON, or receives webhook-based updates when push mode is enabled.
-
 ## Basic Configuration
 
 ```yaml
@@ -16,7 +14,6 @@ kind: TargetSource
 metadata:
   name: targetsource-1
 spec:
-  provider:
   provider:
     http:
       url: http://inventory-service:8080/targets
@@ -443,6 +440,7 @@ When writing more complex CEL expressions, it is recommended to use YAML’s pip
 This is especially useful for expressions that span multiple lines or contain nested logic.
 
 **Labels example:**
+
 ```yaml
 mapping:
   labels: |
@@ -472,6 +470,8 @@ spec:
 ```
 
 When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
+
+See [Push mode](/docs/user-guide/targetsource/push/) for more details.
 
 ## Recommended Production Settings
 
