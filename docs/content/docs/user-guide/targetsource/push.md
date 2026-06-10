@@ -38,11 +38,20 @@ spec:
 
 The REST API endpoint runs on `http://cluster-address:8082/api/v1/:namespace/target-source/:name/applyTargets`.
 
-- `cluster-address`: Adress of your cluster, localhost during development.
+- `cluster-address`: Address of your cluster.
 - `:namespace`: Namespace the TargetSource is created in.
 - `:name`: Name of the TargetSource.
 
 See [Push mode with webhook](/docs/examples/netbox/webhook) for an example on how to configure the URL.
+
+### Cluster Address
+
+The cluster address depends on where the API is accessed from.
+
+- Use `http://<server-fqdn>:8082/` when accessing the API from outside the cluster.
+- Use `http://localhost:8082/` for local development (requires port-forwarding).
+- Use `gnmic-controller-manager-api.gnmic-system.svc.cluster.local` when NetBox (or another source of truth) runs in the same cluster.
+- If you use a reverse proxy, run `kubectl get service -n <gnmic-controller-namespace>` and use the returned service address and port in your proxy configuration.
 
 ## REST API
 
@@ -53,8 +62,6 @@ Any system or script capable of sending HTTP POST requests can integrate with th
 ## Security
 
 The API supports Bearer Token authentication and X-Hook-Signature, both are optional and **turned off by default**. They are enabled by adding them to the specification. They can also be used in combination.
-
-
 
 An example configuration of both is documented in the [Netbox webhook](/docs/examples/netbox/webhook) example.
 
