@@ -18,6 +18,7 @@ import (
 
 const (
 	BearerAuthScopes = "bearerAuth.Scopes"
+	SignatureScopes  = "signature.Scopes"
 )
 
 // Defines values for TargetOperation.
@@ -41,31 +42,31 @@ func (e TargetOperation) Valid() bool {
 	}
 }
 
-// Label TBD
+// Label defines model for Label.
 type Label map[string]string
 
-// Target defines model for Target.
+// Target Network device to be monitored. Properties not marked as optional must be in JSON body.
 type Target struct {
-	// Address IPv4 or IPv6
-	Address *string `json:"address,omitempty"`
+	// Address IPv4/IPv6 address or hostname.
+	Address string `json:"address"`
 
-	// Labels Input of labels through key:value pair
+	// Labels Labels must be map[string]string. For example vendor:nokia.
 	Labels *[]Label `json:"labels,omitempty"`
 
-	// Name Routername
+	// Name Name of device to be monitored.
 	Name string `json:"name"`
 
-	// Operation Either created, updated or deleted. created and updated internally is the same operation (apply)
+	// Operation Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target.
 	Operation TargetOperation `json:"operation"`
 
-	// Port gNMIc port
+	// Port gNMIc port.
 	Port *int `json:"port,omitempty"`
 
-	// TargetProfile TargetProfile applied to specific router
+	// TargetProfile TargetProfile applied to apply to this router.
 	TargetProfile *string `json:"targetProfile,omitempty"`
 }
 
-// TargetOperation Either created, updated or deleted. created and updated internally is the same operation (apply)
+// TargetOperation Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target.
 type TargetOperation string
 
 // Targets defines model for Targets.
@@ -76,7 +77,7 @@ type ApplyTargetsJSONRequestBody = Targets
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Targets received are applied in gNMIc Operator.
+	// Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator.
 	// (POST /api/v1/:namespace/target-source/:name/applyTargets)
 	ApplyTargets(c *gin.Context)
 	// Get cluster plan.
@@ -97,6 +98,8 @@ type MiddlewareFunc func(c *gin.Context)
 func (siw *ServerInterfaceWrapper) ApplyTargets(c *gin.Context) {
 
 	c.Set(BearerAuthScopes, []string{})
+
+	c.Set(SignatureScopes, []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -155,18 +158,21 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/7xVTW8bNxD9KwO2x7XWboIedHOCNHbbOELtQwFDgEfLkZbRLsnOzCoVAv33guRGH5UC",
+	"5JSTKHI+3rx5M/vFNKGPwZNXMdMvRpqWeszHP3FBXTqgtU5d8NjNOERidZQNdBvJTI0oO78yu+rrRVh8",
+	"okbTxRPyijTZWpKGXUxhzNQ8kH4OvAZLG9cQaIAFQR+808BkJ3DIAz4o9MhrsoACIRYg0A+iycl5+P3x",
+	"4wMsgt1OTGXiCUK0lknkHMD9bPO6vp9tfoXRBAJDG0Q99pTinNXWJTYuRMosyR5Pj/G5OM3LzwR+Cwz0",
+	"L/axI9iQt4GnPqwdpjROqc9Bf2Zamqn5qT60ox57UZdGHPhFZtym/wnsBXKxJwjLb5F7qbjEGRb3/0d7",
+	"57QlhpeGCZXsSwUvQ7T5mDh7sdRR+jM5mAB6e2SFTOAseXUNdvltEbQFjLHbgrYEmlWSgJEfejN9NmMk",
+	"U5kxiqnMmMjML+CPgS+obPXw4b6B9HZUtPNKK+JMZ84747B03QUen46fM1xHNtE5Ig+grRPgMCjxBVp3",
+	"lWH6Z3BMNtWUm1XtJXlM+vybo5O18V0iGUftTCW7ygg1AzvdPibTMhgLQia+HbQ9r/vu6WkGOGhbWpZu",
+	"YRDnV/Ame4GGNXlTlV2RUpVoBwZa1ZiQiFt51IEvkHv34fYt7N+TXJMSEl8kChG3XcDUdZeMW0Kb4xfB",
+	"m7+v7kJYXz3uwx+Kju4PSlXvkusy5DXlNLV3lMPHzHpg+Ovd4xPczu5NZTbEUmBdT64nN+NEeIzOTM2r",
+	"yfXkVdosqG3mrsbo6s1NPU1oJGJDdVHSlYSBGyoPdVbJURdjkKzRfdvvrZma22OrIhgSfRPsNtk2wSv5",
+	"7Jb1V7pRf5IyqaX336cMKaRckvh+eUUUKXsWoXOiFfRDpy4trlKhQAwibtHlHXlQt/JAWe4Sg5cisV+u",
+	"b35cCbKfTxmahkSWQ9flHfm6wDh1us02RcjgBHonWeCBwfkNds6eDI6ZPp+OzPP8RNzP8126GPoeeZu+",
+	"Ll6Jl9gQLAMDE3ZX6vqvJELZaVLBIAN23XacLoTPtGhDWE9gXxQfFo/zeUROVTzJOOumG0SJ5ViTRYWx",
+	"w8zz+Bk+Fd970rfFc5bMzhp4fc7ckT0w6cCeRq721b8nhREQpPQJ4273XwAAAP//UKR4U2kIAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
