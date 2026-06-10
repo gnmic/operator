@@ -95,6 +95,23 @@ deploy-test-http-server: ## Deploy a test http pod with a static file inventory
 undeploy-test-http-server: ## Undeploy the http pod for testing
 	kubectl delete -f test/integration/http/resources/
 
+.PHONY: create-secrets-for-apiserver
+create-secrets-for-apiserver:
+	kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=secureSecret
+	kubectl create secret generic gnmic-signature --from-literal=signature=1879
+
+.PHONY: send-target-to-apiserver
+send-target-to-apiserver:
+	@BEARER_TOKEN=$$(kubectl get secret gnmic-api-auth \
+		-o jsonpath='{.data.bearer-token}' | base64 --decode); \
+	kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0 >/dev/null 2>&1 & \
+	sleep 3; \
+	curl --retry 3 --retry-delay 1 --retry-connrefused -X POST "http://localhost:8082/api/v1/default/target-source/http-ts/applyTargets" \
+		-H "Authorization: Bearer $$BEARER_TOKEN" \
+		-H "Content-Type: application/json" \
+		-H "x-hook-signature: cec95fd6d3a350ebcf9b25d2d715384ca673ee3a3cd67ed22e212179d9ee20abe724cbed7f93028c5b0e12e5ce6dd791482f2a1045d47253e8cddd637f0f8d7d" \
+		-d '[{"address":"clab-t1-leaf2","port":57400,"name":"leaf2","operation":"created","targetProfile":"default","labels":[{"key":"vendor","value":"nokia_srlinux"},{"key":"role","value":"leaf"}]}]'; \
+
 .PHONY: deploy-test-netbox-instance
 deploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Deploy the test netbox instance for testing
 deploy-test-netbox-instance: NETBOX_PASSWORD=Netbox123
@@ -153,5 +170,5 @@ apply-test-clusters: ## Apply the test clusters for testing
 	kubectl apply -f test/integration/resources/clusters
 
 .PHONY: apply-test-resources
-apply-test-resources: apply-test-targets apply-test-subscriptions apply-test-outputs apply-test-pipelines apply-test-clusters apply-test-targetsources
+apply-test-resources: apply-test-targets apply-test-targetsources apply-test-subscriptions apply-test-outputs apply-test-pipelines apply-test-clusters
 

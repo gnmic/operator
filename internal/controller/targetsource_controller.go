@@ -20,6 +20,7 @@ import (
 	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -88,7 +89,9 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if !targetSource.DeletionTimestamp.IsZero() {
-		return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
+		if err := r.reconcileDeletion(ctx, req.NamespacedName, targetSource); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	if err := r.ensureFinalizer(ctx, targetSource); err != nil {
@@ -97,7 +100,9 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if r.DiscoveryRegistry.Exists(req.NamespacedName) {
 		if targetSource.Generation != targetSource.Status.ObservedGeneration {
-			return r.reconcileDeletion(ctx, req.NamespacedName, targetSource)
+			if err := r.reconcileDeletion(ctx, req.NamespacedName, targetSource); err != nil {
+				return ctrl.Result{}, err
+			}
 		} else {
 			logger.Info("Discovery runtime already running; reconciliation completed")
 			return ctrl.Result{}, nil
@@ -105,11 +110,6 @@ func (r *TargetSourceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if err := r.startDiscovery(ctx, req.NamespacedName, targetSource, logger); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	targetSource.Status.ObservedGeneration = targetSource.Generation
-	if err := r.Status().Update(ctx, targetSource); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -132,7 +132,7 @@ func (r *TargetSourceReconciler) fetchTargetSource(ctx context.Context, key type
 }
 
 // reconcileDeletion stops the discovery runtime and removes the finalizer
-func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) (ctrl.Result, error) {
+func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key types.NamespacedName, targetSource *gnmicv1alpha1.TargetSource) error {
 	logger := log.FromContext(ctx).WithValues(
 		"targetsource", key.Name,
 		"namespace", key.Namespace,
@@ -147,13 +147,13 @@ func (r *TargetSourceReconciler) reconcileDeletion(ctx context.Context, key type
 	if controllerutil.ContainsFinalizer(targetSource, LabelTargetSourceFinalizer) {
 		controllerutil.RemoveFinalizer(targetSource, LabelTargetSourceFinalizer)
 		if err := r.Update(ctx, targetSource); err != nil {
-			return ctrl.Result{}, err
+			return err
 		}
 
 		logger.Info("Removed TargetSource finalizer")
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // ensureFinalizer adds the finalizer if not present and updates the TargetSource
@@ -189,12 +189,25 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
-	statusUpdater := discovery.NewTargetSourceStatusUpdater(r.Client, targetSource)
-	statusUpdater.SetPending(ctx)
+
+	statusUpdater := discovery.NewK8sStatusUpdater(r.Client, r.Scheme, targetSource)
+	if err := statusUpdater.UpdateStatus(ctx, discoveryTypes.StatusUpdate{
+		Conditions: []metav1.Condition{
+			{
+				Type:    discoveryTypes.ConditionTypeReady,
+				Status:  metav1.ConditionFalse,
+				Reason:  string(discoveryTypes.ReasonWaitingForSync),
+				Message: "Waiting for initial sync",
+			},
+		},
+	}); err != nil {
+		logger.Error(err, "updating targetsource status failed")
+	}
+
 	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,
-		Client:         statusUpdater,
+		Updater:        statusUpdater,
 	}
 
 	// Cleanup function to cleanup discovery runtime of targetsource

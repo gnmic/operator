@@ -29,7 +29,6 @@ type TargetSourceSpec struct {
 	// +kubebuilder:validation:Required
 	Provider *ProviderSpec `json:"provider"`
 
-	// TODO: implement in message processor
 	// Optional port to use for discovered targets if not specified by the provider
 	// +kubebuilder:validation:Optional
 	TargetPort int32 `json:"targetPort,omitempty"`
@@ -38,9 +37,8 @@ type TargetSourceSpec struct {
 	// +kubebuilder:validation:Optional
 	TargetLabels map[string]string `json:"targetLabels,omitempty"`
 
-	// The TargetProfile to use for targets discovered by this TargetSource
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// Optional TargetProfile to use for targets discovered by this TargetSource if not specified by the provider
+	// +kubebuilder:validation:Optional
 	TargetProfile string `json:"targetProfile"`
 }
 
@@ -83,7 +81,7 @@ type HTTPConfig struct {
 	//     X-Custom-Header: value
 	//
 	// Precedence:
-	// - Authorization configuration overrides any conflicting headers
+	// - Authentication configuration overrides any conflicting headers e.g. Authorization
 	//
 	// +kubebuilder:validation:Optional
 	Headers map[string]string `json:"headers,omitempty"`
@@ -106,18 +104,18 @@ type HTTPConfig struct {
 	// +kubebuilder:validation:Optional
 	Body string `json:"body,omitempty"`
 
-	// Optional authorization configuration for accessing the HTTP endpoint
+	// Optional authentication configuration for accessing the HTTP endpoint
 	// +kubebuilder:validation:Optional
-	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+	Authentication *AuthenticationSpec `json:"authentication,omitempty"`
 
 	// Optional interval for polling the HTTP endpoint for targets
 	// TODO: document about default value
-	// +kubebuilder:default="6h"
+	// +kubebuilder:default="30m"
 	// +kubebuilder:validation:Optional
 	Interval *metav1.Duration `json:"interval,omitempty"`
 
 	// Optional timeout for HTTP requests to the endpoint
-	// +kubebuilder:default="10s"
+	// +kubebuilder:default="30s"
 	// +kubebuilder:validation:Optional
 	Timeout *metav1.Duration `json:"timeout,omitempty"`
 
@@ -151,9 +149,9 @@ type ClientTLSConfig struct {
 	CABundleRef *corev1.ConfigMapKeySelector `json:"caBundleRef,omitempty"`
 }
 
-// AuthorizationSpec defines the configuration for authentication
+// AuthenticationSpec defines the configuration for authentication
 // +kubebuilder:validation:ExactlyOneOf=basic;token
-type AuthorizationSpec struct {
+type AuthenticationSpec struct {
 	// Basic authentication configuration
 	Basic *BasicAuthSpec `json:"basic,omitempty"`
 	// Token-based authentication configuration
@@ -165,7 +163,7 @@ type BasicAuthSpec struct {
 	// Reference to a Secret containing "username" and "password" keys to use for
 	// basic authentication when connecting to the Provider.
 	// +kubebuilder:validation:Required
-	CredentialsSecretRef *corev1.SecretKeySelector `json:"credentialsSecretRef"`
+	CredentialSecretRef *corev1.SecretKeySelector `json:"credentialSecretRef"`
 }
 
 // TokenAuthSpec defines the configuration for token-based authentication
@@ -175,20 +173,71 @@ type TokenAuthSpec struct {
 	Scheme string `json:"scheme"`
 	// Reference to a Secret containing a key with the token value to use for
 	// authentication when connecting to the Provider.
+	// Mutually exclusive with Token.
 	// +kubebuilder:validation:Required
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
-// PaginationSpec defines the configuration for paginating through responses from providers
+// PaginationSpec defines how pagination is handled for HTTP APIs.
+//
+// The pagination mechanism is fully server-driven. The loader will repeatedly:
+//  1. Extract the "next" reference from the response
+//  2. Use it to construct the next request
+//  3. Continue until no next reference is returned
+//
+// Supported pagination styles:
+//  1. Cursor-based:
+//     - Response returns a token (e.g. "next_page_token")
+//     - Client sends it back via a query parameter (e.g. "page_token")
+//  2. URL-based (nextLink):
+//     - Response returns a full URL
+//     - Client follows it directly without modification
+//  3. Expression-based extraction:
+//     - The next reference is extracted using a CEL expression
+//     - This allows access to nested fields or special keys
+//     (e.g. "@odata.nextLink")
+//
+// Behavior:
+//   - If the extracted value is a full URL, it will be used as-is
+//   - Otherwise, it is treated as a token and appended using RequestParam
+//   - The token is treated as opaque and must not be interpreted
+//
+// Example:
+//
+//	pagination:
+//	  nextField: "self.next_page_token"
+//	  requestParam: "page_token"
+//
+//	pagination:
+//	  nextField: "self['@odata.nextLink']"
 type PaginationSpec struct {
-	// Field name in the JSON response that contains the next page reference.
-	// The value can be either:
-	// - a full URL (used directly for the next request), or
-	// - a pagination token (appended as a query parameter using this field name as the key).
+	// CEL expression used to extract the next page reference from the response.
 	//
-	// Must refer to a top-level key in the response object.
-	// Example: "next" or "nextToken"
+	// The expression is evaluated with:
+	//   self -> full JSON response
+	//
+	// It must evaluate to either:
+	//   - string (full URL OR token), or
+	//   - null (indicates end of pagination)
+	//
+	// Examples:
+	//   "self.next"
+	//   "self.next_page_token"
+	//   "self['@odata.nextLink']"
+	//
+	// +kubebuilder:validation:Optional
 	NextField string `json:"nextField,omitempty"`
+
+	// Query parameter name used when the extracted value is a token.
+	//
+	// Required for token-based pagination.
+	// Ignored when NextField resolves to a full URL.
+	//
+	// Example:
+	//   requestParam: "page_token"
+	//
+	// +kubebuilder:validation:Optional
+	RequestParam string `json:"requestParam,omitempty"`
 }
 
 // ResponseMappingSpec controls how targets are extracted from an HTTP JSON response.
@@ -315,17 +364,20 @@ type ResponseMappingSpec struct {
 
 // PushSpec defines the settings for event-based update mechanism (i.e. webhooks sent from the server)
 type PushSpec struct {
+	// +kubebuilder:validation:Required
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled"`
 
 	// +kubebuilder:validation:Optional
 	Auth *PushAuthSpec `json:"auth,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	Signature *PushSignatureSpec `json:"signature,omitempty"`
 }
 
-// +kubebuilder:validation:ExactlyOneOf:=bearer;signature
+// +kubebuilder:validation:Optional
 type PushAuthSpec struct {
-	Bearer    *PushBearerAuthSpec    `json:"bearer,omitempty"`
-	Signature *PushSignatureAuthSpec `json:"signature,omitempty"`
+	Bearer *PushBearerAuthSpec `json:"bearer,omitempty"`
 }
 
 // +kubebuilder:validation:Required
@@ -334,15 +386,11 @@ type PushBearerAuthSpec struct {
 }
 
 // +kubebuilder:validation:Required
-type PushSignatureAuthSpec struct {
-	SecretRef *corev1.SecretKeySelector `json:"secretRef"`
-
-	// Header containing the signature
-	// +kubebuilder:validation:MinLength=1
-	Header string `json:"header"`
+type PushSignatureSpec struct {
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 
 	// +kubebuilder:default="sha512"
-	// +kubebuilder:validation:Enum=sha1;sha256;sha512
+	// +kubebuilder:validation:Enum=sha256;sha512
 	Algorithm string `json:"algorithm"`
 }
 

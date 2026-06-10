@@ -28,3 +28,8 @@ extraVolumeMounts:
   - name: peppers
     mountPath: /run/config/extra/peppers
     readOnly: true
+
+# Version pinned to keep "make netbox-sync-data" working
+image:
+  tag: v4.5.7
+  

@@ -12,10 +12,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+func stringPtr(value string) *string {
+	return &value
+}
+
 func TestGetEventApply(t *testing.T) {
 	port := 22
 	target := Target{
-		Ip:        "1.1.1.1",
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -33,7 +37,7 @@ func TestGetEventApply(t *testing.T) {
 func TestGetEventDelete(t *testing.T) {
 	port := 22
 	target := Target{
-		Ip:        "1.1.1.1",
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -51,7 +55,7 @@ func TestGetEventDelete(t *testing.T) {
 func TestGetEventEmptyOperation(t *testing.T) {
 	port := 22
 	target := Target{
-		Ip:        "1.1.1.1",
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -66,7 +70,7 @@ func TestGetEventEmptyOperation(t *testing.T) {
 func TestGetEventUpdate(t *testing.T) {
 	port := 22
 	target := Target{
-		Ip:        "1.1.1.1",
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -105,12 +109,7 @@ func TestConvertTargetLabelsToMapEmpty(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMap(t *testing.T) {
-	key := "Tag"
-	value := "TT1, TT2"
-	label := Label{
-		Key:   &key,
-		Value: &value,
-	}
+	label := Label{"Tag": "TT1, TT2"}
 	target := Target{
 		Labels: &[]Label{label},
 	}
@@ -124,12 +123,7 @@ func TestConvertTargetLabelsToMap(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMapEmptyKey(t *testing.T) {
-	key := ""
-	value := "TT1, TT2"
-	label := Label{
-		Key:   &key,
-		Value: &value,
-	}
+	label := Label{"": "TT1, TT2"}
 	target := Target{
 		Labels: &[]Label{label},
 	}
@@ -140,18 +134,8 @@ func TestConvertTargetLabelsToMapEmptyKey(t *testing.T) {
 }
 
 func TestConvertTargetLabelsToMapTwoEntries(t *testing.T) {
-	key := "Tag"
-	key2 := "Tag1"
-	value := "TT1, TT2"
-	value2 := "TT1"
-	label := Label{
-		Key:   &key,
-		Value: &value,
-	}
-	label2 := Label{
-		Key:   &key2,
-		Value: &value2,
-	}
+	label := Label{"Tag": "TT1, TT2"}
+	label2 := Label{"Tag1": "TT1"}
 	target := Target{
 		Labels: &[]Label{label, label2},
 	}
@@ -170,7 +154,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 	targetprofile := ""
 	targets := []Target{{
 		Name:          "router1",
-		Ip:            "1.1.1.1",
+		Address:       "1.1.1.1",
 		Port:          &port,
 		Labels:        &[]Label{},
 		TargetProfile: &targetprofile,
@@ -197,7 +181,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 	port := 22
 	targets := []Target{{
-		Ip:        "1.1.1.1",
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Labels:    &[]Label{},
 		Operation: "updated"}}
@@ -211,7 +195,7 @@ func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 func TestCreateDiscoveryEventEmptyIP(t *testing.T) {
 	port := 22
 	targets := []Target{{
-		Ip:        "",
+		Address:   "",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -226,7 +210,7 @@ func TestCreateDiscoveryEventEmptyIP(t *testing.T) {
 func TestCreateDiscoveryEventWrongEvent(t *testing.T) {
 	port := 22
 	targets := []Target{{
-		Ip:        "1.1.1.1",
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "",
 		Labels:    &[]Label{},
@@ -280,43 +264,5 @@ func TestParseURIMissingName(t *testing.T) {
 	}
 	if recorder.Code != http.StatusBadRequest {
 		t.Errorf("parseURI(ctx) status code = %d; want %d", recorder.Code, http.StatusBadRequest)
-	}
-}
-
-func TestVerifyAddress(t *testing.T) {
-	address := "10.10.10.10:57400"
-	expected := "10.10.10.10:57400"
-	convertedAddress, _ := validateAddress(address)
-	if !reflect.DeepEqual(convertedAddress, expected) {
-		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
-	}
-}
-
-func TestVerifyAddressIPv6(t *testing.T) {
-	address := "[2345:0425:2CA1:0000:0000:0567:5673:23b5]:57400"
-	expected := "2345:0425:2CA1:0000:0000:0567:5673:23b5:57400"
-	convertedAddress, _ := validateAddress(address)
-	if !reflect.DeepEqual(convertedAddress, expected) {
-		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
-	}
-}
-
-func TestVerifyAddressNoPort(t *testing.T) {
-	address := "10.10.10.10:"
-	expected := "10.10.10.10:57400"
-	convertedAddress, err := validateAddress(address)
-	if err != nil {
-		t.Errorf("addDefaultPortIfEmpty(address) threw unexpected error: %s", err)
-	}
-	if !reflect.DeepEqual(convertedAddress, expected) {
-		t.Errorf("addDefaultPortIfEmpty(address) = %s; want %s", convertedAddress, expected)
-	}
-}
-
-func TestVerifyWrongAddressFormat(t *testing.T) {
-	address := "10.10.10.10"
-	result, err := validateAddress(address)
-	if err == nil {
-		t.Errorf("TestVerifyWrongAddressFormat expected error due to wrong address format(missing port), instead got: %s", result)
 	}
 }

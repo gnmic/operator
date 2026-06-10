@@ -29,12 +29,19 @@ type fakeResourceFetcher struct {
 	configMapErr  error
 }
 
+type fakeStatusUpdater struct {
+}
+
 func (f fakeResourceFetcher) GetSecretKey(_ context.Context, _ string, _ *corev1.SecretKeySelector) (string, error) {
 	return f.secretValue, f.secretErr
 }
 
 func (f fakeResourceFetcher) GetConfigMapKey(_ context.Context, _ string, _ *corev1.ConfigMapKeySelector) (string, error) {
 	return f.configuration, f.configMapErr
+}
+
+func (f fakeStatusUpdater) UpdateStatus(ctx context.Context, update core.StatusUpdate) error {
+	return nil
 }
 
 func makeLoader(spec gnmicv1alpha1.HTTPConfig, fetcher core.ResourceFetcher) *Loader {
@@ -48,6 +55,7 @@ func makeLoader(spec gnmicv1alpha1.HTTPConfig, fetcher core.ResourceFetcher) *Lo
 		loaderCfg: core.CommonLoaderConfig{
 			TargetsourceNN:  types.NamespacedName{Namespace: "default", Name: "test"},
 			ChunkSize:       10,
+			Updater:         newFakeStatusUpdater(),
 			ResourceFetcher: fetcher,
 		},
 		spec: spec,
@@ -97,4 +105,8 @@ func genSelfSignedCertPEM() (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+func newFakeStatusUpdater() core.StatusUpdater {
+	return fakeStatusUpdater{}
 }

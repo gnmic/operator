@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -79,6 +80,21 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
+		// Set TargetSource conditions to "Reconciling"
+		l.loaderCfg.Updater.UpdateStatus(
+			ctx,
+			core.StatusUpdate{
+				Conditions: []metav1.Condition{
+					{
+						Type:    core.ConditionTypeReconciling,
+						Status:  metav1.ConditionStatus("True"),
+						Reason:  string(core.ReasonSyncStarted),
+						Message: "Started fetching target source",
+					},
+				},
+			},
+		)
+
 		// Fetch targets from HTTP endpoint
 		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client, logger)
 		if err != nil {
@@ -87,18 +103,22 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				"Failed to fetch targets from HTTP endpoint",
 				"url", l.spec.URL,
 			)
-			return
-		}
-		// TODO temporary log discovered targets
-		for _, t := range targets {
-			logger.Info(
-				"Discovered target",
-				"name", t.Name,
-				"address", t.Address,
-				"port", t.Port,
-				"labels", t.Labels,
-				"profile", t.TargetProfile,
+
+			// Set TargetSource conditions to "Stalled" if endpoint is not available
+			l.loaderCfg.Updater.UpdateStatus(
+				ctx,
+				core.StatusUpdate{
+					Conditions: []metav1.Condition{
+						{
+							Type:    core.ConditionTypeStalled,
+							Status:  metav1.ConditionStatus("True"),
+							Reason:  string(core.ReasonSyncFailed),
+							Message: "HTTP endpoint not available",
+						},
+					},
+				},
 			)
+			return
 		}
 
 		// Emit discovery snapshot downstream
@@ -203,28 +223,29 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 	var allTargets []core.DiscoveredTarget
 	currentURL := l.spec.URL
 
+	seen := make(map[string]struct{})
+
 	for {
-		raw, err := l.fetchPage(ctx, client, currentURL, logger)
-		if err != nil {
-			logger.Error(err,
-				"Failed to fetch page from HTTP endpoint",
-				"url", currentURL,
-			)
+		if _, exists := seen[currentURL]; exists {
+			logger.Error(fmt.Errorf("pagination loop detected"), "stopping pagination", "url", currentURL)
 			break
 		}
+		seen[currentURL] = struct{}{}
 
-		// Extract targets from response
+		raw, headers, err := l.fetchPage(ctx, client, currentURL)
+		if err != nil {
+			return allTargets, err // do not silently drop pages
+		}
+
+		// Extract targets
 		if targets, err := l.extractTargetsFromResponse(raw, logger); err != nil {
-			logger.Error(err,
-				"Failed to extract targets from HTTP response",
-				"url", currentURL,
-			)
+			logger.Error(err, "Failed to extract targets", "url", currentURL)
 		} else {
 			allTargets = append(allTargets, targets...)
 		}
 
-		// Pagination
-		nextURL, stop := l.getNextURL(raw, currentURL, logger)
+		// Pagination: next page
+		nextURL, stop := l.getNextURL(raw, headers, currentURL, logger)
 		if stop {
 			break
 		}
@@ -236,15 +257,18 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 
 // fetchPage performs an HTTP GET request to the specified URL and decodes the JSON response
 // and returns the raw response
-func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string, logger logr.Logger) (any, error) {
+func (l *Loader) fetchPage(
+	ctx context.Context,
+	client *http.Client,
+	url string,
+) (any, http.Header, error) {
+
 	method := l.spec.Method
 	if method == "" {
-		return nil, fmt.Errorf("method must be configured")
+		return nil, nil, fmt.Errorf("method must be configured")
 	}
+
 	// Build request body (only for POST)
-	if method == http.MethodGet && l.spec.Body != "" {
-		logger.Info("ignoring body for GET request")
-	}
 	var bodyReader *bytes.Reader
 	if method == http.MethodPost && l.spec.Body != "" {
 		bodyReader = bytes.NewReader([]byte(l.spec.Body))
@@ -255,34 +279,37 @@ func (l *Loader) fetchPage(ctx context.Context, client *http.Client, url string,
 	// Build HTTP request
 	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("creating HTTP request failed: %w", err)
+		return nil, nil, fmt.Errorf("creating HTTP request failed: %w", err)
 	}
+
 	req.Header.Set("Accept", "application/json")
 	// Apply user-defined headers
 	for key, val := range l.spec.Headers {
 		req.Header.Set(key, val)
 	}
-	if err := l.applyAuthorization(req); err != nil {
-		return nil, fmt.Errorf("applying authorization to HTTP request failed: %w", err)
+
+	if err := l.applyAuthentication(req); err != nil {
+		return nil, nil, err
 	}
 
 	// Execute HTTP request
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request failed: %w", err)
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected HTTP status code: %d", resp.StatusCode)
+		return nil, resp.Header, fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
 	}
 
 	// Decode HTTP response
 	var raw any
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, fmt.Errorf("failed to decode HTTP response: %w", err)
+		return nil, resp.Header, err
 	}
 
-	return raw, nil
+	return raw, resp.Header, nil
 }
 
 // extractTargetsFromResponse extracts items from the response and maps each item into a DiscoveredTarget
@@ -333,30 +360,31 @@ func (l *Loader) extractTargetsFromResponse(raw any, logger logr.Logger) ([]core
 // - stop: whether to terminate loop
 func (l *Loader) getNextURL(
 	raw any,
+	headers http.Header,
 	currentURL string,
 	logger logr.Logger,
 ) (string, bool) {
 	// Extract pagination info
-	nextPageInfo, err := l.extractNextPageInfo(raw)
+	// Link header
+	if next := extractNextFromLinkHeader(headers); next != "" {
+		return next, false
+	}
+
+	// Body
+	nextPage, err := l.extractNextPageInfo(raw)
 	if err != nil {
-		logger.Error(err,
-			"Failed to extract next page info from HTTP response",
-			"url", currentURL,
-		)
+		logger.Error(err, "pagination extraction failed")
 		return "", true
 	}
 
-	if nextPageInfo == "" {
+	if nextPage == "" {
 		return "", true
 	}
 
 	// Build next page URL
-	nextURL, err := l.buildNextURL(currentURL, nextPageInfo)
+	nextURL, err := l.buildNextURL(currentURL, nextPage)
 	if err != nil {
-		logger.Error(err,
-			"Failed to build next URL",
-			"url", currentURL,
-		)
+		logger.Error(err, "failed to build next URL")
 		return "", true
 	}
 

@@ -47,14 +47,14 @@ spec:
                   http:
                     description: HTTP defines the configuration for a HTTP provider
                     properties:
-                      authorization:
-                        description: Optional authorization configuration for accessing
+                      authentication:
+                        description: Optional authentication configuration for accessing
                           the HTTP endpoint
                         properties:
                           basic:
                             description: Basic authentication configuration
                             properties:
-                              credentialsSecretRef:
+                              credentialSecretRef:
                                 description: |-
                                   Reference to a Secret containing "username" and "password" keys to use for
                                   basic authentication when connecting to the Provider.
@@ -81,7 +81,7 @@ spec:
                                 type: object
                                 x-kubernetes-map-type: atomic
                             required:
-                            - credentialsSecretRef
+                            - credentialSecretRef
                             type: object
                           token:
                             description: Token-based authentication configuration
@@ -94,6 +94,7 @@ spec:
                                 description: |-
                                   Reference to a Secret containing a key with the token value to use for
                                   authentication when connecting to the Provider.
+                                  Mutually exclusive with Token.
                                 properties:
                                   key:
                                     description: The key of the secret to select from.  Must
@@ -157,10 +158,10 @@ spec:
                               X-Custom-Header: value
 
                           Precedence:
-                          - Authorization configuration overrides any conflicting headers
+                          - Authentication configuration overrides any conflicting headers e.g. Authorization
                         type: object
                       interval:
-                        default: 6h
+                        default: 30m
                         description: Optional interval for polling the HTTP endpoint
                           for targets
                         type: string
@@ -262,13 +263,29 @@ spec:
                         properties:
                           nextField:
                             description: |-
-                              Field name in the JSON response that contains the next page reference.
-                              The value can be either:
-                              - a full URL (used directly for the next request), or
-                              - a pagination token (appended as a query parameter using this field name as the key).
+                              CEL expression used to extract the next page reference from the response.
 
-                              Must refer to a top-level key in the response object.
-                              Example: "next" or "nextToken"
+                              The expression is evaluated with:
+                                self -> full JSON response
+
+                              It must evaluate to either:
+                                - string (full URL OR token), or
+                                - null (indicates end of pagination)
+
+                              Examples:
+                                "self.next"
+                                "self.next_page_token"
+                                "self['@odata.nextLink']"
+                            type: string
+                          requestParam:
+                            description: |-
+                              Query parameter name used when the extracted value is a token.
+
+                              Required for token-based pagination.
+                              Ignored when NextField resolves to a full URL.
+
+                              Example:
+                                requestParam: "page_token"
                             type: string
                         type: object
                       push:
@@ -304,63 +321,51 @@ spec:
                                     type: object
                                     x-kubernetes-map-type: atomic
                                 type: object
-                              signature:
-                                properties:
-                                  algorithm:
-                                    default: sha512
-                                    enum:
-                                    - sha1
-                                    - sha256
-                                    - sha512
-                                    type: string
-                                  header:
-                                    description: Header containing the signature
-                                    minLength: 1
-                                    type: string
-                                  secretRef:
-                                    description: SecretKeySelector selects a key of
-                                      a Secret.
-                                    properties:
-                                      key:
-                                        description: The key of the secret to select
-                                          from.  Must be a valid secret key.
-                                        type: string
-                                      name:
-                                        default: ""
-                                        description: |-
-                                          Name of the referent.
-                                          This field is effectively required, but due to backwards compatibility is
-                                          allowed to be empty. Instances of this type with an empty value here are
-                                          almost certainly wrong.
-                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                        type: string
-                                      optional:
-                                        description: Specify whether the Secret or
-                                          its key must be defined
-                                        type: boolean
-                                    required:
-                                    - key
-                                    type: object
-                                    x-kubernetes-map-type: atomic
-                                required:
-                                - algorithm
-                                - header
-                                - secretRef
-                                type: object
                             type: object
-                            x-kubernetes-validations:
-                            - message: exactly one of the fields in [bearer signature]
-                                must be set
-                              rule: '[has(self.bearer),has(self.signature)].filter(x,x==true).size()
-                                == 1'
                           enabled:
                             default: false
                             type: boolean
+                          signature:
+                            properties:
+                              algorithm:
+                                default: sha512
+                                enum:
+                                - sha256
+                                - sha512
+                                type: string
+                              secretRef:
+                                description: SecretKeySelector selects a key of a
+                                  Secret.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            required:
+                            - algorithm
+                            type: object
                         required:
                         - enabled
                         type: object
                       timeout:
-                        default: 10s
+                        default: 30s
                         description: Optional timeout for HTTP requests to the endpoint
                         type: string
                       tls:
@@ -425,13 +430,11 @@ spec:
                 format: int32
                 type: integer
               targetProfile:
-                description: The TargetProfile to use for targets discovered by this
-                  TargetSource
-                minLength: 1
+                description: Optional TargetProfile to use for targets discovered
+                  by this TargetSource if not specified by the provider
                 type: string
             required:
             - provider
-            - targetProfile
             type: object
           status:
             description: TargetSourceStatus defines the observed state of TargetSource

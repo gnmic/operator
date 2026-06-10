@@ -2,7 +2,6 @@ package apiserver
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -20,14 +19,10 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 			if target.Name == "" {
 				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Name.", i)
 			}
-			if target.Ip == "" {
-				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Ip.", i)
+			if target.Address == "" {
+				return nil, fmt.Errorf("Target receieved at index %d by pull interface has no Address.", i)
 			}
 			event, err := getEvent(target, i)
-			if err != nil {
-				return nil, err
-			}
-
 			if err != nil {
 				return nil, err
 			}
@@ -35,7 +30,7 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 			targets = append(targets, core.DiscoveryEvent{
 				Target: core.DiscoveredTarget{
 					Name:          target.Name,
-					Address:       target.Ip,
+					Address:       target.Address,
 					Port:          int32(*target.Port),
 					Labels:        convertTargetLabelsToMap(target),
 					TargetProfile: *target.TargetProfile,
@@ -47,40 +42,29 @@ func createDiscoveryEvent(payloadTargets []Target) ([]core.DiscoveryEvent, error
 	return targets, nil
 }
 
-// validateAddress
-func validateAddress(address string) (string, error) {
-	address, port, err := net.SplitHostPort(address)
-	if err != nil {
-		return "", err
-	}
-	if port == "" {
-		port = "57400"
-	}
-	return address + ":" + port, nil
-}
-
 // getKey returns key for used to identify correct channel in DiscoveryRegistry
 func getKey(u urlStruct) types.NamespacedName {
 	key := types.NamespacedName{
 		Namespace: u.Namespace,
 		Name:      u.Name,
 	}
-	// or kubectl get secret -n gnmic-system gnmic-api-auth -o jsonpath="{.data.bearer-token}" | base64 --decode
 	return key
 }
 
 // convertTargetLabelsToMap converts target.Labels to map.
 func convertTargetLabelsToMap(target Target) map[string]string {
-	labelToMap := make(map[string]string)
+	labelMap := make(map[string]string)
 	if target.Labels != nil {
 		for _, tag := range *target.Labels {
-			if tag.Key == nil || tag.Value == nil || *tag.Key == "" {
-				continue
+			for key, value := range tag {
+				if key == "" {
+					continue
+				}
+				labelMap[key] = value
 			}
-			labelToMap[*tag.Key] = *tag.Value
 		}
 	}
-	return labelToMap
+	return labelMap
 }
 
 // getEvent converts target.Operation to core.Operation.
