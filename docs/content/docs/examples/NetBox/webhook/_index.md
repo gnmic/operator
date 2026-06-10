@@ -1,6 +1,6 @@
 ---
-title: "Push mode with webhook"
-linkTitle: "Push mode with webhook"
+title: "Push Mode with Webhook"
+linkTitle: "Push Mode with Webhook"
 weight: 2
 description: >
   Configure a webhook in NetBox to update targets in the gNMIc Operator in real time.
@@ -20,7 +20,7 @@ This example walks through configuring a webhook in NetBox to push real-time tar
 
 At the end, the logs will show the incoming POST requests and the targets are in status `READY`.
 
-### Prerequisites
+## Prerequisites
 
 - Kubernetes cluster with gNMIc Operator installed
 - `kubectl` access to your cluster
@@ -71,8 +71,8 @@ Bearer authentication and signature verification both require Kubernetes secrets
 - Use `name` and `key` values that match the TargetSource spec.
 
 ```bash
-kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=YOUR_SECURE_TOKEN -n gnmic-system
-kubectl create secret generic gnmic-signature --from-literal=signature=YOUR_SIGNATURE -n gnmic-system
+kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=YOUR_SECRET_TOKEN -n gnmic-system
+kubectl create secret generic gnmic-signature --from-literal=signature=YOUR_SECRET_SIGNATURE -n gnmic-system
 ```
 
 ---
@@ -122,17 +122,18 @@ Next, configure a webhook in NetBox. The webhook is triggered by device events (
 
 #### Configure Webhook
 
-
 In NetBox, go to `Operations > Webhooks` and create a webhook with the following settings:
 
 - *Name*: GNMIc operator push
 - *URL*: `http://gnmic-controller-manager-api.gnmic-system.svc.cluster.local:8082/api/v1/gnmic-system/target-source/netbox/applyTargets`
-  - Depending on your environment, the cluster address may instead be `http://localhost:8082/` or `http://servername:8082/`.
-  - URL contains the namespace `default` and TargetSource name `netbox`.
+  - URL contains the namespace `gnmic-system` and TargetSource name `netbox`.
+  - `gnmic-controller-manager-api.gnmic-system.svc.cluster.local` is only reachable if Netbox is inside the cluster.
+  - The address may instead be `http://localhost:8082/` or `http://servername:8082/`.
+  - See section address in [Push Mode](/docs/user-guide/targetsource/push/) for more details on URL construction.
 - *HTTP method*: POST
 - *HTTP content type*: application/json
 - *SSL Verification*: true
-- *Additional headers:* `Authorization: Bearer thisIsASecureToken`
+- *Additional headers:* `Authorization: Bearer YOUR_SECRET_TOKEN`
 - *Body Template*:
 
   ```json
@@ -150,7 +151,7 @@ In NetBox, go to `Operations > Webhooks` and create a webhook with the following
   ]
   ```
 
-- *Secret*: `SecretSignature`
+- *Secret*: `YOUR_SECRET_SIGNATURE`
 
 #### Create Event Rule
 
@@ -180,7 +181,7 @@ Every incoming POST request is logged, including rejected requests. If no POST r
 
 ---
 
-### Example: Complete Setup
+## Example: Complete Setup
 
 Here's a complete example combining all resources:
 

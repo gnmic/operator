@@ -453,6 +453,8 @@ spec:
 
 When `push.enabled` is true, the operator accepts incoming webhook notifications and can update targets without polling a remote endpoint. The `url` field is optional when push mode is enabled, but can still be used for polling and fallback behavior.
 
+See [Push mode](/docs/user-guide/targetsource/push/) for more details.
+
 #### Recommended pattern (labels example)
 
 ```yaml

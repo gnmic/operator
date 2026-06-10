@@ -17,6 +17,6 @@ Network device to be monitored. Properties not marked as optional must be in JSO
 | **address** | **String** | IPv4/IPv6 address or hostname. | [default to null] |
 | **port** | **Integer** | gNMIc port. | [optional] [default to null] |
 | **targetProfile** | **String** | TargetProfile applied to apply to this router. | [optional] [default to null] |
-| **labels** | [**List**](map.md) | Input of labels as key:value pair. | [optional] [default to null] |
+| **labels** | **List** | Labels must be map[string]string. For example vendor:nokia | [optional] [default to null] |
 | **operation** | **String** | Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target. | [default to null] |
 

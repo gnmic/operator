@@ -17,10 +17,12 @@ metadata:
   name: targetsource-1
 spec:
   provider:
-    http:
+    http: # can be changed to a differnet TargetSourceProvider
       push:
         enabled: true
 ```
+
+> `http` is currently the only TargetSourceProvider implemented, once others are added they can be used instead. Push mode is not coupled to a specific TargetSourceProvider implementation.
 
 ## Spec Fields
 
@@ -44,13 +46,15 @@ See [Push mode with webhook](/docs/examples/netbox/webhook) for an example on ho
 
 ## REST API
 
-Refer to the [REST API documentation](/docs/advanced/rest-api-documentation/) for the expected request schema and payload format. 
+Refer to the [REST API documentation](/docs/advanced/rest-api-documentation/) for the expected request schema and payload format.
 
 Any system or script capable of sending HTTP POST requests can integrate with this interface. 
 
 ## Security
 
-The API supports Bearer Token authentication and X-Hook-Signature, both are optional and turned off by default. They can be used in combination and are enabled by adding them to the specification.
+The API supports Bearer Token authentication and X-Hook-Signature, both are optional and **turned off by default**. They are enabled by adding them to the specification. They can also be used in combination.
+
+
 
 An example configuration of both is documented in the [Netbox webhook](/docs/examples/netbox/webhook) example.
 
@@ -80,14 +84,14 @@ This requires the [creation](https://kubernetes.ltd/docs/reference/kubectl/gener
 - Must be in the same namespace the gNMIc controller runs in.
 - `name`: refers to the secret name
 - `key`: key of the secret
-- Example: `kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=Secret...`
+- Example: `kubectl create secret generic gnmic-api-auth --from-literal=bearer-token=YOUR_SECRET_TOKEN`
 
 #### Authorization Header
 
 HTTP request must contain the Bearer token in the header in the format:
 
 ```yaml
-Authorization: Bearer Secret...
+Authorization: Bearer YOUR_SECRET_TOKEN
 ```
 
 ### Signature
