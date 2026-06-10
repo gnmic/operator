@@ -1,32 +1,24 @@
----
-title: "REST API interface"
-linkTitle: "REST API interface"
-weight: 3
-description: >
-  This document describes the REST API exposed by the gNMIc Operator, including the available endpoints, request formats, and usage examples.
----
+# Documentation for gNMIc Operator REST API
 
 <a name="documentation-for-api-endpoints"></a>
 ## Documentation for API Endpoints
 
-All URIs are relative to *http://localhost:8082*
+All URIs are relative to *http://localhost*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *defaultapi* | [**applyTargets**](/docs/advanced/rest-api-documentation/apis/defaultapi) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-*defaultapi* | [**getClusterPlan**](/docs/advanced/rest-api-documentation/apis/defaultapi) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| *DefaultApi* | [**applyTargets**](Apis/DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+*DefaultApi* | [**getClusterPlan**](Apis/DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="documentation-for-models"></a>
 ## Documentation for Models
 
- - [target](/docs/advanced/rest-api-documentation/models/target/)
+ - [Target](./Models/Target.md)
 
 
 <a name="documentation-for-authorization"></a>
 ## Documentation for Authorization
-
-For a detailed explanation on how to configure the required secrets within the gNMIc Operator, refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
 
 <a name="bearerAuth"></a>
 ### bearerAuth
