@@ -208,7 +208,7 @@ func (l *Loader) fetchTargetsFromHTTPEndpoint(
 
 		// Extract targets
 		if targets, err := l.extractTargetsFromResponse(raw, logger); err != nil {
-			logger.Error(err, "Failed to extract targets", "url", currentURL)
+			return nil, fmt.Errorf("Failed to extract targets: %w", err)
 		} else {
 			allTargets = append(allTargets, targets...)
 		}
