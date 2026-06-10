@@ -34,3 +34,4 @@ docs/public
 docs/resources/_gen/
 docs/.hugo_build.lock
 test/integration/clab-*
+test/integration/**/clab-*

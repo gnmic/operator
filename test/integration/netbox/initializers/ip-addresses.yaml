@@ -1,0 +1,24 @@
+- address: clab-t1-spine1
+  assigned_object:
+    device:
+      name: spine1
+    name: mgmt0
+  status: active
+  primary: true
+  dns_name: t2-nodes-spine1
+- address: clab-t1-leaf1
+  assigned_object:
+    device:
+      name: leaf1
+    name: mgmt0
+  status: active
+  primary: true
+  dns_name: t2-nodes-leaf1
+- address: clab-t1-leaf2
+  assigned_object:
+    device:
+      name: leaf2
+    name: mgmt0
+  status: active
+  primary: true
+  dns_name: t2-nodes-leaf2
