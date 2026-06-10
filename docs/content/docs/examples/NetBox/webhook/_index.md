@@ -18,7 +18,7 @@ This example walks through configuring a webhook in NetBox to push real-time tar
   b: Create Event Rule
 5. Verification
 
-At the end, the logs will show the incoming POST requests and the targets are in status `READY`.
+At the end, the logs will show the incoming POST requests and the targets updates can be verified with `kubectl get targets`.
 
 ## Prerequisites
 
@@ -79,10 +79,10 @@ kubectl create secret generic gnmic-signature --from-literal=signature=YOUR_SECR
 
 ### 3. Apply TargetSource
 
-Apply the TargetSource manifest: `kubectl apply -f netbox.yaml -n gnmic-system`
+The TargetSource has the following settings configured:
 
-- `enabled` must be set to `true`, otherwise updates are rejected.
-- Bearer authentication and signature verification are enabled.
+- `spec.provider.http.push.enabled` must be set to `true`, otherwise updates are rejected.
+- Bearer authentication and signature verification are enabled, referencing to the secrets created in step 2.
 
 ```yaml
 # netbox.yaml
@@ -124,15 +124,13 @@ Next, configure a webhook in NetBox. The webhook is triggered by device events (
 
 In NetBox, go to `Operations > Webhooks` and create a webhook with the following settings:
 
-- *Name*: GNMIc operator push
+- *Name*: gNMIc Operator push
 - *URL*: `http://gnmic-controller-manager-api.gnmic-system.svc.cluster.local:8082/api/v1/gnmic-system/target-source/netbox/applyTargets`
-  - URL contains the namespace `gnmic-system` and TargetSource name `netbox`.
+  - URL contains the namespace `gnmic-system` and TargetSource name `netbox`. See section address in [Push Mode](/docs/user-guide/targetsource/push/) for more details on URL construction.
   - `gnmic-controller-manager-api.gnmic-system.svc.cluster.local` is only reachable if Netbox is inside the cluster.
   - The address may instead be `http://localhost:8082/` or `http://servername:8082/`.
-  - See section address in [Push Mode](/docs/user-guide/targetsource/push/) for more details on URL construction.
 - *HTTP method*: POST
 - *HTTP content type*: application/json
-- *SSL Verification*: true
 - *Additional headers:* `Authorization: Bearer YOUR_SECRET_TOKEN`
 - *Body Template*:
 
@@ -145,21 +143,22 @@ In NetBox, go to `Operations > Webhooks` and create a webhook with the following
       "targetProfile": "{{ data.custom_fields.target_profile | default('', true) }}",
       "port": {{ data.custom_fields.gnmic_port | default(57400, true) }},
       "labels": [
-        "vendor":"{{ data.device_type.manufacturer.name }}"
+          {"vendor":"{{ data.device_type.manufacturer.name }}"}
         ]
     }
   ]
   ```
 
 - *Secret*: `YOUR_SECRET_SIGNATURE`
+- *SSL Verification*: true
 
 #### Create Event Rule
 
 The webhook requires a trigger, configured as an event rule under `Operations > Event Rules`.
 
 - *Name*: gNMIc Operator push target change
-- *Object types*: DCIM > Device
-- *Event types*: "Object Created", "Object Updated", "Object Deleted"
+- *Object types*: `DCIM > Device`
+- *Event types*: `Object Created`, `Object Updated` and `Object Deleted`
 - *Action type*: Webhook
 - *Webhook*: gNMIc Operator push
 
