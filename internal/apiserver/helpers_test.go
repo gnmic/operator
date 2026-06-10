@@ -19,7 +19,7 @@ func stringPtr(value string) *string {
 func TestGetEventApply(t *testing.T) {
 	port := 22
 	target := Target{
-		Address:   stringPtr("1.1.1.1"),
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -37,7 +37,7 @@ func TestGetEventApply(t *testing.T) {
 func TestGetEventDelete(t *testing.T) {
 	port := 22
 	target := Target{
-		Address:   stringPtr("1.1.1.1"),
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -55,7 +55,7 @@ func TestGetEventDelete(t *testing.T) {
 func TestGetEventEmptyOperation(t *testing.T) {
 	port := 22
 	target := Target{
-		Address:   stringPtr("1.1.1.1"),
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -70,7 +70,7 @@ func TestGetEventEmptyOperation(t *testing.T) {
 func TestGetEventUpdate(t *testing.T) {
 	port := 22
 	target := Target{
-		Address:   stringPtr("1.1.1.1"),
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -154,7 +154,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 	targetprofile := ""
 	targets := []Target{{
 		Name:          "router1",
-		Address:       stringPtr("1.1.1.1"),
+		Address:       "1.1.1.1",
 		Port:          &port,
 		Labels:        &[]Label{},
 		TargetProfile: &targetprofile,
@@ -181,7 +181,7 @@ func TestCreateDiscoveryEvent(t *testing.T) {
 func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 	port := 22
 	targets := []Target{{
-		Address:   stringPtr("1.1.1.1"),
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Labels:    &[]Label{},
 		Operation: "updated"}}
@@ -195,7 +195,7 @@ func TestCreateDiscoveryEventEmptyName(t *testing.T) {
 func TestCreateDiscoveryEventEmptyIP(t *testing.T) {
 	port := 22
 	targets := []Target{{
-		Address:   stringPtr(""),
+		Address:   "",
 		Port:      &port,
 		Name:      "routername",
 		Labels:    &[]Label{},
@@ -210,7 +210,7 @@ func TestCreateDiscoveryEventEmptyIP(t *testing.T) {
 func TestCreateDiscoveryEventWrongEvent(t *testing.T) {
 	port := 22
 	targets := []Target{{
-		Address:   stringPtr("1.1.1.1"),
+		Address:   "1.1.1.1",
 		Port:      &port,
 		Name:      "",
 		Labels:    &[]Label{},
