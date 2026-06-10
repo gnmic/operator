@@ -34,5 +34,3 @@ docs/public
 docs/resources/_gen/
 docs/.hugo_build.lock
 test/integration/clab-*
-docs/content/docs/advanced/rest-api-documentation/.openapi-generator
-docs/content/docs/advanced/rest-api-documentation/.openapi-generator-ignore
