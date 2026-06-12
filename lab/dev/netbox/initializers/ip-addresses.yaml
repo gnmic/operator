@@ -16,7 +16,7 @@
       name: spine1
     name: system0
   status: active
-- address: 172.18.0.4/32
+- address: 172.18.0.3/32
   assigned_object:
     device:
       name: spine1
@@ -32,7 +32,7 @@
   status: active
   primary: true
   dns_name: clab-3-nodes-leaf1
-- address: 172.18.0.3/32
+- address: 172.18.0.6/32
   assigned_object:
     device:
       name: leaf2
@@ -40,7 +40,7 @@
   status: active
   primary: true
   dns_name: clab-3-nodes-leaf2
-- address: 172.18.0.6/32
+- address: 172.18.0.4/32
   assigned_object:
     device:
       name: ceos1

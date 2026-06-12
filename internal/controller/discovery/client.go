@@ -2,12 +2,13 @@ package discovery
 
 import (
 	"context"
+	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -32,7 +33,7 @@ func fetchExistingTargets(ctx context.Context, c client.Client, ts *gnmicv1alpha
 	return targetList.Items, nil
 }
 
-func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desired *gnmicv1alpha1.Target, ts *gnmicv1alpha1.TargetSource) error {
+func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desired *gnmicv1alpha1.Target, ts *gnmicv1alpha1.TargetSource) (controllerutil.OperationResult, error) {
 	existing := &gnmicv1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      desired.Name,
@@ -40,14 +41,14 @@ func applyTarget(ctx context.Context, c client.Client, s *runtime.Scheme, desire
 		},
 	}
 
-	_, err := controllerutil.CreateOrUpdate(ctx, c, existing, func() error {
+	result, err := controllerutil.CreateOrUpdate(ctx, c, existing, func() error {
 		existing.Spec = desired.Spec
 		existing.Labels = desired.Labels
 
 		return controllerutil.SetControllerReference(ts, existing, s)
 	})
 
-	return err
+	return result, err
 }
 
 func deleteTarget(ctx context.Context, c client.Client, name string, namespace string) error {
@@ -71,19 +72,43 @@ func deleteTarget(ctx context.Context, c client.Client, name string, namespace s
 	return err
 }
 
-// updateTargetSourceStatus updates the status of the TargetSource Object ts. The only fields updated are targetCount and LastSync, which takes the current timestamp.
-func updateTargetSourceStatus(ctx context.Context, c client.Client, ts *gnmicv1alpha1.TargetSource, targetCount int32) error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latest := &gnmicv1alpha1.TargetSource{}
-		if err := c.Get(ctx, client.ObjectKeyFromObject(ts), latest); err != nil {
-			return err
+// Helper: GetSecretValues returns values from a secret
+// If keys are provided -> returns only those keys
+// If keys is empty -> returns entire secret data
+func GetSecretValues(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	secretRef string,
+	keys ...string,
+) (map[string]string, error) {
+	var secret corev1.Secret
+	if err := c.Get(ctx,
+		client.ObjectKey{
+			Name:      secretRef,
+			Namespace: namespace,
+		}, &secret); err != nil {
+		return nil, fmt.Errorf("failed to get secret %s/%s: %w", namespace, secretRef, err)
+	}
+
+	result := make(map[string]string)
+
+	// Return full secret
+	if len(keys) == 0 {
+		for k, v := range secret.Data {
+			result[k] = string(v)
 		}
+		return result, nil
+	}
 
-		latest.Status.TargetsCount = targetCount
-		latest.Status.LastSync = metav1.Now()
+	// Return specific keys
+	for _, key := range keys {
+		val, ok := secret.Data[key]
+		if !ok {
+			return nil, fmt.Errorf("key %s missing in secret %s/%s", key, namespace, secretRef)
+		}
+		result[key] = string(val)
+	}
 
-		return c.Status().Update(ctx, latest)
-	})
-
-	return err
+	return result, nil
 }
