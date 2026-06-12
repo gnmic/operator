@@ -248,7 +248,7 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 							Type:    core.ConditionTypeReady,
 							Status:  metav1.ConditionStatus("True"),
 							Reason:  string(core.ReasonSyncSucceeded),
-							Message: "Successfully synced all targets",
+							Message: "Successfully applied target from last update",
 						},
 					},
 					TargetsCount: &m.targetCount,
@@ -264,7 +264,7 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 							Type:    core.ConditionTypeReady,
 							Status:  metav1.ConditionStatus("True"),
 							Reason:  string(core.ReasonSyncSucceeded),
-							Message: "Successfully synced all targets",
+							Message: "Successfully removed target from last update",
 						},
 					},
 					TargetsCount: &m.targetCount,
@@ -351,7 +351,21 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 	if errCount != 0 {
-		// m.updateStatus(ctx, gnmicv1alpha1.SyncStatusSyncedWithErrors, err)
+		m.targetCount = int32(len(allTargets)) - int32(errCount)
+		m.updater.UpdateStatus(
+			ctx,
+			core.StatusUpdate{
+				Conditions: []metav1.Condition{
+					{
+						Type:    core.ConditionTypeDegraded,
+						Status:  metav1.ConditionStatus("True"),
+						Reason:  string(core.ReasonSyncWithErrors),
+						Message: "Some target changes weren't applied correctly",
+					},
+				},
+				TargetsCount: &m.targetCount,
+			},
+		)
 	} else {
 		// Because of idempotency, allTargets = desired state = targets existing in Kubernetes. Overwrites the counter to "reset" it.
 		m.targetCount = int32(len(allTargets))
@@ -371,6 +385,16 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		)
 	}
 
+	if err := m.replayDeferredEvents(ctx, logger); err != nil {
+		logger.Error(err, "error replaying deferred events")
+	}
+
+	m.resetSnapshot()
+	m.deferredEvents = nil
+	return nil
+}
+
+func (m *MessageProcessor) replayDeferredEvents(ctx context.Context, logger logr.Logger) error {
 	// Replay deferred events
 	for _, event := range m.deferredEvents {
 		select {
@@ -383,8 +407,6 @@ func (m *MessageProcessor) applySnapshot(ctx context.Context, snapshot *snapshot
 		}
 	}
 
-	m.resetSnapshot()
-	m.deferredEvents = nil
 	return nil
 }
 
