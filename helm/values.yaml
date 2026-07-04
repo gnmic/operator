@@ -98,6 +98,13 @@ certManager:
   duration: 8760h  # 1 year
   renewBefore: 720h  # 30 days
 
+# Discovery configuration
+discovery:
+  # Maximum number of targets/events sent in a single discovery message
+  chunkSize: 100
+  # Amount of discovery messages that can be queued in the channel buffer
+  bufferSize: 10
+
 # Install CRDs with the chart
 crds:
   install: true
