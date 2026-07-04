@@ -61,7 +61,7 @@ The target discovery subsystem uses Go channels to communicate between message s
 ## Examples
 
 ### Helm Installation
-Also see the [Helm reference](../reference/helm-chart.md).
+Also see the [Helm reference]({{< relref "../reference/helm-chart" >}}).
 
 ```bash
 # Default settings
