@@ -380,6 +380,19 @@ func TestBoundedLoadRendezvousHash_CurrentAssignment_TargetRemoved(t *testing.T)
 	t.Logf("removed 1 target: %d existing targets moved", moved)
 }
 
+func TestBoundedRendezvousHash_EqualScores(t *testing.T) {
+	// force tie-breaking by using one target and multiple pods (scores may tie rarely;
+	// exercise sort branch with identical synthetic assignment capacity)
+	assignments := Assignment{}
+	for i := range 3 {
+		assignments[i] = nil
+	}
+	pod := boundedRendezvousHash("target-01", 3, 1, assignments)
+	if pod == nil {
+		t.Fatal("expected pod assignment")
+	}
+}
+
 func TestBoundedLoadRendezvousHash_CurrentAssignment_OverCapacity(t *testing.T) {
 	targets := genTargets(20)
 	numPods := 4

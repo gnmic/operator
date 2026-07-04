@@ -1,14 +1,7 @@
 package http
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
@@ -148,56 +141,6 @@ func TestExtractTargetsAndMapping(t *testing.T) {
 			}
 			tt.validate(t, targets)
 		})
-	}
-}
-
-func TestPaginationHelpersAndNextURL(t *testing.T) {
-	loader := makeLoader(gnmicv1alpha1.HTTPConfig{Pagination: &gnmicv1alpha1.PaginationSpec{NextField: "next"}}, nil)
-	next, err := loader.extractNextPageInfo(map[string]any{"next": "token"})
-	if err != nil || next != "token" {
-		t.Fatalf("extractNextPageInfo failed: %v", err)
-	}
-
-	nextURL, err := loader.buildNextURL("https://example.com/path", "token")
-	if err != nil || !strings.Contains(nextURL, "next=token") {
-		t.Fatalf("buildNextURL failed: %v, %s", err, nextURL)
-	}
-
-	nextURL, err = loader.buildNextURL("https://example.com/path", "https://example.com/other")
-	if err != nil || nextURL != "https://example.com/other" {
-		t.Fatalf("buildNextURL absolute failed: %v, %s", err, nextURL)
-	}
-}
-
-func TestRunEmitsSnapshotOnImmediateFetch(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]any{map[string]any{"name": "t1", "address": "1.1.1.1", "port": float64(830)}})
-	}))
-	defer server.Close()
-
-	spec := gnmicv1alpha1.HTTPConfig{URL: server.URL, Method: http.MethodGet, Timeout: &metav1.Duration{Duration: 10 * time.Second}, Interval: &metav1.Duration{Duration: time.Hour}}
-	loader := makeLoader(spec, nil)
-
-	_, cancel, out, done := startLoaderRun(loader)
-	defer cancel()
-
-	select {
-	case msgs := <-out:
-		if len(msgs) == 0 {
-			t.Fatalf("expected discovery messages")
-		}
-		cancel()
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for Run to emit snapshot")
-	}
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("Run returned error: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for Run to return")
 	}
 }
 

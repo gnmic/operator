@@ -2,7 +2,9 @@ package http
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
+	"strings"
 )
 
 // extractNextPageInfo extracts pagination information from a response
@@ -11,44 +13,64 @@ func (l *Loader) extractNextPageInfo(raw any) (string, error) {
 		return "", nil
 	}
 
-	// Only objects can have "next" fields
-	obj, ok := raw.(map[string]any)
-	if !ok {
-		// array case -> no pagination
+	// Extract next value
+	prog, err := compileCEL(l.spec.Pagination.NextField)
+	if err != nil {
+		return "", fmt.Errorf("invalid NextField CEL: %w", err)
+	}
+	out, _, err := prog.Eval(map[string]any{"self": raw})
+	if err != nil {
+		return "", fmt.Errorf("CEL eval failed: %w", err)
+	}
+	if out == nil || out.Value() == nil {
 		return "", nil
 	}
 
-	val, ok := obj[l.spec.Pagination.NextField]
-	if val == nil {
-		// No next page -> end of pagination
-		return "", nil
-	}
+	str, ok := out.Value().(string)
 	if !ok {
-		return "", fmt.Errorf("nextField '%s' not found in response", l.spec.Pagination.NextField)
+		return "", fmt.Errorf("NextField must evaluate to string")
 	}
 
-	next, ok := val.(string)
-	if !ok {
-		return "", fmt.Errorf("nextField '%s' is not a string in response", l.spec.Pagination.NextField)
-	}
-
-	return next, nil
+	return str, nil
 }
 
-// buildNextURL constructs the URL for the next page based on the current URL and pagination info
-func (l *Loader) buildNextURL(currentURL, nextVal string) (string, error) {
-	// nextVal is a full URL -> return as is
-	if parsed, err := url.Parse(nextVal); err == nil && parsed.Scheme != "" {
-		return nextVal, nil
+// Link header parsing
+func extractNextFromLinkHeader(h http.Header) string {
+	link := h.Get("Link")
+	if link == "" {
+		return ""
 	}
 
-	// nextVal is a token -> append as query parameter
+	parts := strings.Split(link, ",")
+	for _, p := range parts {
+		if strings.Contains(p, `rel="next"`) {
+			start := strings.Index(p, "<")
+			end := strings.Index(p, ">")
+			if start != -1 && end != -1 {
+				return p[start+1 : end]
+			}
+		}
+	}
+	return ""
+}
+
+// buildNextURL supports token and full URL
+func (l *Loader) buildNextURL(currentURL, nextVal string) (string, error) {
+	if parsed, err := url.Parse(nextVal); err == nil && parsed.Scheme != "" {
+		return nextVal, nil // full URL
+	}
+
+	if l.spec.Pagination.RequestParam == "" {
+		return "", fmt.Errorf("requestParam must be set for token pagination")
+	}
+
 	parsedURL, err := url.Parse(currentURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse current URL in order to build next URL: %w", err)
+		return "", err
 	}
+
 	q := parsedURL.Query()
-	q.Set(l.spec.Pagination.NextField, nextVal)
+	q.Set(l.spec.Pagination.RequestParam, nextVal)
 	parsedURL.RawQuery = q.Encode()
 
 	return parsedURL.String(), nil

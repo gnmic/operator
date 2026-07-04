@@ -12,7 +12,7 @@ import (
 	"github.com/gnmic/operator/internal/controller/discovery/core"
 )
 
-func TestApplyAuthorizationCases(t *testing.T) {
+func TestApplyAuthenticationCases(t *testing.T) {
 	credsJSON, _ := json.Marshal(map[string]string{"username": "user", "password": "pass"})
 
 	tests := []struct {
@@ -23,7 +23,7 @@ func TestApplyAuthorizationCases(t *testing.T) {
 	}{
 		{
 			name:    "basic success",
-			config:  gnmicv1alpha1.HTTPConfig{Authorization: &gnmicv1alpha1.AuthorizationSpec{Basic: &gnmicv1alpha1.BasicAuthSpec{CredentialsSecretRef: &corev1.SecretKeySelector{}}}},
+			config:  gnmicv1alpha1.HTTPConfig{Authentication: &gnmicv1alpha1.AuthenticationSpec{Basic: &gnmicv1alpha1.BasicAuthSpec{CredentialSecretRef: &corev1.SecretKeySelector{}}}},
 			fetcher: fakeResourceFetcher{secretValue: string(credsJSON)},
 			check: func(t *testing.T, req *http.Request, err error) {
 				if err != nil {
@@ -37,7 +37,7 @@ func TestApplyAuthorizationCases(t *testing.T) {
 		},
 		{
 			name:    "basic invalid json",
-			config:  gnmicv1alpha1.HTTPConfig{Authorization: &gnmicv1alpha1.AuthorizationSpec{Basic: &gnmicv1alpha1.BasicAuthSpec{CredentialsSecretRef: &corev1.SecretKeySelector{}}}},
+			config:  gnmicv1alpha1.HTTPConfig{Authentication: &gnmicv1alpha1.AuthenticationSpec{Basic: &gnmicv1alpha1.BasicAuthSpec{CredentialSecretRef: &corev1.SecretKeySelector{}}}},
 			fetcher: fakeResourceFetcher{secretValue: "invalid-json"},
 			check: func(t *testing.T, req *http.Request, err error) {
 				if err == nil {
@@ -47,7 +47,7 @@ func TestApplyAuthorizationCases(t *testing.T) {
 		},
 		{
 			name:    "token success",
-			config:  gnmicv1alpha1.HTTPConfig{Authorization: &gnmicv1alpha1.AuthorizationSpec{Token: &gnmicv1alpha1.TokenAuthSpec{Scheme: "Bearer", TokenSecretRef: &corev1.SecretKeySelector{}}}},
+			config:  gnmicv1alpha1.HTTPConfig{Authentication: &gnmicv1alpha1.AuthenticationSpec{Token: &gnmicv1alpha1.TokenAuthSpec{Scheme: "Bearer", TokenSecretRef: &corev1.SecretKeySelector{}}}},
 			fetcher: fakeResourceFetcher{secretValue: "token-value"},
 			check: func(t *testing.T, req *http.Request, err error) {
 				if err != nil {
@@ -60,7 +60,7 @@ func TestApplyAuthorizationCases(t *testing.T) {
 		},
 		{
 			name:    "token missing secret",
-			config:  gnmicv1alpha1.HTTPConfig{Authorization: &gnmicv1alpha1.AuthorizationSpec{Token: &gnmicv1alpha1.TokenAuthSpec{Scheme: "Bearer"}}},
+			config:  gnmicv1alpha1.HTTPConfig{Authentication: &gnmicv1alpha1.AuthenticationSpec{Token: &gnmicv1alpha1.TokenAuthSpec{Scheme: "Bearer"}}},
 			fetcher: nil,
 			check: func(t *testing.T, req *http.Request, err error) {
 				if err == nil {
@@ -70,7 +70,7 @@ func TestApplyAuthorizationCases(t *testing.T) {
 		},
 		{
 			name:    "no method configured",
-			config:  gnmicv1alpha1.HTTPConfig{Authorization: &gnmicv1alpha1.AuthorizationSpec{}},
+			config:  gnmicv1alpha1.HTTPConfig{Authentication: &gnmicv1alpha1.AuthenticationSpec{}},
 			fetcher: nil,
 			check: func(t *testing.T, req *http.Request, err error) {
 				if err == nil {
@@ -84,7 +84,7 @@ func TestApplyAuthorizationCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			loader := makeLoader(tt.config, tt.fetcher)
 			req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
-			err := loader.applyAuthorization(req)
+			err := loader.applyAuthentication(req)
 			tt.check(t, req, err)
 		})
 	}

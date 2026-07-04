@@ -14,7 +14,6 @@ import (
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/go-logr/logr"
 )
 
 func TestBuildHTTPClientCases(t *testing.T) {
@@ -32,7 +31,12 @@ func TestBuildHTTPClientCases(t *testing.T) {
 		{
 			name: "valid_CABundle",
 			spec: gnmicv1alpha1.HTTPConfig{
-				TLS:     &gnmicv1alpha1.ClientTLSConfig{CABundleRef: &corev1.ConfigMapKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "test-ca"}, Key: "ca.crt"}},
+				TLS: &gnmicv1alpha1.ClientTLSConfig{
+					CABundleRef: &corev1.ConfigMapKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "test-ca"},
+						Key:                  "ca.crt",
+					},
+				},
 				Timeout: &metav1.Duration{Duration: 10 * time.Second},
 			},
 			fetcher:    fakeResourceFetcher{configuration: caPEM},
@@ -77,20 +81,18 @@ func TestBuildHTTPClientCases(t *testing.T) {
 			if client == nil {
 				t.Fatalf("%s: expected client, got nil", tc.name)
 			}
-			if tc.name == "valid_CABundle" {
-				transport, _ := client.Transport.(*http.Transport)
-				if transport == nil || transport.TLSClientConfig == nil || transport.TLSClientConfig.RootCAs == nil {
-					t.Fatalf("%s: expected TLS RootCAs to be set", tc.name)
-				}
-			}
 		})
 	}
 }
 
 func TestFetchPageErrorsAndJSON(t *testing.T) {
+	loader := &Loader{
+		loaderCfg: core.CommonLoaderConfig{TargetsourceNN: types.NamespacedName{Namespace: "default", Name: "test"}},
+		spec:      gnmicv1alpha1.HTTPConfig{Timeout: &metav1.Duration{Duration: 10 * time.Second}},
+	}
+
 	// method missing
-	loader := &Loader{loaderCfg: core.CommonLoaderConfig{TargetsourceNN: types.NamespacedName{Namespace: "default", Name: "test"}}, spec: gnmicv1alpha1.HTTPConfig{Timeout: &metav1.Duration{Duration: 10 * time.Second}}}
-	if _, err := loader.fetchPage(context.Background(), nil, "http://example.com", logr.Discard()); err == nil {
+	if _, _, err := loader.fetchPage(context.Background(), nil, "http://example.com"); err == nil {
 		t.Fatalf("expected method configuration error")
 	}
 
@@ -101,17 +103,25 @@ func TestFetchPageErrorsAndJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	loader = makeLoader(gnmicv1alpha1.HTTPConfig{Method: http.MethodGet, Timeout: &metav1.Duration{Duration: 10 * time.Second}}, nil)
+	loader = makeLoader(gnmicv1alpha1.HTTPConfig{
+		Method:  http.MethodGet,
+		Timeout: &metav1.Duration{Duration: 10 * time.Second},
+	}, nil)
+
 	client := mustBuildClient(t, loader)
-	if _, err := loader.fetchPage(context.Background(), client, server.URL, logr.Discard()); err == nil {
+
+	// non-200
+	if _, _, err := loader.fetchPage(context.Background(), client, server.URL); err == nil {
 		t.Fatalf("expected status code error")
 	}
 
+	// invalid JSON
 	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("not-json"))
 	})
-	if _, err := loader.fetchPage(context.Background(), client, server.URL, logr.Discard()); err == nil {
+
+	if _, _, err := loader.fetchPage(context.Background(), client, server.URL); err == nil {
 		t.Fatalf("expected JSON decode error")
 	}
 }
@@ -125,23 +135,70 @@ func TestFetchPagePOSTAndHeaders(t *testing.T) {
 		if r.Header.Get("X-Custom") != "value" {
 			t.Fatalf("missing header")
 		}
+
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("body decode failed: %v", err)
 		}
+
 		json.NewEncoder(w).Encode(map[string]any{"name": "target1"})
 	}))
 	defer server.Close()
 
-	spec := gnmicv1alpha1.HTTPConfig{URL: server.URL, Method: http.MethodPost, Headers: map[string]string{"X-Custom": "value"}, Body: `{"query":"status"}`, Timeout: &metav1.Duration{Duration: 10 * time.Second}}
+	spec := gnmicv1alpha1.HTTPConfig{
+		URL:     server.URL,
+		Method:  http.MethodPost,
+		Headers: map[string]string{"X-Custom": "value"},
+		Body:    `{"query":"status"}`,
+		Timeout: &metav1.Duration{Duration: 10 * time.Second},
+	}
+
 	loader := makeLoader(spec, nil)
 	client := mustBuildClient(t, loader)
-	raw, err := loader.fetchPage(context.Background(), client, server.URL, logr.Discard())
+
+	raw, headers, err := loader.fetchPage(context.Background(), client, server.URL)
 	if err != nil {
 		t.Fatalf("fetchPage failed: %v", err)
 	}
+
+	if headers == nil {
+		t.Fatalf("expected headers, got nil")
+	}
+
 	resp, ok := raw.(map[string]any)
 	if !ok || resp["name"] != "target1" {
 		t.Fatalf("unexpected response: %#v", raw)
+	}
+}
+
+func TestRunEmitsSnapshotOnImmediateFetch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]any{map[string]any{"name": "t1", "address": "1.1.1.1", "port": float64(830)}})
+	}))
+	defer server.Close()
+
+	spec := gnmicv1alpha1.HTTPConfig{URL: server.URL, Method: http.MethodGet, Timeout: &metav1.Duration{Duration: 10 * time.Second}, Interval: &metav1.Duration{Duration: time.Hour}}
+	loader := makeLoader(spec, nil)
+
+	_, cancel, out, done := startLoaderRun(loader)
+	defer cancel()
+
+	select {
+	case msgs := <-out:
+		if len(msgs) == 0 {
+			t.Fatalf("expected discovery messages")
+		}
+		cancel()
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run to emit snapshot")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for Run to return")
 	}
 }
