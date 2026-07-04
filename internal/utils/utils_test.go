@@ -4,10 +4,10 @@ import "testing"
 
 func TestSplitNN(t *testing.T) {
 	tests := []struct {
-		name      string
-		nn        string
-		wantNS    string
-		wantName  string
+		name     string
+		nn       string
+		wantNS   string
+		wantName string
 	}{
 		{"namespaced", "default/my-target", "default", "my-target"},
 		{"cluster scoped", "my-target", "", "my-target"},

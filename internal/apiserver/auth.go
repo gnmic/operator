@@ -22,13 +22,17 @@ import (
 
 // verifyAuthentication checks for Bearer Token and/or Signature
 func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) (bool, error) {
-	if registry.CommonLoaderConfig.PushConfig.Auth != nil {
-		if authenticated, err := a.verifyBearerToken(ctx, registry, logger); authenticated == false {
+	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Auth == nil {
+		return true, nil
+	}
+	auth := registry.CommonLoaderConfig.PushConfig.Auth
+	if auth.Bearer != nil {
+		if authenticated, err := a.verifyBearerToken(ctx, registry, logger); !authenticated {
 			return false, err
 		}
 	}
-	if registry.CommonLoaderConfig.PushConfig.Signature != nil {
-		if signatureMatch, err :=  a.verifySignature(ctx, registry, logger); signatureMatch == false {
+	if auth.Signature != nil {
+		if signatureMatch, err := a.verifySignature(ctx, registry, logger); !signatureMatch {
 			return false, err
 		}
 	}
@@ -39,8 +43,8 @@ func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.Discove
 func (a *APIServer) verifySignature(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) (bool, error) {
 	signatureHeader := ctx.GetHeader("x-hook-signature")
 	clc := registry.CommonLoaderConfig
-	secret, err := getSecret(clc, clc.PushConfig.Signature.SecretRef.Key, clc.PushConfig.Signature.SecretRef.Name)
-	
+	secret, err := getSecret(clc, clc.PushConfig.Auth.Signature.SecretRef.Key, clc.PushConfig.Auth.Signature.SecretRef.Name)
+
 	if err != nil {
 		logger.Error(err, "error calling getSecret")
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
@@ -55,7 +59,7 @@ func (a *APIServer) verifySignature(ctx *gin.Context, registry core.DiscoveryReg
 	ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
 
 	var mac hash.Hash
-	if registry.CommonLoaderConfig.PushConfig.Signature.Algorithm == "sha256" {
+	if registry.CommonLoaderConfig.PushConfig.Auth.Signature.Algorithm == "sha256" {
 		mac = hmac.New(sha256.New, []byte(secret))
 		signatureHeader = strings.TrimSpace(strings.TrimPrefix(signatureHeader, "sha256="))
 	} else {

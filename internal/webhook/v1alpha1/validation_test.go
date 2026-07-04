@@ -18,7 +18,7 @@ func TestValidateClusterSpec(t *testing.T) {
 	}
 
 	invalid := &operatorv1alpha1.ClusterSpec{
-		Image:   "",
+		Image:    "",
 		Replicas: ptr.To(int32(0)),
 		API: &operatorv1alpha1.APIConfig{
 			RestPort: 0,
@@ -50,8 +50,8 @@ func TestValidatePipelineSpec(t *testing.T) {
 	}
 
 	valid := &operatorv1alpha1.PipelineSpec{
-		ClusterRef: "cluster-a",
-		TargetRefs: []string{"t1"},
+		ClusterRef:       "cluster-a",
+		TargetRefs:       []string{"t1"},
 		SubscriptionRefs: []string{"sub1"},
 		Outputs: operatorv1alpha1.OutputSelector{
 			OutputRefs: []string{"out1"},
