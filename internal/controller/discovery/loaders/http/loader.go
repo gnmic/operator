@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -37,6 +38,17 @@ func New(cfg core.CommonLoaderConfig, httpConfig gnmicv1alpha1.HTTPConfig) core.
 // Name returns the loader's name, used for logging and metrics
 func (l *Loader) Name() string {
 	return "http"
+}
+
+// reportStatus emits a status update through the configured StatusUpdater,
+// if one is set. It is a no-op when no updater is configured (e.g. in tests).
+func (l *Loader) reportStatus(ctx context.Context, update core.StatusUpdate) {
+	if l.loaderCfg.Updater == nil {
+		return
+	}
+	if err := l.loaderCfg.Updater.UpdateStatus(ctx, update); err != nil {
+		log.FromContext(ctx).Error(err, "failed to update TargetSource status")
+	}
 }
 
 // Run starts the HTTP discovery loop
@@ -79,6 +91,17 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 
 	// helper function to fetch targets and emit discovery messages
 	fetchAndEmit := func() {
+		l.reportStatus(ctx, core.StatusUpdate{
+			Conditions: []metav1.Condition{
+				{
+					Type:    core.ConditionTypeReconciling,
+					Status:  metav1.ConditionTrue,
+					Reason:  string(core.ReasonSyncStarted),
+					Message: "Fetching targets from HTTP endpoint",
+				},
+			},
+		})
+
 		// Fetch targets from HTTP endpoint
 		targets, err := l.fetchTargetsFromHTTPEndpoint(ctx, client, logger)
 		if err != nil {
@@ -87,6 +110,16 @@ func (l *Loader) Run(ctx context.Context, out chan<- []core.DiscoveryMessage) er
 				"Failed to fetch targets from HTTP endpoint",
 				"url", l.spec.URL,
 			)
+			l.reportStatus(ctx, core.StatusUpdate{
+				Conditions: []metav1.Condition{
+					{
+						Type:    core.ConditionTypeStalled,
+						Status:  metav1.ConditionTrue,
+						Reason:  string(core.ReasonSyncFailed),
+						Message: err.Error(),
+					},
+				},
+			})
 			return
 		}
 

@@ -26,6 +26,7 @@ type CommonLoaderConfig struct {
 	PushConfig      *v1alpha1.PushSpec
 	Router          *gin.Engine
 	ResourceFetcher ResourceFetcher
+	Updater         StatusUpdater
 }
 
 // EventAction represents the type of a discovery event

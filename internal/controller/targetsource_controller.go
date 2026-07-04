@@ -192,9 +192,11 @@ func (r *TargetSourceReconciler) startDiscovery(
 ) error {
 	targetChannel := make(chan []discoveryTypes.DiscoveryMessage, r.BufferSize)
 	ctx, cancel := context.WithCancel(context.Background())
+	statusUpdater := discovery.NewK8sStatusUpdater(r.Client, r.Scheme, targetSource)
 	loaderConfig := discoveryTypes.CommonLoaderConfig{
 		TargetsourceNN: key,
 		ChunkSize:      r.ChunkSize,
+		Updater:        statusUpdater,
 	}
 
 	// Cleanup function to cleanup discovery runtime of targetsource
@@ -208,6 +210,7 @@ func (r *TargetSourceReconciler) startDiscovery(
 		r.Scheme,
 		targetSource,
 		targetChannel,
+		statusUpdater,
 	)
 	loader, err := discovery.NewLoader(reconcileCtx, r.Client, &loaderConfig, targetSource.Spec)
 	if err != nil {
