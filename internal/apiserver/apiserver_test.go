@@ -7,8 +7,11 @@ import (
 	"testing"
 
 	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/controller/discovery"
+	"github.com/gnmic/operator/internal/controller/discovery/core"
 	"github.com/gnmic/operator/internal/gnmic"
 	gapi "github.com/openconfig/gnmic/pkg/api/types"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestGetClusterPlan(t *testing.T) {
@@ -20,7 +23,11 @@ func TestGetClusterPlan(t *testing.T) {
 	reconciler := controller.NewClusterReconcilerForTest()
 	reconciler.CachePlan("default", "cluster-a", plan)
 
-	srv := New(":0", reconciler)
+	registry := discovery.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
+	srv, err := New(":0", reconciler, registry, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	ts := httptest.NewServer(srv.Server.Handler)
 	defer ts.Close()
 
