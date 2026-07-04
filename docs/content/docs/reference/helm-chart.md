@@ -255,6 +255,21 @@ crds:
   keep: true
 ```
 
+### Discovery Buffering
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `discovery.chunkSize` | Maximum number of targets/events sent in a single discovery message | `100` |
+| `discovery.bufferSize` | Amount of discovery messages that can be queued in the channel buffer | `10` |
+
+Controls Go channel buffering between discovery senders (API server, target loader) and receiver (message processor). Directly impacts throughput, latency, and memory consumption. For detailed tuning guidance, see [Discovery Buffering](../advanced/discovery-buffering.md).
+
+```yaml
+discovery:
+  chunkSize: 100
+  bufferSize: 10
+```
+
 ## Examples
 
 ### Minimal Installation
