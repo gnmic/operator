@@ -2,9 +2,26 @@ package controller
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/gnmic/operator/internal/gnmic"
 )
+
+// NewClusterReconcilerForTest returns a ClusterReconciler with an initialized plan cache.
+// It is intended for unit tests of components that read cached plans (e.g. the API server).
+func NewClusterReconcilerForTest() *ClusterReconciler {
+	return &ClusterReconciler{
+		m:     &sync.RWMutex{},
+		plans: make(map[string]*gnmic.ApplyPlan),
+	}
+}
+
+// CachePlan stores an apply plan in the reconciler's in-memory cache.
+func (r *ClusterReconciler) CachePlan(namespace, name string, plan *gnmic.ApplyPlan) {
+	r.m.Lock()
+	defer r.m.Unlock()
+	r.plans[namespace+"/"+name] = plan
+}
 
 func (r *ClusterReconciler) GetClusterPlan(namespace, name string) (*gnmic.ApplyPlan, error) {
 	r.m.RLock()
