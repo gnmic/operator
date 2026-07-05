@@ -401,6 +401,13 @@ type TargetSourceStatus struct {
 	ObservedGeneration int64       `json:"observedGeneration"`
 	TargetsCount       int32       `json:"targetsCount,omitempty"`
 	LastSync           metav1.Time `json:"lastSync,omitempty"`
+
+	// Conditions represent the latest available observations of the
+	// TargetSource's state.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true

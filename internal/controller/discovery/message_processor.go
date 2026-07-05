@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -31,15 +32,17 @@ type MessageProcessor struct {
 	// Events are deferred while snapshot is in progress
 	deferredEvents []core.DiscoveryEvent
 	targetCount    int32
+	updater        core.StatusUpdater
 }
 
 // NewMessageProcessor wires a MessageProcessor instance
-func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage) *MessageProcessor {
+func NewMessageProcessor(c client.Client, s *runtime.Scheme, ts *gnmicv1alpha1.TargetSource, in <-chan []core.DiscoveryMessage, u core.StatusUpdater) *MessageProcessor {
 	return &MessageProcessor{
 		client:       c,
 		scheme:       s,
 		targetSource: ts,
 		in:           in,
+		updater:      u,
 	}
 }
 
@@ -366,7 +369,22 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 }
 
 func (m *MessageProcessor) updateStatus(ctx context.Context, logger logr.Logger) {
-	if err := updateTargetSourceStatus(ctx, m.client, m.targetSource, m.targetCount); err != nil {
+	if m.updater == nil {
+		return
+	}
+	count := m.targetCount
+	update := core.StatusUpdate{
+		Conditions: []metav1.Condition{
+			{
+				Type:    core.ConditionTypeReady,
+				Status:  metav1.ConditionTrue,
+				Reason:  string(core.ReasonSyncSucceeded),
+				Message: "Successfully synced targets",
+			},
+		},
+		TargetsCount: &count,
+	}
+	if err := m.updater.UpdateStatus(ctx, update); err != nil {
 		logger.Error(err, "error updating TargetSource status")
 	} else {
 		logger.Info("updated target source status",
