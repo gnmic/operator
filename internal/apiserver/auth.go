@@ -39,10 +39,15 @@ func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.Discove
 	return true, nil
 }
 
-// verifySignature verifies x-hook-signature from POST header with hmac from body and a kubernetes secret.
+// verifySignature verifies the configured signature header from a POST request
+// against an hmac computed from the body and a kubernetes secret.
 func (a *APIServer) verifySignature(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) (bool, error) {
-	signatureHeader := ctx.GetHeader("x-hook-signature")
 	clc := registry.CommonLoaderConfig
+	headerName := clc.PushConfig.Auth.Signature.Header
+	if headerName == "" {
+		headerName = "x-hook-signature"
+	}
+	signatureHeader := ctx.GetHeader(headerName)
 	secret, err := getSecret(clc, clc.PushConfig.Auth.Signature.SecretRef.Key, clc.PushConfig.Auth.Signature.SecretRef.Name)
 
 	if err != nil {

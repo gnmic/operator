@@ -22,14 +22,5 @@ data:
           "vendor": "nokia_srlinux",
           "role": "leaf"
         }
-      },
-      {
-        "address": "clab-t1-leaf2",
-        "port": 57400,
-        "name": "leaf2",
-        "labels": {
-          "vendor": "nokia_srlinux",
-          "role": "leaf"
-        }
       }
     ]
