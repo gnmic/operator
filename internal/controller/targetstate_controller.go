@@ -557,7 +557,7 @@ func (r *TargetStateReconciler) podBaseURL(cluster *gnmicv1alpha1.Cluster, stsNa
 		restPort = cluster.Spec.API.RestPort
 	}
 
-	podDNS := fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local", stsName, podIndex, stsName, cluster.Namespace)
+	podDNS := fmt.Sprintf("%s-%d.%s.%s.svc.%s", stsName, podIndex, stsName, cluster.Namespace, gnmic.ClusterDomain())
 	scheme := "http"
 	if cluster.Spec.API != nil && cluster.Spec.API.TLS != nil && cluster.Spec.API.TLS.IssuerRef != "" {
 		scheme = "https"

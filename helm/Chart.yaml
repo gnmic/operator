@@ -2,8 +2,8 @@ apiVersion: v2
 name: gnmic-operator
 description: A Kubernetes operator for deploying and managing gNMIc telemetry collectors at scale
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.3.1
+appVersion: "0.3.1"
 home: https://operator.gnmic.dev
 sources:
   - https://github.com/gnmic/operator

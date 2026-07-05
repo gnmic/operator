@@ -711,8 +711,8 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		}
 		// build the URL for this pod
 		// statefulSet pods have predictable DNS names:
-		//  <statefulset-name>-<ordinal>.<service-name>.<namespace>.svc.cluster.local
-		podDNS := fmt.Sprintf("%s-%d.%s.%s.svc.cluster.local", stsName, podIndex, stsName, cluster.Namespace)
+		//  <statefulset-name>-<ordinal>.<service-name>.<namespace>.svc.<cluster-domain>
+		podDNS := fmt.Sprintf("%s-%d.%s.%s.svc.%s", stsName, podIndex, stsName, cluster.Namespace, gnmic.ClusterDomain())
 		scheme := "http"
 		if cluster.Spec.API != nil && cluster.Spec.API.TLS != nil && cluster.Spec.API.TLS.IssuerRef != "" {
 			scheme = "https"
@@ -1349,13 +1349,13 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 // buildCertificate creates a cert-manager Certificate spec for a pod
 func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster, certName, podName, stsName string) *certmanagerv1.Certificate {
 	// build DNS names for the certificate
-	// pod DNS: <pod-name>.<service-name>.<namespace>.svc.cluster.local
+	// pod DNS: <pod-name>.<service-name>.<namespace>.svc.<cluster-domain>
 	dnsNames := []string{
 		podName,
 		fmt.Sprintf("%s.%s", podName, stsName),
 		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
 		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, stsName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.%s.svc.%s", podName, stsName, cluster.Namespace, gnmic.ClusterDomain()),
 	}
 
 	return &certmanagerv1.Certificate{
@@ -1538,7 +1538,7 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 		fmt.Sprintf("%s.%s", podName, stsName),
 		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
 		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc.cluster.local", podName, stsName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.%s.svc.%s", podName, stsName, cluster.Namespace, gnmic.ClusterDomain()),
 	}
 
 	// also add the tunnel service DNS names if service is configured
@@ -1548,7 +1548,7 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 			tunnelServiceName,
 			fmt.Sprintf("%s.%s", tunnelServiceName, cluster.Namespace),
 			fmt.Sprintf("%s.%s.svc", tunnelServiceName, cluster.Namespace),
-			fmt.Sprintf("%s.%s.svc.cluster.local", tunnelServiceName, cluster.Namespace),
+			fmt.Sprintf("%s.%s.svc.%s", tunnelServiceName, cluster.Namespace, gnmic.ClusterDomain()),
 		)
 	}
 
@@ -2332,7 +2332,7 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 		}
 
 		// use cluster DNS name for the service
-		host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
+		host := fmt.Sprintf("%s.%s.svc.%s", svc.Name, svc.Namespace, gnmic.ClusterDomain())
 		addr := gnmic.FormatServiceAddress(spec, host, port)
 		if spec.ServiceRef.URL != "" {
 			url := strings.TrimPrefix(spec.ServiceRef.URL, "/")
@@ -2372,7 +2372,7 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 			}
 
 			// use cluster DNS name for the service
-			host := fmt.Sprintf("%s.%s.svc.cluster.local", svc.Name, svc.Namespace)
+			host := fmt.Sprintf("%s.%s.svc.%s", svc.Name, svc.Namespace, gnmic.ClusterDomain())
 			addr := gnmic.FormatServiceAddress(spec, host, port)
 			if spec.ServiceSelector.URL != "" {
 				url := strings.TrimPrefix(spec.ServiceSelector.URL, "/")
@@ -2648,7 +2648,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 						VolumeAttributes: map[string]string{
 							"csi.cert-manager.io/issuer-name": cluster.Spec.API.TLS.IssuerRef,
 							"csi.cert-manager.io/issuer-kind": "Issuer",
-							"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc.cluster.local",
+							"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc." + gnmic.ClusterDomain(),
 							// "csi.cert-manager.io/renewBefore": "72h", // TODO: make configurable ?
 						},
 					},
@@ -2762,7 +2762,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 							VolumeAttributes: map[string]string{
 								"csi.cert-manager.io/issuer-name": cluster.Spec.GRPCTunnel.TLS.IssuerRef,
 								"csi.cert-manager.io/issuer-kind": "Issuer",
-								"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc.cluster.local",
+								"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc." + gnmic.ClusterDomain(),
 							},
 						},
 					},
