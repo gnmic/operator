@@ -6,6 +6,15 @@ spec:
   provider:
     http:
       url: http://http-svc.default.svc/targets.json
+      push:
+        enabled: true
+        auth:
+          signature:
+            secretRef:
+              name: gnmic-signature
+              key: signature
+            header: x-hook-signature
+            algorithm: sha512
   targetLabels:
     integrationtest: http
   targetProfile: default
