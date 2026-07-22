@@ -88,6 +88,7 @@ rules:
     resources:
       - clusters/status
       - pipelines/status
+      - targets/status
       - targetsources/status
       - tunneltargetpolicies/status
     verbs:
