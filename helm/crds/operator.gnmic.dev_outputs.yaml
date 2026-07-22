@@ -74,7 +74,7 @@ spec:
               serviceRef:
                 description: |-
                   ServiceRef references a Kubernetes Service to use as the output address.
-                  Supported for: nats, jetstream, kafka outputs.
+                  Supported for: nats, jetstream, kafka, remote_write, influxdb outputs.
                   The service address will be resolved and injected into the output config.
                 properties:
                   name:
@@ -89,13 +89,21 @@ spec:
                       Port is the name or number of the port to use.
                       If not specified, the first port of the service is used.
                     type: string
+                  url:
+                    description: |-
+                      URL is an optional path suffix appended after the resolved service address
+                      (scheme, host, and port). A leading slash on the value is optional; the
+                      operator joins the base and suffix with a single '/'. Use this for HTTP(S)
+                      outputs such as prometheus_write (for example api/v1/write or api/v1/push)
+                      or influxdb instead of putting the full URL in config.
+                    type: string
                 required:
                 - name
                 type: object
               serviceSelector:
                 description: |-
                   ServiceSelector selects Kubernetes Services by labels to use as output addresses.
-                  Supported for: nats, jetstream, kafka outputs.
+                  Supported for: nats, jetstream, kafka, remote_write, influxdb outputs.
                   All matching service addresses will be resolved and injected into the output config.
                 properties:
                   matchLabels:
@@ -112,6 +120,11 @@ spec:
                     description: |-
                       Port is the name or number of the port to use.
                       If not specified, the first port of the service is used.
+                    type: string
+                  url:
+                    description: |-
+                      URL is an optional path suffix appended after each resolved service address.
+                      Same semantics as ServiceReference.url (see ServiceReference).
                     type: string
                 required:
                 - matchLabels
