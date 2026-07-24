@@ -10,14 +10,11 @@ metadata:
   {{- end }}
 spec:
   endpoints:
-    - port: https
+    - port: metrics
       path: /metrics
-      scheme: https
+      scheme: http
       interval: {{ .Values.metrics.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
-      tlsConfig:
-        insecureSkipVerify: true
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}
