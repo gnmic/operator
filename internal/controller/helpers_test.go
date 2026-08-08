@@ -64,6 +64,21 @@ func TestParseListenPortAndPath(t *testing.T) {
 	if _, _, err := parseListenPortAndPath([]byte("not yaml")); err == nil {
 		t.Fatal("expected yaml error")
 	}
+
+	// A non-nil but "listen"-less config (e.g. `config: {path: /metrics}`)
+	// must return port 0, not a fabricated default -- otherwise the
+	// Prometheus Service ends up on a different port than the one gnmic
+	// actually listens on, which is assigned separately by
+	// assignPrometheusOutputPorts.
+	port, path, err = parseListenPortAndPath([]byte("path: /metrics\n"))
+	if err != nil || port != 0 || path != "/metrics" {
+		t.Fatalf("port=%d path=%q err=%v, want port=0 path=/metrics", port, path, err)
+	}
+
+	port, path, err = parseListenPortAndPath([]byte("{}"))
+	if err != nil || port != 0 || path != "/metrics" {
+		t.Fatalf("port=%d path=%q err=%v, want port=0 path=/metrics", port, path, err)
+	}
 }
 
 func TestComputeStatusSummary(t *testing.T) {

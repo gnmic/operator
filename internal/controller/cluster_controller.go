@@ -59,6 +59,7 @@ import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/gnmic"
 	"github.com/gnmic/operator/internal/utils"
+	gapi "github.com/openconfig/gnmic/pkg/api/types"
 )
 
 // ClusterReconciler reconciles a Cluster object
@@ -305,14 +306,12 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
-	// reconcile statefulset
-	statefulSet, err := r.reconcileStatefulSet(ctx, &cluster)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("reconciled cluster statefulset", "replicas", ptr.Deref(statefulSet.Spec.Replicas, 0), "image", statefulSet.Spec.Template.Spec.Containers[0].Image)
-
+	// Collect pipeline data and build the apply plan BEFORE reconciling the
+	// StatefulSet/ConfigMap: buildConfigContent() needs applyPlan.TunnelTargetMatches
+	// to render tunnel-server.targets, and there's no other place to get it from.
+	// gnmic has no runtime API for this (no /config/apply or tunnel-related route
+	// exists in its REST API), so the static config.yaml is the only path.
+	//
 	// retrieve enabled pipelines referencing this cluster
 	pipelines, err := r.listPipelinesForCluster(ctx, &cluster)
 	if err != nil {
@@ -485,6 +484,14 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	r.m.Lock()
 	r.plans[cluster.Namespace+"/"+cluster.Name] = applyPlan
 	r.m.Unlock()
+
+	// reconcile statefulset (needs applyPlan.TunnelTargetMatches for tunnel-server.targets)
+	statefulSet, err := r.reconcileStatefulSet(ctx, &cluster, applyPlan.TunnelTargetMatches)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("reconciled cluster statefulset", "replicas", ptr.Deref(statefulSet.Spec.Replicas, 0), "image", statefulSet.Spec.Template.Spec.Containers[0].Image)
 
 	// reconcile Prometheus output services
 	if err := r.reconcilePrometheusServices(ctx, &cluster, pipelineDataMap, applyPlan.PrometheusPorts); err != nil {
@@ -707,7 +714,23 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		// distribute targets for this pod
 		podPlan, ok := distResult.PerPodPlans[podIndex]
 		if !ok {
-			continue
+			// DistributeTargets/boundedLoadRendezvousHash returns a
+			// completely empty PerPodPlans map when there are zero static
+			// Targets to distribute (tunnel-only deployments have none) --
+			// `continue`-ing here used to skip sendApplyRequest and
+			// applyTunnelTargetMatches for every single pod, every single
+			// reconcile, silently. Subscriptions/outputs/processors/
+			// tunnel-target-matches apply to every pod regardless of
+			// static target distribution, so build the same fallback shape
+			// DistributeTargets would have, just with no targets assigned.
+			podPlan = &gnmic.ApplyPlan{
+				Targets:             make(map[string]*gapi.TargetConfig),
+				Subscriptions:       plan.Subscriptions,
+				Outputs:             plan.Outputs,
+				Inputs:              plan.Inputs,
+				Processors:          plan.Processors,
+				TunnelTargetMatches: plan.TunnelTargetMatches,
+			}
 		}
 		// build the URL for this pod
 		// statefulSet pods have predictable DNS names:
@@ -717,13 +740,33 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		if cluster.Spec.API != nil && cluster.Spec.API.TLS != nil && cluster.Spec.API.TLS.IssuerRef != "" {
 			scheme = "https"
 		}
-		url := fmt.Sprintf("%s://%s:%d/api/v1/config/apply", scheme, podDNS, restPort)
+		podBaseURL := fmt.Sprintf("%s://%s:%d", scheme, podDNS, restPort)
+		url := podBaseURL + "/api/v1/config/apply"
 		logger.Info("sending config to gNMIc pod", "url", url)
 		if err := r.sendApplyRequest(ctx, url, podPlan, httpClient); err != nil {
 			return 0, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
 		}
 
-		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets))
+		// tunnel-target-matches are pushed separately via
+		// /api/v1/config/tunnel-target-matches, not through the bulk
+		// /api/v1/config/apply request above: gnmic's ConfigApplyRequest.
+		// TunnelTargetMatches field has no `mapstructure` tag (only `json`),
+		// and the apply handler decodes the request body through
+		// mapstructure (not encoding/json) -- mapstructure's default
+		// field matching is case-insensitive but hyphen-blind, so the
+		// "tunnel-target-matches" JSON key never matches the
+		// TunnelTargetMatches field name and is silently dropped on every
+		// request regardless of payload content (confirmed by reading
+		// gnmic's pkg/collector/api/server/apply.go and
+		// decodeRequestMap()). The per-resource endpoint decodes the
+		// body directly into config.TunnelTargetMatch, whose own fields
+		// (type/id/config) DO have mapstructure tags and aren't
+		// hyphenated, so it works correctly.
+		if err := r.applyTunnelTargetMatches(ctx, podBaseURL, plan.TunnelTargetMatches, httpClient); err != nil {
+			return 0, fmt.Errorf("failed to apply tunnel-target-matches to pod %d: %w", podIndex, err)
+		}
+
+		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets), "tunnelTargetMatches", len(plan.TunnelTargetMatches))
 	}
 
 	unassigned := int32(len(distResult.UnassignedTargets))
@@ -851,6 +894,103 @@ func (r *ClusterReconciler) sendApplyRequest(ctx context.Context, url string, pl
 		return rspErr
 	}
 
+	return nil
+}
+
+// applyTunnelTargetMatches pushes each tunnel target match individually to a
+// pod's /api/v1/config/tunnel-target-matches endpoint, and deletes any
+// matches present on the pod but no longer in the desired set. See the
+// comment at the call site in applyConfigToPods for why this can't go
+// through the bulk /api/v1/config/apply request.
+func (r *ClusterReconciler) applyTunnelTargetMatches(ctx context.Context, podBaseURL string, matches map[string]*gnmic.TunnelTargetMatch, httpClient *http.Client) error {
+	logger := log.FromContext(ctx)
+
+	existingIDs, err := r.getTunnelTargetMatchIDs(ctx, podBaseURL, httpClient)
+	if err != nil {
+		return fmt.Errorf("failed to list existing tunnel-target-matches: %w", err)
+	}
+	desiredIDs := make(map[string]struct{}, len(matches))
+	for _, tm := range matches {
+		desiredIDs[tm.ID] = struct{}{}
+	}
+	for _, id := range existingIDs {
+		if _, ok := desiredIDs[id]; !ok {
+			if err := r.deleteTunnelTargetMatch(ctx, podBaseURL, id, httpClient); err != nil {
+				logger.Error(err, "failed to delete stale tunnel-target-match", "id", id)
+			}
+		}
+	}
+
+	for _, tm := range matches {
+		jsonData, err := json.Marshal(tm)
+		if err != nil {
+			return fmt.Errorf("failed to marshal tunnel target match %q: %w", tm.ID, err)
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, podBaseURL+"/api/v1/config/tunnel-target-matches", bytes.NewReader(jsonData))
+		if err != nil {
+			return fmt.Errorf("failed to create tunnel-target-match request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to send tunnel-target-match request: %w", err)
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return fmt.Errorf("gNMIc pod returned non-success status %d for tunnel-target-match %q: %s", resp.StatusCode, tm.ID, string(body))
+		}
+		resp.Body.Close()
+	}
+	return nil
+}
+
+// getTunnelTargetMatchIDs lists the tunnel-target-match IDs currently known
+// to a pod (GET /api/v1/config/tunnel-target-matches returns a map keyed by
+// ID; only the keys are needed here).
+func (r *ClusterReconciler) getTunnelTargetMatchIDs(ctx context.Context, podBaseURL string, httpClient *http.Client) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, podBaseURL+"/api/v1/config/tunnel-target-matches", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("gNMIc pod returned non-success status %d: %s", resp.StatusCode, string(body))
+	}
+	var m map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return nil, fmt.Errorf("failed to decode tunnel-target-matches list: %w", err)
+	}
+	ids := make([]string, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// deleteTunnelTargetMatch removes a tunnel-target-match from a pod by ID.
+func (r *ClusterReconciler) deleteTunnelTargetMatch(ctx context.Context, podBaseURL, id string, httpClient *http.Client) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, podBaseURL+"/api/v1/config/tunnel-target-matches/"+id, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gNMIc pod returned non-success status %d: %s", resp.StatusCode, string(body))
+	}
 	return nil
 }
 
@@ -1140,8 +1280,8 @@ func pipelineReferencesResource(pipeline *gnmicv1alpha1.Pipeline, resourceName s
 	return false
 }
 
-func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (*appsv1.StatefulSet, error) {
-	desired, desiredConfigMap, err := r.buildStatefulSet(cluster)
+func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *gnmicv1alpha1.Cluster, tunnelTargetMatches map[string]*gnmic.TunnelTargetMatch) (*appsv1.StatefulSet, error) {
+	desired, desiredConfigMap, err := r.buildStatefulSet(cluster, tunnelTargetMatches)
 	if err != nil {
 		return nil, err
 	}
@@ -1931,11 +2071,11 @@ func (r *ClusterReconciler) cleanupControllerCA(ctx context.Context, cluster *gn
 	return client.IgnoreNotFound(r.Delete(ctx, cm))
 }
 
-func (r *ClusterReconciler) buildConfigMap(cluster *gnmicv1alpha1.Cluster) (*corev1.ConfigMap, error) {
+func (r *ClusterReconciler) buildConfigMap(cluster *gnmicv1alpha1.Cluster, tunnelTargetMatches map[string]*gnmic.TunnelTargetMatch) (*corev1.ConfigMap, error) {
 	configMapName := fmt.Sprintf("%s%s-config", resourcePrefix, cluster.Name)
 
 	// build base config content
-	content, err := r.buildConfigContent(cluster)
+	content, err := r.buildConfigContent(cluster, tunnelTargetMatches)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build config content: %w", err)
 	}
@@ -2124,8 +2264,12 @@ func (r *ClusterReconciler) listPipelinesForCluster(ctx context.Context, cluster
 	return result, nil
 }
 
-// buildConfigContent builds the gnmic configuration from the cluster and its pipelines
-func (r *ClusterReconciler) buildConfigContent(cluster *gnmicv1alpha1.Cluster) ([]byte, error) {
+// buildConfigContent builds the gnmic configuration from the cluster and its pipelines.
+// tunnelTargetMatches is the set of resolved TunnelTargetPolicy match rules (keyed by
+// "namespace/policyName") computed by the plan builder; gnmic has no runtime API for
+// tunnel-server.targets (confirmed: no /config/apply or tunnel-related route exists in
+// gnmic's REST API), so this is the only way these rules can ever reach a running pod.
+func (r *ClusterReconciler) buildConfigContent(cluster *gnmicv1alpha1.Cluster, tunnelTargetMatches map[string]*gnmic.TunnelTargetMatch) ([]byte, error) {
 	restPort := int32(defaultRestPort)
 	if cluster.Spec.API != nil && cluster.Spec.API.RestPort != 0 {
 		restPort = cluster.Spec.API.RestPort
@@ -2152,6 +2296,23 @@ func (r *ClusterReconciler) buildConfigContent(cluster *gnmicv1alpha1.Cluster) (
 		tunnelTLSConfig := gnmic.TunnelServerTLSConfig(cluster)
 		if tunnelTLSConfig != nil {
 			tunnelConfig["tls"] = tunnelTLSConfig
+		}
+
+		if len(tunnelTargetMatches) > 0 {
+			keys := make([]string, 0, len(tunnelTargetMatches))
+			for k := range tunnelTargetMatches {
+				keys = append(keys, k)
+			}
+			// sort by policy key for deterministic config output across reconciles
+			// (map iteration order is random, and an unstable ordering here would
+			// cause the ConfigMap to appear "changed" and trigger a rollout on
+			// every reconcile even when nothing actually changed).
+			sort.Strings(keys)
+			targets := make([]*gnmic.TunnelTargetMatch, 0, len(keys))
+			for _, k := range keys {
+				targets = append(targets, tunnelTargetMatches[k])
+			}
+			tunnelConfig["targets"] = targets
 		}
 
 		config["tunnel-server"] = tunnelConfig
@@ -2591,9 +2752,9 @@ func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pip
 	return result, nil
 }
 
-func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*appsv1.StatefulSet, *corev1.ConfigMap, error) {
+func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster, tunnelTargetMatches map[string]*gnmic.TunnelTargetMatch) (*appsv1.StatefulSet, *corev1.ConfigMap, error) {
 	// build gNMIc pod base configuration
-	configMap, err := r.buildConfigMap(cluster)
+	configMap, err := r.buildConfigMap(cluster, tunnelTargetMatches)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build config map: %w", err)
 	}
@@ -3342,7 +3503,9 @@ type listenPortAndPath struct {
 
 // parseListenPortAndPath parses the "listen" and "path" fields from output config and returns the port and path.
 // supports formats: "listen: ":9804", "0.0.0.0:9804", "localhost:9804", "[::1]:9804", "[2001:db8::8a2e:370:7334]:9804".
-// returns the default port 9804 if not specified.
+// returns port 0 if "listen" is not specified, so the caller can fall back to
+// the port actually assigned to gnmic by assignPrometheusOutputPorts instead
+// of a fabricated default that could disagree with it.
 // returns the default path /metrics if not specified.
 func parseListenPortAndPath(configRaw []byte) (int32, string, error) {
 	if configRaw == nil {
@@ -3354,13 +3517,14 @@ func parseListenPortAndPath(configRaw []byte) (int32, string, error) {
 		return 0, "", err
 	}
 
-	config.Listen = strings.TrimSpace(config.Listen)
-	if config.Listen == "" {
-		config.Listen = fmt.Sprintf(":%d", gnmic.PrometheusDefaultPort)
-	}
 	config.Path = strings.TrimSpace(config.Path)
 	if config.Path == "" {
 		config.Path = gnmic.PrometheusDefaultPath
+	}
+
+	config.Listen = strings.TrimSpace(config.Listen)
+	if config.Listen == "" {
+		return 0, config.Path, nil
 	}
 
 	// parse the port from the listen string value

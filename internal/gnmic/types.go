@@ -22,16 +22,26 @@ type ApplyPlan struct {
 }
 
 // TunnelTargetMatch defines a policy for matching tunnel targets
+//
+// yaml tags are required in addition to json: the final config.yaml is
+// rendered via gopkg.in/yaml.v2 (see buildConfigContent in
+// internal/controller/cluster_controller.go), which does not read json
+// struct tags at all. Without an explicit yaml:",omitempty" tag, yaml.v2
+// serializes every field regardless of value -- an omitted
+// TunnelTargetPolicy.spec.match (meant to match all targets, per
+// docs/content/docs/user-guide/tunneltargetpolicy.md#match-all-targets)
+// was rendering as literal `type: ""` / `id: ""` instead of omitting the
+// keys, which gnmic did not treat as a wildcard.
 type TunnelTargetMatch struct {
 	// A regex pattern to check the target type as reported by
 	// the tunnel.Target to the Tunnel Server.
-	Type string `json:"type,omitempty"`
+	Type string `json:"type,omitempty" yaml:"type,omitempty"`
 	// A Regex pattern to check the target ID as reported by
 	// the tunnel.Target to the Tunnel Server
-	ID string `json:"id,omitempty"`
+	ID string `json:"id,omitempty" yaml:"id,omitempty"`
 	// Matching target desired configuration.
 	// This is build from the target profile and the credentials.
-	Config *gapi.TargetConfig `json:"config,omitempty"`
+	Config *gapi.TargetConfig `json:"config,omitempty" yaml:"config,omitempty"`
 }
 
 // PipelineData holds the resolved resources for a single pipeline
