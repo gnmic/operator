@@ -18,14 +18,11 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -37,7 +34,7 @@ var pipelinelog = logf.Log.WithName("pipeline-resource")
 
 // SetupPipelineWebhookWithManager registers the webhook for Pipeline in the manager.
 func SetupPipelineWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Pipeline{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Pipeline{}).
 		WithValidator(&PipelineCustomValidator{}).
 		WithDefaulter(&PipelineCustomDefaulter{}).
 		Complete()
@@ -56,15 +53,10 @@ type PipelineCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &PipelineCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Pipeline] = &PipelineCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Pipeline.
-func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	pipeline, ok := obj.(*operatorv1alpha1.Pipeline)
-
-	if !ok {
-		return fmt.Errorf("expected an Pipeline object but got %T", obj)
-	}
+func (d *PipelineCustomDefaulter) Default(_ context.Context, pipeline *operatorv1alpha1.Pipeline) error {
 	pipelinelog.Info("Defaulting for Pipeline", "name", pipeline.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -83,36 +75,24 @@ func (d *PipelineCustomDefaulter) Default(_ context.Context, obj runtime.Object)
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type PipelineCustomValidator struct{}
 
-var _ webhook.CustomValidator = &PipelineCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Pipeline] = &PipelineCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pipeline, ok := obj.(*operatorv1alpha1.Pipeline)
-	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
-	}
+func (v *PipelineCustomValidator) ValidateCreate(_ context.Context, pipeline *operatorv1alpha1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("Validation for Pipeline upon creation", "name", pipeline.GetName())
 
 	return nil, validatePipelineSpec(&pipeline.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	pipeline, ok := newObj.(*operatorv1alpha1.Pipeline)
-	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object but got %T", newObj)
-	}
+func (v *PipelineCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Pipeline, pipeline *operatorv1alpha1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("Validation for Pipeline upon update", "name", pipeline.GetName())
 
 	return nil, validatePipelineSpec(&pipeline.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.
-func (v *PipelineCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pipeline, ok := obj.(*operatorv1alpha1.Pipeline)
-	if !ok {
-		return nil, fmt.Errorf("expected a Pipeline object but got %T", obj)
-	}
+func (v *PipelineCustomValidator) ValidateDelete(_ context.Context, pipeline *operatorv1alpha1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("Validation for Pipeline upon deletion", "name", pipeline.GetName())
 
 	return nil, nil

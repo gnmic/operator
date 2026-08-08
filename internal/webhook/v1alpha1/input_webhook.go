@@ -18,12 +18,9 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -35,7 +32,7 @@ var inputlog = logf.Log.WithName("input-resource")
 
 // SetupInputWebhookWithManager registers the webhook for Input in the manager.
 func SetupInputWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Input{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Input{}).
 		WithValidator(&InputCustomValidator{}).
 		WithDefaulter(&InputCustomDefaulter{}).
 		Complete()
@@ -54,15 +51,10 @@ type InputCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &InputCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Input] = &InputCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Input.
-func (d *InputCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	input, ok := obj.(*operatorv1alpha1.Input)
-
-	if !ok {
-		return fmt.Errorf("expected an Input object but got %T", obj)
-	}
+func (d *InputCustomDefaulter) Default(_ context.Context, input *operatorv1alpha1.Input) error {
 	inputlog.Info("Defaulting for Input", "name", input.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -83,14 +75,10 @@ type InputCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &InputCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Input] = &InputCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Input.
-func (v *InputCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	input, ok := obj.(*operatorv1alpha1.Input)
-	if !ok {
-		return nil, fmt.Errorf("expected a Input object but got %T", obj)
-	}
+func (v *InputCustomValidator) ValidateCreate(_ context.Context, input *operatorv1alpha1.Input) (admission.Warnings, error) {
 	inputlog.Info("Validation for Input upon creation", "name", input.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -99,11 +87,7 @@ func (v *InputCustomValidator) ValidateCreate(_ context.Context, obj runtime.Obj
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Input.
-func (v *InputCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	input, ok := newObj.(*operatorv1alpha1.Input)
-	if !ok {
-		return nil, fmt.Errorf("expected a Input object for the newObj but got %T", newObj)
-	}
+func (v *InputCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Input, input *operatorv1alpha1.Input) (admission.Warnings, error) {
 	inputlog.Info("Validation for Input upon update", "name", input.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -112,11 +96,7 @@ func (v *InputCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj 
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Input.
-func (v *InputCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	input, ok := obj.(*operatorv1alpha1.Input)
-	if !ok {
-		return nil, fmt.Errorf("expected a Input object but got %T", obj)
-	}
+func (v *InputCustomValidator) ValidateDelete(ctx context.Context, input *operatorv1alpha1.Input) (admission.Warnings, error) {
 	inputlog.Info("Validation for Input upon deletion", "name", input.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

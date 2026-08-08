@@ -79,6 +79,12 @@ undeploy-test-cluster: ## Delete a kind cluster for testing
 load-test-image: ## Load the test image into the test cluster
 	kind load docker-image $(IMG) --name $(TEST_CLUSTER_NAME)
 
+.PHONY: wait-test-operator
+wait-test-operator: ## Wait for the operator deployment (and thus webhooks) to be ready
+	echo "waiting for gnmic-controller-manager to be available..."
+	kubectl wait --namespace gnmic-system --for=condition=Available deployment/gnmic-controller-manager --timeout=180s
+	echo "gnmic-controller-manager ready"
+
 .PHONY: deploy-test-topology
 deploy-test-topology: ## Deploy a test topology for testing
 	sudo containerlab deploy -t test/integration/t1.clab.yaml -c

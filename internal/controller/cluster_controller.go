@@ -1376,7 +1376,7 @@ func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster, cer
 					LabelPodName:     podName,
 				},
 			},
-			IssuerRef: cmmeta.ObjectReference{
+			IssuerRef: cmmeta.IssuerReference{
 				Name: cluster.Spec.API.TLS.IssuerRef,
 				Kind: "Issuer", // defaults to Issuer. TODO: configurable to ClusterIssuer ?
 			},
@@ -1572,7 +1572,7 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 					LabelCertType:    LabelValueCertTypeTunnel,
 				},
 			},
-			IssuerRef: cmmeta.ObjectReference{
+			IssuerRef: cmmeta.IssuerReference{
 				Name: cluster.Spec.GRPCTunnel.TLS.IssuerRef,
 				Kind: "Issuer",
 			},
@@ -1699,7 +1699,7 @@ func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Clu
 					LabelCertType:    LabelValueCertTypeClient,
 				},
 			},
-			IssuerRef: cmmeta.ObjectReference{
+			IssuerRef: cmmeta.IssuerReference{
 				Name: cluster.Spec.ClientTLS.IssuerRef,
 				Kind: "Issuer",
 			},

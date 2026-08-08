@@ -18,12 +18,9 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -35,7 +32,7 @@ var outputlog = logf.Log.WithName("output-resource")
 
 // SetupOutputWebhookWithManager registers the webhook for Output in the manager.
 func SetupOutputWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Output{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Output{}).
 		WithValidator(&OutputCustomValidator{}).
 		WithDefaulter(&OutputCustomDefaulter{}).
 		Complete()
@@ -54,15 +51,10 @@ type OutputCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &OutputCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Output] = &OutputCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Output.
-func (d *OutputCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	output, ok := obj.(*operatorv1alpha1.Output)
-
-	if !ok {
-		return fmt.Errorf("expected an Output object but got %T", obj)
-	}
+func (d *OutputCustomDefaulter) Default(_ context.Context, output *operatorv1alpha1.Output) error {
 	outputlog.Info("Defaulting for Output", "name", output.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -83,14 +75,10 @@ type OutputCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &OutputCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Output] = &OutputCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Output.
-func (v *OutputCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	output, ok := obj.(*operatorv1alpha1.Output)
-	if !ok {
-		return nil, fmt.Errorf("expected a Output object but got %T", obj)
-	}
+func (v *OutputCustomValidator) ValidateCreate(_ context.Context, output *operatorv1alpha1.Output) (admission.Warnings, error) {
 	outputlog.Info("Validation for Output upon creation", "name", output.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -99,11 +87,7 @@ func (v *OutputCustomValidator) ValidateCreate(_ context.Context, obj runtime.Ob
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Output.
-func (v *OutputCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	output, ok := newObj.(*operatorv1alpha1.Output)
-	if !ok {
-		return nil, fmt.Errorf("expected a Output object for the newObj but got %T", newObj)
-	}
+func (v *OutputCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Output, output *operatorv1alpha1.Output) (admission.Warnings, error) {
 	outputlog.Info("Validation for Output upon update", "name", output.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -112,11 +96,7 @@ func (v *OutputCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Output.
-func (v *OutputCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	output, ok := obj.(*operatorv1alpha1.Output)
-	if !ok {
-		return nil, fmt.Errorf("expected a Output object but got %T", obj)
-	}
+func (v *OutputCustomValidator) ValidateDelete(ctx context.Context, output *operatorv1alpha1.Output) (admission.Warnings, error) {
 	outputlog.Info("Validation for Output upon deletion", "name", output.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

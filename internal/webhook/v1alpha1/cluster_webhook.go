@@ -18,14 +18,11 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -37,7 +34,7 @@ var clusterlog = logf.Log.WithName("cluster-resource")
 
 // SetupClusterWebhookWithManager registers the webhook for Cluster in the manager.
 func SetupClusterWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Cluster{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Cluster{}).
 		WithValidator(&ClusterCustomValidator{}).
 		WithDefaulter(&ClusterCustomDefaulter{}).
 		Complete()
@@ -56,15 +53,10 @@ type ClusterCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &ClusterCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Cluster] = &ClusterCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Cluster.
-func (d *ClusterCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	cluster, ok := obj.(*operatorv1alpha1.Cluster)
-
-	if !ok {
-		return fmt.Errorf("expected an Cluster object but got %T", obj)
-	}
+func (d *ClusterCustomDefaulter) Default(_ context.Context, cluster *operatorv1alpha1.Cluster) error {
 	clusterlog.Info("Defaulting for Cluster", "name", cluster.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -83,36 +75,24 @@ func (d *ClusterCustomDefaulter) Default(_ context.Context, obj runtime.Object) 
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type ClusterCustomValidator struct{}
 
-var _ webhook.CustomValidator = &ClusterCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Cluster] = &ClusterCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Cluster.
-func (v *ClusterCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cluster, ok := obj.(*operatorv1alpha1.Cluster)
-	if !ok {
-		return nil, fmt.Errorf("expected a Cluster object but got %T", obj)
-	}
+func (v *ClusterCustomValidator) ValidateCreate(_ context.Context, cluster *operatorv1alpha1.Cluster) (admission.Warnings, error) {
 	clusterlog.Info("Validation for Cluster upon creation", "name", cluster.GetName())
 
 	return nil, validateClusterSpec(&cluster.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Cluster.
-func (v *ClusterCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	cluster, ok := newObj.(*operatorv1alpha1.Cluster)
-	if !ok {
-		return nil, fmt.Errorf("expected a Cluster object but got %T", newObj)
-	}
+func (v *ClusterCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Cluster, cluster *operatorv1alpha1.Cluster) (admission.Warnings, error) {
 	clusterlog.Info("Validation for Cluster upon update", "name", cluster.GetName())
 
 	return nil, validateClusterSpec(&cluster.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Cluster.
-func (v *ClusterCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cluster, ok := obj.(*operatorv1alpha1.Cluster)
-	if !ok {
-		return nil, fmt.Errorf("expected a Cluster object but got %T", obj)
-	}
+func (v *ClusterCustomValidator) ValidateDelete(_ context.Context, cluster *operatorv1alpha1.Cluster) (admission.Warnings, error) {
 	clusterlog.Info("Validation for Cluster upon deletion", "name", cluster.GetName())
 
 	return nil, nil

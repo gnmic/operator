@@ -22,11 +22,9 @@ import (
 	"regexp"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -38,7 +36,7 @@ var tunneltargetpolicylog = logf.Log.WithName("tunneltargetpolicy-resource")
 
 // SetupTunnelTargetPolicyWebhookWithManager registers the webhook for TunnelTargetPolicy in the manager.
 func SetupTunnelTargetPolicyWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.TunnelTargetPolicy{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.TunnelTargetPolicy{}).
 		WithValidator(&TunnelTargetPolicyCustomValidator{}).
 		WithDefaulter(&TunnelTargetPolicyCustomDefaulter{}).
 		Complete()
@@ -57,15 +55,10 @@ type TunnelTargetPolicyCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &TunnelTargetPolicyCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.TunnelTargetPolicy] = &TunnelTargetPolicyCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind TunnelTargetPolicy.
-func (d *TunnelTargetPolicyCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	tunneltargetpolicy, ok := obj.(*operatorv1alpha1.TunnelTargetPolicy)
-
-	if !ok {
-		return fmt.Errorf("expected an TunnelTargetPolicy object but got %T", obj)
-	}
+func (d *TunnelTargetPolicyCustomDefaulter) Default(_ context.Context, tunneltargetpolicy *operatorv1alpha1.TunnelTargetPolicy) error {
 	tunneltargetpolicylog.Info("Defaulting for TunnelTargetPolicy", "name", tunneltargetpolicy.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -84,36 +77,24 @@ func (d *TunnelTargetPolicyCustomDefaulter) Default(_ context.Context, obj runti
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type TunnelTargetPolicyCustomValidator struct{}
 
-var _ webhook.CustomValidator = &TunnelTargetPolicyCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.TunnelTargetPolicy] = &TunnelTargetPolicyCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
-func (v *TunnelTargetPolicyCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	tunneltargetpolicy, ok := obj.(*operatorv1alpha1.TunnelTargetPolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a TunnelTargetPolicy object but got %T", obj)
-	}
+func (v *TunnelTargetPolicyCustomValidator) ValidateCreate(_ context.Context, tunneltargetpolicy *operatorv1alpha1.TunnelTargetPolicy) (admission.Warnings, error) {
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon creation", "name", tunneltargetpolicy.GetName())
 
 	return nil, validateTunnelTargetPolicySpec(tunneltargetpolicy.GetName(), &tunneltargetpolicy.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
-func (v *TunnelTargetPolicyCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	tunneltargetpolicy, ok := newObj.(*operatorv1alpha1.TunnelTargetPolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a TunnelTargetPolicy object but got %T", newObj)
-	}
+func (v *TunnelTargetPolicyCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.TunnelTargetPolicy, tunneltargetpolicy *operatorv1alpha1.TunnelTargetPolicy) (admission.Warnings, error) {
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon update", "name", tunneltargetpolicy.GetName())
 
 	return nil, validateTunnelTargetPolicySpec(tunneltargetpolicy.GetName(), &tunneltargetpolicy.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type TunnelTargetPolicy.
-func (v *TunnelTargetPolicyCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	tunneltargetpolicy, ok := obj.(*operatorv1alpha1.TunnelTargetPolicy)
-	if !ok {
-		return nil, fmt.Errorf("expected a TunnelTargetPolicy object but got %T", obj)
-	}
+func (v *TunnelTargetPolicyCustomValidator) ValidateDelete(_ context.Context, tunneltargetpolicy *operatorv1alpha1.TunnelTargetPolicy) (admission.Warnings, error) {
 	tunneltargetpolicylog.Info("Validation for TunnelTargetPolicy upon deletion", "name", tunneltargetpolicy.GetName())
 
 	return nil, nil

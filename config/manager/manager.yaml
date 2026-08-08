@@ -72,6 +72,9 @@ spec:
         args:
         - --leader-elect
         image: controller:latest
+        # IfNotPresent so kind-loaded local tags (e.g. controller:latest) are used
+        # instead of attempting a registry pull (Always is the default for :latest).
+        imagePullPolicy: IfNotPresent
         name: manager
         env:
         - name: POD_NAMESPACE

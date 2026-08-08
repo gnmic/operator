@@ -18,15 +18,12 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -38,7 +35,7 @@ var subscriptionlog = logf.Log.WithName("subscription-resource")
 
 // SetupSubscriptionWebhookWithManager registers the webhook for Subscription in the manager.
 func SetupSubscriptionWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Subscription{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Subscription{}).
 		WithValidator(&SubscriptionCustomValidator{}).
 		WithDefaulter(&SubscriptionCustomDefaulter{}).
 		Complete()
@@ -57,15 +54,10 @@ type SubscriptionCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &SubscriptionCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Subscription] = &SubscriptionCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Subscription.
-func (d *SubscriptionCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	subscription, ok := obj.(*operatorv1alpha1.Subscription)
-
-	if !ok {
-		return fmt.Errorf("expected an Subscription object but got %T", obj)
-	}
+func (d *SubscriptionCustomDefaulter) Default(_ context.Context, subscription *operatorv1alpha1.Subscription) error {
 	subscriptionlog.Info("Defaulting for Subscription", "name", subscription.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -84,36 +76,24 @@ func (d *SubscriptionCustomDefaulter) Default(_ context.Context, obj runtime.Obj
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type SubscriptionCustomValidator struct{}
 
-var _ webhook.CustomValidator = &SubscriptionCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Subscription] = &SubscriptionCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
-func (v *SubscriptionCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	subscription, ok := obj.(*operatorv1alpha1.Subscription)
-	if !ok {
-		return nil, fmt.Errorf("expected a Subscription object but got %T", obj)
-	}
+func (v *SubscriptionCustomValidator) ValidateCreate(_ context.Context, subscription *operatorv1alpha1.Subscription) (admission.Warnings, error) {
 	subscriptionlog.Info("Validation for Subscription upon creation", "name", subscription.GetName())
 
 	return nil, validateSubscriptionSpec(subscription.GetName(), &subscription.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
-func (v *SubscriptionCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	subscription, ok := newObj.(*operatorv1alpha1.Subscription)
-	if !ok {
-		return nil, fmt.Errorf("expected a Subscription object but got %T", newObj)
-	}
+func (v *SubscriptionCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Subscription, subscription *operatorv1alpha1.Subscription) (admission.Warnings, error) {
 	subscriptionlog.Info("Validation for Subscription upon update", "name", subscription.GetName())
 
 	return nil, validateSubscriptionSpec(subscription.GetName(), &subscription.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Subscription.
-func (v *SubscriptionCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	subscription, ok := obj.(*operatorv1alpha1.Subscription)
-	if !ok {
-		return nil, fmt.Errorf("expected a Subscription object but got %T", obj)
-	}
+func (v *SubscriptionCustomValidator) ValidateDelete(_ context.Context, subscription *operatorv1alpha1.Subscription) (admission.Warnings, error) {
 	subscriptionlog.Info("Validation for Subscription upon deletion", "name", subscription.GetName())
 
 	return nil, nil

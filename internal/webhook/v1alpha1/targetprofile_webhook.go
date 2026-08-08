@@ -18,15 +18,12 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -38,7 +35,7 @@ var targetprofilelog = logf.Log.WithName("targetprofile-resource")
 
 // SetupTargetProfileWebhookWithManager registers the webhook for TargetProfile in the manager.
 func SetupTargetProfileWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.TargetProfile{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.TargetProfile{}).
 		WithValidator(&TargetProfileCustomValidator{}).
 		WithDefaulter(&TargetProfileCustomDefaulter{}).
 		Complete()
@@ -57,15 +54,10 @@ type TargetProfileCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &TargetProfileCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.TargetProfile] = &TargetProfileCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind TargetProfile.
-func (d *TargetProfileCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	targetprofile, ok := obj.(*operatorv1alpha1.TargetProfile)
-
-	if !ok {
-		return fmt.Errorf("expected an TargetProfile object but got %T", obj)
-	}
+func (d *TargetProfileCustomDefaulter) Default(_ context.Context, targetprofile *operatorv1alpha1.TargetProfile) error {
 	targetprofilelog.Info("Defaulting for TargetProfile", "name", targetprofile.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -86,14 +78,10 @@ type TargetProfileCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &TargetProfileCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.TargetProfile] = &TargetProfileCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type TargetProfile.
-func (v *TargetProfileCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	targetprofile, ok := obj.(*operatorv1alpha1.TargetProfile)
-	if !ok {
-		return nil, fmt.Errorf("expected a TargetProfile object but got %T", obj)
-	}
+func (v *TargetProfileCustomValidator) ValidateCreate(_ context.Context, targetprofile *operatorv1alpha1.TargetProfile) (admission.Warnings, error) {
 	targetprofilelog.Info("Validation for TargetProfile upon creation", "name", targetprofile.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -102,11 +90,7 @@ func (v *TargetProfileCustomValidator) ValidateCreate(_ context.Context, obj run
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type TargetProfile.
-func (v *TargetProfileCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	targetprofile, ok := newObj.(*operatorv1alpha1.TargetProfile)
-	if !ok {
-		return nil, fmt.Errorf("expected a TargetProfile object for the newObj but got %T", newObj)
-	}
+func (v *TargetProfileCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.TargetProfile, targetprofile *operatorv1alpha1.TargetProfile) (admission.Warnings, error) {
 	targetprofilelog.Info("Validation for TargetProfile upon update", "name", targetprofile.GetName())
 
 	errs := validateTargetProfileSpec(&targetprofile.Spec)
@@ -121,11 +105,7 @@ func (v *TargetProfileCustomValidator) ValidateUpdate(_ context.Context, oldObj,
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type TargetProfile.
-func (v *TargetProfileCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	targetprofile, ok := obj.(*operatorv1alpha1.TargetProfile)
-	if !ok {
-		return nil, fmt.Errorf("expected a TargetProfile object but got %T", obj)
-	}
+func (v *TargetProfileCustomValidator) ValidateDelete(ctx context.Context, targetprofile *operatorv1alpha1.TargetProfile) (admission.Warnings, error) {
 	targetprofilelog.Info("Validation for TargetProfile upon deletion", "name", targetprofile.GetName())
 
 	errs := validateTargetProfileSpec(&targetprofile.Spec)
