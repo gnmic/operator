@@ -39,136 +39,493 @@ spec:
           spec:
             description: TargetSourceSpec defines the desired state of TargetSource
             properties:
-              configMap:
-                type: string
-              consul:
+              provider:
+                description: |-
+                  Provider defines the source of targets for this TargetSource
+                  Only one provider can be specified per TargetSource
                 properties:
-                  url:
-                    type: string
+                  http:
+                    description: HTTP defines the configuration for a HTTP provider
+                    properties:
+                      authentication:
+                        description: Optional authentication configuration for accessing
+                          the HTTP endpoint
+                        properties:
+                          basic:
+                            description: Basic authentication configuration
+                            properties:
+                              credentialSecretRef:
+                                description: |-
+                                  Reference to a Secret containing "username" and "password" keys to use for
+                                  basic authentication when connecting to the Provider.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            required:
+                            - credentialSecretRef
+                            type: object
+                          token:
+                            description: Token-based authentication configuration
+                            properties:
+                              scheme:
+                                description: Scheme for the token, e.g. "Bearer"
+                                minLength: 1
+                                type: string
+                              tokenSecretRef:
+                                description: |-
+                                  Reference to a Secret containing a key with the token value to use for
+                                  authentication when connecting to the Provider.
+                                  Mutually exclusive with Token.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            required:
+                            - scheme
+                            - tokenSecretRef
+                            type: object
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of the fields in [basic token] must
+                            be set
+                          rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
+                            == 1'
+                      body:
+                        description: |-
+                          Optional raw request body.
+
+                          Typically used with POST requests and contains JSON payload.
+
+                          Example:
+                            body: |
+                              {
+                                "limit": 100,
+                                "status": "active"
+                              }
+
+                          Notes:
+                          - Ignored for GET requests
+                          - User must set appropriate Content-Type header if needed
+                        type: string
+                      headers:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Optional HTTP headers to include in the request.
+
+                          These map directly to HTTP headers (key-value pairs).
+
+                          Example:
+                            headers:
+                              Content-Type: application/json
+                              X-Custom-Header: value
+
+                          Precedence:
+                          - Authentication configuration overrides any conflicting headers e.g. Authorization
+                        type: object
+                      interval:
+                        default: 30m
+                        description: Optional interval for polling the HTTP endpoint
+                          for targets
+                        type: string
+                      mapping:
+                        description: Optional mapping configuration for parsing responses
+                          from the HTTP endpoint
+                        properties:
+                          address:
+                            description: |-
+                              CEL expression for the target address.
+
+                              If not set, defaults to:
+                                item["address"]
+
+                              Example:
+                                "item.ip"
+                            type: string
+                          labels:
+                            description: |-
+                              CEL expression that returns a map of labels.
+                              The expression must evaluate to an object (map).
+
+                              Example:
+
+                                labels: |
+                                  {
+                                    "env": item.environment,
+                                    "region": self.meta.region,
+                                    item.dynamicKey: "value"
+                                  }
+
+                              If not set, defaults to:
+                                item["labels"]
+
+                              The resulting map will be converted into labels.
+                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
+                              with values from the response taking precedence in case of conflicts.
+                            type: string
+                          name:
+                            description: |-
+                              CEL expression for the target name.
+
+                              If not set, defaults to:
+                                item["name"]
+
+                              Example:
+                                "item.hostname"
+                            type: string
+                          port:
+                            description: |-
+                              CEL expression for the target port.
+
+                              If not set, defaults to:
+                                item["port"]
+
+                              Example:
+                                "item.port"
+                            type: string
+                          targetProfile:
+                            description: |-
+                              CEL expression for the target profile.
+
+                              If not set, defaults to:
+                                item["targetProfile"]
+
+                              Example:
+                                "item.type == 'edge' ? 'edge-profile' : 'default'"
+                            type: string
+                          targetsField:
+                            description: |-
+                              CEL expression that selects the list of target objects from the response.
+
+                              This is evaluated once using:
+                                self -> full JSON response
+
+                              Example:
+                                targetsField: "self.results"
+
+                              If not set, the response itself must be a JSON array with the targets.
+                            type: string
+                        type: object
+                      method:
+                        default: GET
+                        description: |-
+                          HTTP method used for the request.
+
+                          Defaults to GET if not specified.
+
+                          Supported values:
+                          - GET  (default, no request body)
+                          - POST (supports request body)
+                        enum:
+                        - GET
+                        - POST
+                        type: string
+                      pagination:
+                        description: Optional pagination configuration for parsing
+                          responses from the HTTP endpoint
+                        properties:
+                          nextField:
+                            description: |-
+                              CEL expression used to extract the next page reference from the response.
+
+                              The expression is evaluated with:
+                                self -> full JSON response
+
+                              It must evaluate to either:
+                                - string (full URL OR token), or
+                                - null (indicates end of pagination)
+
+                              Examples:
+                                "self.next"
+                                "self.next_page_token"
+                                "self['@odata.nextLink']"
+                            type: string
+                          requestParam:
+                            description: |-
+                              Query parameter name used when the extracted value is a token.
+
+                              Required for token-based pagination.
+                              Ignored when NextField resolves to a full URL.
+
+                              Example:
+                                requestParam: "page_token"
+                            type: string
+                        type: object
+                      push:
+                        description: Optional configuration to enable push
+                        properties:
+                          auth:
+                            properties:
+                              bearer:
+                                properties:
+                                  tokenSecretRef:
+                                    description: SecretKeySelector selects a key of
+                                      a Secret.
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                type: object
+                              signature:
+                                properties:
+                                  algorithm:
+                                    default: sha512
+                                    enum:
+                                    - sha1
+                                    - sha256
+                                    - sha512
+                                    type: string
+                                  header:
+                                    description: Header containing the signature
+                                    minLength: 1
+                                    type: string
+                                  secretRef:
+                                    description: SecretKeySelector selects a key of
+                                      a Secret.
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                required:
+                                - algorithm
+                                - header
+                                - secretRef
+                                type: object
+                            type: object
+                            x-kubernetes-validations:
+                            - message: exactly one of the fields in [bearer signature]
+                                must be set
+                              rule: '[has(self.bearer),has(self.signature)].filter(x,x==true).size()
+                                == 1'
+                          enabled:
+                            default: false
+                            type: boolean
+                        required:
+                        - enabled
+                        type: object
+                      timeout:
+                        default: 30s
+                        description: Optional timeout for HTTP requests to the endpoint
+                        type: string
+                      tls:
+                        description: |-
+                          Optional TLS configuration for connecting to the HTTP endpoint
+                          If it is an HTTP endpoint, this will be ignored
+                        properties:
+                          caBundleRef:
+                            description: |-
+                              Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
+                              verifying the certificate chain presented by the Provider when using HTTPS.
+                              Mutually exclusive with CABundle.
+                            properties:
+                              key:
+                                description: The key to select.
+                                type: string
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the ConfigMap or its
+                                  key must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-map-type: atomic
+                          insecureSkipVerify:
+                            default: false
+                            description: Skip TLS verification of the Provider's certificate.
+                            type: boolean
+                        type: object
+                      url:
+                        description: |-
+                          URL of the HTTP endpoint to pull targets from
+                          If defined, the loader will periodically poll this endpoint for targets
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: at least one of the fields in [url push] must be set
+                      rule: '[has(self.url),has(self.push)].filter(x,x==true).size()
+                        >= 1'
                 type: object
-              http:
-                properties:
-                  url:
-                    type: string
-                type: object
-              labels:
+                x-kubernetes-validations:
+                - message: exactly one of the fields in [http] must be set
+                  rule: '[has(self.http)].filter(x,x==true).size() == 1'
+              targetLabels:
                 additionalProperties:
                   type: string
+                description: Optional labels to apply to all targets discovered by
+                  this TargetSource
                 type: object
-              podSelector:
-                description: |-
-                  A label selector is a label query over a set of resources. The result of matchLabels and
-                  matchExpressions are ANDed. An empty label selector matches all objects. A null
-                  label selector matches no objects.
-                properties:
-                  matchExpressions:
-                    description: matchExpressions is a list of label selector requirements.
-                      The requirements are ANDed.
-                    items:
-                      description: |-
-                        A label selector requirement is a selector that contains values, a key, and an operator that
-                        relates the key and values.
-                      properties:
-                        key:
-                          description: key is the label key that the selector applies
-                            to.
-                          type: string
-                        operator:
-                          description: |-
-                            operator represents a key's relationship to a set of values.
-                            Valid operators are In, NotIn, Exists and DoesNotExist.
-                          type: string
-                        values:
-                          description: |-
-                            values is an array of string values. If the operator is In or NotIn,
-                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                            the values array must be empty. This array is replaced during a strategic
-                            merge patch.
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                      required:
-                      - key
-                      - operator
-                      type: object
-                    type: array
-                    x-kubernetes-list-type: atomic
-                  matchLabels:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                      map is equivalent to an element of matchExpressions, whose key field is "key", the
-                      operator is "In", and the values array contains only "value". The requirements are ANDed.
-                    type: object
-                type: object
-                x-kubernetes-map-type: atomic
-              serviceSelector:
-                description: |-
-                  A label selector is a label query over a set of resources. The result of matchLabels and
-                  matchExpressions are ANDed. An empty label selector matches all objects. A null
-                  label selector matches no objects.
-                properties:
-                  matchExpressions:
-                    description: matchExpressions is a list of label selector requirements.
-                      The requirements are ANDed.
-                    items:
-                      description: |-
-                        A label selector requirement is a selector that contains values, a key, and an operator that
-                        relates the key and values.
-                      properties:
-                        key:
-                          description: key is the label key that the selector applies
-                            to.
-                          type: string
-                        operator:
-                          description: |-
-                            operator represents a key's relationship to a set of values.
-                            Valid operators are In, NotIn, Exists and DoesNotExist.
-                          type: string
-                        values:
-                          description: |-
-                            values is an array of string values. If the operator is In or NotIn,
-                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                            the values array must be empty. This array is replaced during a strategic
-                            merge patch.
-                          items:
-                            type: string
-                          type: array
-                          x-kubernetes-list-type: atomic
-                      required:
-                      - key
-                      - operator
-                      type: object
-                    type: array
-                    x-kubernetes-list-type: atomic
-                  matchLabels:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                      map is equivalent to an element of matchExpressions, whose key field is "key", the
-                      operator is "In", and the values array contains only "value". The requirements are ANDed.
-                    type: object
-                type: object
-                x-kubernetes-map-type: atomic
+              targetPort:
+                description: Optional port to use for discovered targets if not specified
+                  by the provider
+                format: int32
+                type: integer
+              targetProfile:
+                description: Optional TargetProfile to use for targets discovered
+                  by this TargetSource if not specified by the provider
+                type: string
+            required:
+            - provider
             type: object
           status:
             description: TargetSourceStatus defines the observed state of TargetSource
             properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the
+                  TargetSource's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               lastSync:
                 format: date-time
                 type: string
+              observedGeneration:
+                format: int64
+                type: integer
               status:
                 type: string
               targetsCount:
                 format: int32
                 type: integer
             required:
-            - lastSync
-            - status
-            - targetsCount
+            - observedGeneration
             type: object
         type: object
     served: true

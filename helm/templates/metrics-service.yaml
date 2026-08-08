@@ -10,7 +10,7 @@ spec:
     - port: {{ .Values.metrics.port }}
       targetPort: metrics
       protocol: TCP
-      name: https
+      name: metrics
   selector:
     {{- include "gnmic-operator.selectorLabels" . | nindent 4 }}
 {{- end }}

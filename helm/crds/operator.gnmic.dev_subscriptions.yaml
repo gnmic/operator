@@ -66,11 +66,28 @@ spec:
               heartbeatInterval:
                 description: The gNMI Subscription heartbeat interval
                 type: string
+              history:
+                description: The gNMI Subscription history configuration
+                properties:
+                  end:
+                    description: The gNMI Subscription history end time
+                    format: date-time
+                    type: string
+                  snapshot:
+                    description: The gNMI Subscription history snapshot time
+                    format: date-time
+                    type: string
+                  start:
+                    description: The gNMI Subscription history start time
+                    format: date-time
+                    type: string
+                type: object
               mode:
                 description: The gNMI SubscriptionList mode (ONCE, STREAM/SAMPLE,
                   STREAM/ON_CHANGE, STREAM/TARGET_DEFINED or POLL)
                 enum:
                 - ONCE
+                - STREAM
                 - STREAM/SAMPLE
                 - STREAM/ON_CHANGE
                 - STREAM/TARGET_DEFINED
@@ -84,6 +101,10 @@ spec:
               prefix:
                 description: The gNMI prefix to subscribe to
                 type: string
+              qos:
+                description: The gNMI Subscription QoS (0-9)
+                format: int32
+                type: integer
               sampleInterval:
                 description: The gNMI Subscription sample interval
                 type: string
@@ -92,6 +113,12 @@ spec:
                 items:
                   type: string
                 type: array
+              suppressRedundant:
+                description: Whether to suppress redundant updates
+                type: boolean
+              target:
+                description: The gNMI target to subscribe to
+                type: string
               updatesOnly:
                 description: Whether to only send updates or all data
                 type: boolean

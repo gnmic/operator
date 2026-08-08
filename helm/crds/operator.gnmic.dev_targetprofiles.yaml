@@ -49,6 +49,7 @@ spec:
                   username, password or token keys in the secret referenced by the field
                 type: string
               encoding:
+                default: JSON
                 description: The gNMI Subscription encoding (JSON, BYTES, PROTO, ASCII,
                   JSON_IETF)
                 enum:
@@ -94,6 +95,7 @@ spec:
                 description: The TCP keep-alive interval
                 type: string
               timeout:
+                default: 10s
                 description: Target connection timeout
                 type: string
               tls:
