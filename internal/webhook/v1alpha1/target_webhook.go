@@ -18,16 +18,13 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -39,7 +36,7 @@ var targetlog = logf.Log.WithName("target-resource")
 
 // SetupTargetWebhookWithManager registers the webhook for Target in the manager.
 func SetupTargetWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Target{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Target{}).
 		WithValidator(&TargetCustomValidator{}).
 		WithDefaulter(&TargetCustomDefaulter{}).
 		Complete()
@@ -58,15 +55,10 @@ type TargetCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &TargetCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Target] = &TargetCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Target.
-func (d *TargetCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	target, ok := obj.(*operatorv1alpha1.Target)
-
-	if !ok {
-		return fmt.Errorf("expected an Target object but got %T", obj)
-	}
+func (d *TargetCustomDefaulter) Default(_ context.Context, target *operatorv1alpha1.Target) error {
 	targetlog.Info("Defaulting for Target", "name", target.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -85,36 +77,24 @@ func (d *TargetCustomDefaulter) Default(_ context.Context, obj runtime.Object) e
 // as this struct is used only for temporary operations and does not need to be deeply copied.
 type TargetCustomValidator struct{}
 
-var _ webhook.CustomValidator = &TargetCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Target] = &TargetCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Target.
-func (v *TargetCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	target, ok := obj.(*operatorv1alpha1.Target)
-	if !ok {
-		return nil, fmt.Errorf("expected a Target object but got %T", obj)
-	}
+func (v *TargetCustomValidator) ValidateCreate(_ context.Context, target *operatorv1alpha1.Target) (admission.Warnings, error) {
 	targetlog.Info("Validation for Target upon creation", "name", target.GetName())
 
 	return nil, validateTargetSpec(target.GetName(), &target.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Target.
-func (v *TargetCustomValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	target, ok := newObj.(*operatorv1alpha1.Target)
-	if !ok {
-		return nil, fmt.Errorf("expected a Target object but got %T", newObj)
-	}
+func (v *TargetCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Target, target *operatorv1alpha1.Target) (admission.Warnings, error) {
 	targetlog.Info("Validation for Target upon update", "name", target.GetName())
 
 	return nil, validateTargetSpec(target.GetName(), &target.Spec)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Target.
-func (v *TargetCustomValidator) ValidateDelete(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	target, ok := obj.(*operatorv1alpha1.Target)
-	if !ok {
-		return nil, fmt.Errorf("expected a Target object but got %T", obj)
-	}
+func (v *TargetCustomValidator) ValidateDelete(_ context.Context, target *operatorv1alpha1.Target) (admission.Warnings, error) {
 	targetlog.Info("Validation for Target upon deletion", "name", target.GetName())
 
 	return nil, nil

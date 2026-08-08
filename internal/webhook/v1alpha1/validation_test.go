@@ -39,9 +39,6 @@ func TestClusterValidator(t *testing.T) {
 	if _, err := v.ValidateCreate(context.Background(), cluster); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := v.ValidateCreate(context.Background(), &operatorv1alpha1.Target{}); err == nil {
-		t.Fatal("expected type error")
-	}
 }
 
 func TestValidatePipelineSpec(t *testing.T) {
@@ -147,9 +144,6 @@ func TestClusterDefaulter(t *testing.T) {
 	d := ClusterCustomDefaulter{}
 	if err := d.Default(context.Background(), &operatorv1alpha1.Cluster{}); err != nil {
 		t.Fatal(err)
-	}
-	if err := d.Default(context.Background(), &operatorv1alpha1.Target{}); err == nil {
-		t.Fatal("expected type error")
 	}
 }
 

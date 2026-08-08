@@ -18,12 +18,9 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -35,7 +32,7 @@ var targetsourcelog = logf.Log.WithName("targetsource-resource")
 
 // SetupTargetSourceWebhookWithManager registers the webhook for TargetSource in the manager.
 func SetupTargetSourceWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.TargetSource{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.TargetSource{}).
 		WithValidator(&TargetSourceCustomValidator{}).
 		WithDefaulter(&TargetSourceCustomDefaulter{}).
 		Complete()
@@ -54,15 +51,10 @@ type TargetSourceCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &TargetSourceCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.TargetSource] = &TargetSourceCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind TargetSource.
-func (d *TargetSourceCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	targetsource, ok := obj.(*operatorv1alpha1.TargetSource)
-
-	if !ok {
-		return fmt.Errorf("expected an TargetSource object but got %T", obj)
-	}
+func (d *TargetSourceCustomDefaulter) Default(_ context.Context, targetsource *operatorv1alpha1.TargetSource) error {
 	targetsourcelog.Info("Defaulting for TargetSource", "name", targetsource.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -83,14 +75,10 @@ type TargetSourceCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &TargetSourceCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.TargetSource] = &TargetSourceCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type TargetSource.
-func (v *TargetSourceCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	targetsource, ok := obj.(*operatorv1alpha1.TargetSource)
-	if !ok {
-		return nil, fmt.Errorf("expected a TargetSource object but got %T", obj)
-	}
+func (v *TargetSourceCustomValidator) ValidateCreate(_ context.Context, targetsource *operatorv1alpha1.TargetSource) (admission.Warnings, error) {
 	targetsourcelog.Info("Validation for TargetSource upon creation", "name", targetsource.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -99,11 +87,7 @@ func (v *TargetSourceCustomValidator) ValidateCreate(_ context.Context, obj runt
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type TargetSource.
-func (v *TargetSourceCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	targetsource, ok := newObj.(*operatorv1alpha1.TargetSource)
-	if !ok {
-		return nil, fmt.Errorf("expected a TargetSource object for the newObj but got %T", newObj)
-	}
+func (v *TargetSourceCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.TargetSource, targetsource *operatorv1alpha1.TargetSource) (admission.Warnings, error) {
 	targetsourcelog.Info("Validation for TargetSource upon update", "name", targetsource.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -112,11 +96,7 @@ func (v *TargetSourceCustomValidator) ValidateUpdate(_ context.Context, oldObj, 
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type TargetSource.
-func (v *TargetSourceCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	targetsource, ok := obj.(*operatorv1alpha1.TargetSource)
-	if !ok {
-		return nil, fmt.Errorf("expected a TargetSource object but got %T", obj)
-	}
+func (v *TargetSourceCustomValidator) ValidateDelete(ctx context.Context, targetsource *operatorv1alpha1.TargetSource) (admission.Warnings, error) {
 	targetsourcelog.Info("Validation for TargetSource upon deletion", "name", targetsource.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.

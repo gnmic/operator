@@ -18,12 +18,9 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -35,7 +32,7 @@ var processorlog = logf.Log.WithName("processor-resource")
 
 // SetupProcessorWebhookWithManager registers the webhook for Processor in the manager.
 func SetupProcessorWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).For(&operatorv1alpha1.Processor{}).
+	return ctrl.NewWebhookManagedBy(mgr, &operatorv1alpha1.Processor{}).
 		WithValidator(&ProcessorCustomValidator{}).
 		WithDefaulter(&ProcessorCustomDefaulter{}).
 		Complete()
@@ -54,15 +51,10 @@ type ProcessorCustomDefaulter struct {
 	// TODO(user): Add more fields as needed for defaulting
 }
 
-var _ webhook.CustomDefaulter = &ProcessorCustomDefaulter{}
+var _ admission.Defaulter[*operatorv1alpha1.Processor] = &ProcessorCustomDefaulter{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind Processor.
-func (d *ProcessorCustomDefaulter) Default(_ context.Context, obj runtime.Object) error {
-	processor, ok := obj.(*operatorv1alpha1.Processor)
-
-	if !ok {
-		return fmt.Errorf("expected an Processor object but got %T", obj)
-	}
+func (d *ProcessorCustomDefaulter) Default(_ context.Context, processor *operatorv1alpha1.Processor) error {
 	processorlog.Info("Defaulting for Processor", "name", processor.GetName())
 
 	// TODO(user): fill in your defaulting logic.
@@ -83,14 +75,10 @@ type ProcessorCustomValidator struct {
 	// TODO(user): Add more fields as needed for validation
 }
 
-var _ webhook.CustomValidator = &ProcessorCustomValidator{}
+var _ admission.Validator[*operatorv1alpha1.Processor] = &ProcessorCustomValidator{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type Processor.
-func (v *ProcessorCustomValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	processor, ok := obj.(*operatorv1alpha1.Processor)
-	if !ok {
-		return nil, fmt.Errorf("expected a Processor object but got %T", obj)
-	}
+func (v *ProcessorCustomValidator) ValidateCreate(_ context.Context, processor *operatorv1alpha1.Processor) (admission.Warnings, error) {
 	processorlog.Info("Validation for Processor upon creation", "name", processor.GetName())
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -99,11 +87,7 @@ func (v *ProcessorCustomValidator) ValidateCreate(_ context.Context, obj runtime
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Processor.
-func (v *ProcessorCustomValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	processor, ok := newObj.(*operatorv1alpha1.Processor)
-	if !ok {
-		return nil, fmt.Errorf("expected a Processor object for the newObj but got %T", newObj)
-	}
+func (v *ProcessorCustomValidator) ValidateUpdate(_ context.Context, _ *operatorv1alpha1.Processor, processor *operatorv1alpha1.Processor) (admission.Warnings, error) {
 	processorlog.Info("Validation for Processor upon update", "name", processor.GetName())
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -112,11 +96,7 @@ func (v *ProcessorCustomValidator) ValidateUpdate(_ context.Context, oldObj, new
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type Processor.
-func (v *ProcessorCustomValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	processor, ok := obj.(*operatorv1alpha1.Processor)
-	if !ok {
-		return nil, fmt.Errorf("expected a Processor object but got %T", obj)
-	}
+func (v *ProcessorCustomValidator) ValidateDelete(ctx context.Context, processor *operatorv1alpha1.Processor) (admission.Warnings, error) {
 	processorlog.Info("Validation for Processor upon deletion", "name", processor.GetName())
 
 	// TODO(user): fill in your validation logic upon object deletion.
