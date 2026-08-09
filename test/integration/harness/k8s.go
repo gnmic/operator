@@ -446,6 +446,74 @@ func AssertNoPanics(t *testing.T, logs string) {
 	}
 }
 
+// OperatorPods lists controller-manager pods in gnmic-system.
+func (k *K8s) OperatorPods(t *testing.T) []corev1.Pod {
+	t.Helper()
+	pods, err := k.listOperatorPods()
+	if err != nil {
+		t.Fatalf("listing operator pods: %v", err)
+	}
+	if len(pods) == 0 {
+		t.Fatal("no controller-manager pods in gnmic-system")
+	}
+	return pods
+}
+
+func (k *K8s) listOperatorPods() ([]corev1.Pod, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var pods corev1.PodList
+	if err := k.Client.List(ctx, &pods,
+		client.InNamespace("gnmic-system"),
+		client.MatchingLabels{"control-plane": "controller-manager"},
+	); err != nil {
+		return nil, err
+	}
+	if len(pods.Items) == 0 {
+		if err := k.Client.List(ctx, &pods,
+			client.InNamespace("gnmic-system"),
+			client.MatchingLabels{"app.kubernetes.io/name": "gnmic"},
+		); err != nil {
+			return nil, err
+		}
+	}
+	return pods.Items, nil
+}
+
+// OperatorLogs returns recent controller-manager logs from gnmic-system.
+func (k *K8s) OperatorLogs(t *testing.T, since time.Duration) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pods, err := k.listOperatorPods()
+	if err != nil {
+		return fmt.Sprintf("<operator logs unavailable: %v>", err)
+	}
+	if len(pods) == 0 {
+		return "<operator logs unavailable: no controller pods>"
+	}
+	sec := int64(since.Seconds())
+	if sec < 1 {
+		sec = 1
+	}
+	req := k.Clientset.CoreV1().Pods("gnmic-system").GetLogs(pods[0].Name, &corev1.PodLogOptions{
+		SinceSeconds: &sec,
+		Container:    "manager",
+	})
+	rc, err := req.Stream(ctx)
+	if err != nil {
+		// Container name may differ; retry without it.
+		req = k.Clientset.CoreV1().Pods("gnmic-system").GetLogs(pods[0].Name, &corev1.PodLogOptions{SinceSeconds: &sec})
+		rc, err = req.Stream(ctx)
+		if err != nil {
+			return fmt.Sprintf("<operator logs unavailable: %v>", err)
+		}
+	}
+	defer rc.Close()
+	b, _ := io.ReadAll(rc)
+	return string(b)
+}
+
 // --- namespaces ----------------------------------------------------------
 
 func (k *K8s) createNamespace(ctx context.Context) error {
@@ -453,23 +521,31 @@ func (k *K8s) createNamespace(ctx context.Context) error {
 		Name:   k.Namespace,
 		Labels: map[string]string{"gnmic.dev/integration-suite": "true"},
 	}}
-	// A previous run may have left the namespace terminating.
-	deadline := time.Now().Add(2 * time.Minute)
+	// Always start from an empty namespace. Reusing a leftover one (failed
+	// teardown, KEEP_NS inspect, or a previous SCALE_TARGETS size) leaves
+	// Target CRs behind and the next run silently collects the wrong fleet.
+	deadline := time.Now().Add(5 * time.Minute)
 	for {
-		err := k.Client.Create(ctx, ns)
-		if err == nil {
-			return nil
-		}
-		if !apierrors.IsAlreadyExists(err) {
-			return err
-		}
 		var existing corev1.Namespace
-		if getErr := k.Client.Get(ctx, types.NamespacedName{Name: k.Namespace}, &existing); getErr == nil &&
-			existing.Status.Phase != corev1.NamespaceTerminating {
-			return nil // usable as-is, e.g. a KEEP_NS re-run
+		getErr := k.Client.Get(ctx, types.NamespacedName{Name: k.Namespace}, &existing)
+		switch {
+		case apierrors.IsNotFound(getErr):
+			if err := k.Client.Create(ctx, ns); err != nil {
+				if apierrors.IsAlreadyExists(err) {
+					continue
+				}
+				return err
+			}
+			return nil
+		case getErr != nil:
+			return getErr
+		case existing.Status.Phase != corev1.NamespaceTerminating:
+			if err := k.Client.Delete(ctx, &existing); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("deleting leftover namespace %s: %w", k.Namespace, err)
+			}
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("namespace %s still terminating after 2m", k.Namespace)
+			return fmt.Errorf("namespace %s still present after 5m waiting for clean recreate", k.Namespace)
 		}
 		time.Sleep(2 * time.Second)
 	}

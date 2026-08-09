@@ -43,11 +43,18 @@ type Options struct {
 	// Defaults to "gnmi-gen.yaml". Empty string disables the simulator, for
 	// suites that do not need one.
 	GnmiGenConfig string
+	// GnmiGenConfigData if non-nil is used as the simulator config instead of
+	// reading GnmiGenConfig from disk. Suites that size the expand range from
+	// an env var use this.
+	GnmiGenConfigData []byte
 	// Baseline fixtures applied after the simulator is up, before m.Run.
 	Baseline []string
 	// RequireTargets are simulated targets that must report "up" before tests
 	// start.
 	RequireTargets []string
+	// AfterBaseline runs after baseline fixtures are applied, before m.Run.
+	// Used by suites that generate large numbers of CRs (e.g. 013-scale).
+	AfterBaseline func(*Suite) error
 }
 
 // Suite is the per-suite context, created once in TestMain and shared by every
@@ -89,7 +96,7 @@ func New(opts Options) (*Suite, error) {
 	}
 	logf("suite %s: namespace %s ready", opts.Name, namespace)
 
-	if err := s.deployGnmiGen(opts.GnmiGenConfig); err != nil {
+	if err := s.deployGnmiGen(opts.GnmiGenConfig, opts.GnmiGenConfigData); err != nil {
 		return s, fmt.Errorf("deploying gnmi-gen: %w", err)
 	}
 
@@ -105,6 +112,11 @@ func New(opts Options) (*Suite, error) {
 		}
 	}
 	logf("suite %s: baseline applied", opts.Name)
+	if opts.AfterBaseline != nil {
+		if err := opts.AfterBaseline(s); err != nil {
+			return s, fmt.Errorf("after baseline: %w", err)
+		}
+	}
 	return s, nil
 }
 
@@ -156,13 +168,17 @@ func (s *Suite) teardown() {
 	s.cancel()
 }
 
-// deployGnmiGen creates the simulator ConfigMap from the suite's config file,
-// applies the Deployment and headless Service, waits for readiness, and opens a
-// port-forward to the REST control plane.
-func (s *Suite) deployGnmiGen(configPath string) error {
-	cfg, err := os.ReadFile(configPath)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", configPath, err)
+// deployGnmiGen creates the simulator ConfigMap from the suite's config file
+// (or inline data), applies the Deployment and headless Service, waits for
+// readiness, and opens a port-forward to the REST control plane.
+func (s *Suite) deployGnmiGen(configPath string, data []byte) error {
+	cfg := data
+	if len(cfg) == 0 {
+		var err error
+		cfg, err = os.ReadFile(configPath)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", configPath, err)
+		}
 	}
 
 	// The simulator config contains its own Go template syntax, which gnmi-gen
@@ -256,7 +272,11 @@ func (s *Suite) podLogs(pod, container string) string {
 }
 
 func (s *Suite) waitTargetsUp(names []string) error {
-	deadline := time.Now().Add(Medium)
+	timeout := Medium
+	if len(names) > 50 {
+		timeout = Long
+	}
+	deadline := time.Now().Add(timeout)
 	for {
 		targets, err := s.GnmiGen.Targets()
 		if err == nil {

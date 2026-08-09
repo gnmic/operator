@@ -273,6 +273,7 @@ integration-suites: ## List the available integration suites
 # CI entrypoint: create the gnmic-it cluster, run every suite, always tear down.
 # Suites share no cluster with run-integration-tests, so the two jobs can run
 # in parallel. Serialize suites (-p 1) so namespace teardown cannot race.
+# 013-scale is skipped unless RUN_SCALE=1 (its TestMain exits immediately).
 .PHONY: run-integration-tests-v2
 run-integration-tests-v2: ## Bring up the gnmi-gen suite env, run all suites, tear down
 	$(MAKE) integration-env-up
@@ -280,4 +281,11 @@ run-integration-tests-v2: ## Bring up the gnmi-gen suite env, run all suites, te
 	$(MAKE) integration-test IT_PARALLEL=1 || status=$$?; \
 	$(MAKE) integration-env-down; \
 	exit $$status
+
+# Nightly / local-only fleet suite. Not wired into CI.
+# SCALE_TARGETS defaults to 200; override e.g. SCALE_TARGETS=50 make integration-test-scale
+SCALE_TARGETS ?= 200
+.PHONY: integration-test-scale
+integration-test-scale: integration-env-check ## Run 013-scale (sets RUN_SCALE=1)
+	RUN_SCALE=1 SCALE_TARGETS=$(SCALE_TARGETS) go test -tags=integration -count=1 -timeout 45m -v ./$(IT_SUITE_DIR)/013-scale/...
 
