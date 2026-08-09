@@ -37,14 +37,16 @@ spec:
 3. Operator recomputes the distribution plan. Existing target assignments are
    preserved — only unassigned targets or targets displaced by capacity limits
    are placed on the new pods.
-4. Configuration is applied to all pods.
+4. Configuration is applied to the pods whose assignment changed. Pods already holding
+   the right configuration are skipped — see
+   [Configuration pushes to the collectors](../operator-resources/#configuration-pushes-to-the-collectors).
 
 ### Scale Down ( 5 → 3 pods)
 
 1. Operator recomputes the distribution plan for the reduced replica count.
    Targets from removed pods flow through rendezvous hashing onto surviving
    pods, bounded by each pod's capacity.
-2. Configuration is applied to remaining pods.
+2. Configuration is applied to the remaining pods whose assignment changed.
 3. Kubernetes terminates pods (`gnmic-4`, `gnmic-3`).
 
 ## Target Redistribution
@@ -309,5 +311,6 @@ All pods connect to all outputs. For outputs like Kafka or Prometheus:
 
 gNMIc pods are stateless by design:
 - No persistent volumes required
-- Configuration comes from operator via REST API
+- Configuration comes from operator via REST API, and is re-sent automatically when a pod
+  restarts
 - Targets can move between pods without data loss

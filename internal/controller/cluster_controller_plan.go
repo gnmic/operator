@@ -36,6 +36,10 @@ func (r *ClusterReconciler) GetClusterPlan(namespace, name string) (*gnmic.Apply
 
 func (r *ClusterReconciler) cleanupPlan(namespace, name string) {
 	r.m.Lock()
-	defer r.m.Unlock()
 	delete(r.plans, namespace+"/"+name)
+	r.m.Unlock()
+	// Per-pod apply records go with the plan, so a deleted cluster does not
+	// leave entries behind, and a cluster recreated under the same name starts
+	// from no assumptions about what its pods hold.
+	r.Applied.InvalidateCluster(namespace, name)
 }

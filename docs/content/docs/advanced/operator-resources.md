@@ -123,6 +123,35 @@ Raise these if you see reconcile latency that does not correspond to API server 
 Client-go logs waits longer than a second, and the `rest_client_rate_limiter_duration_seconds`
 metric shows time spent waiting on the limiter.
 
+## Configuration pushes to the collectors
+
+The operator does not re-send a collector's configuration when nothing about it has changed.
+
+It fingerprints the exact payload it POSTs to each pod and skips the request when the pod
+already holds that configuration. This matters because many things legitimately trigger a
+`Cluster` reconcile — a `Target` edit, a rotated credential Secret, a StatefulSet status
+update — and without this each one re-sent the full configuration to every pod, twice, since
+the apply runs a shrink pass followed by an install pass.
+
+The record is per pod, held in operator memory, and is dropped whenever the operator has
+reason to doubt it:
+
+| Event | Effect |
+|---|---|
+| Pod restarts | Its SSE stream drops; that pod alone is re-configured on the next reconcile |
+| A push fails | Nothing is recorded, so the next reconcile retries |
+| Cluster deleted | All records for that cluster are dropped |
+| Operator restarts | The record is empty; every pod is re-configured once |
+
+**One case is not detected.** If a pod's configuration is changed out of band — by calling
+gNMIc's REST API on the pod directly, for instance `DELETE /api/v1/config/targets/{id}` —
+the pod's connection to the operator stays up and nothing reports the change. The operator
+re-sends unconditionally once its record is older than **5 minutes**, so an out-of-band edit
+is reverted within that window rather than immediately.
+
+If you are testing a change by poking a pod's API directly, expect it to be undone. Change
+the CRs instead.
+
 ## Memory sizing
 
 The chart ships:
