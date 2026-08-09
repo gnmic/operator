@@ -71,6 +71,12 @@ type ClusterReconciler struct {
 	// key is namespace/name of the cluster
 	// value is the apply plan for the cluster
 	plans map[string]*gnmic.ApplyPlan
+
+	// Applied records what each pod was last known to hold, so an unchanged
+	// plan is not re-POSTed to every pod on every reconcile. Shared with the
+	// TargetState controller, which invalidates a pod's entry when its SSE
+	// stream drops. Nil disables the short-circuit.
+	Applied *ApplyCache
 }
 
 const (
@@ -767,6 +773,39 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		return fmt.Sprintf("%s://%s:%d/api/v1/config/apply", scheme, podDNS, restPort)
 	}
 
+	// Work out which pods actually need the plan before sending anything. With
+	// the two-phase apply every reconcile otherwise costs 2 x numPods full
+	// config POSTs, each carrying the shared subscriptions/outputs/processors
+	// maps, and all of it is waste when nothing moved.
+	//
+	// Skipping the shrink pass for an unchanged pod is safe: a target moving
+	// from one pod to another changes the desired set of both, so a pod whose
+	// desired set is unchanged is holding no mover for anyone else to wait on.
+	bodies := make(map[int][]byte, numPods)
+	hashes := make(map[int]string, numPods)
+	changed := make(map[int]bool, numPods)
+	anyChanged := false
+	for podIndex := 0; podIndex < numPods; podIndex++ {
+		podPlan, ok := distResult.PerPodPlans[podIndex]
+		if !ok {
+			continue
+		}
+		body, err := json.Marshal(podPlan)
+		if err != nil {
+			return 0, fmt.Errorf("failed to marshal apply plan for pod %d: %w", podIndex, err)
+		}
+		hash := fingerprint(body)
+		bodies[podIndex] = body
+		hashes[podIndex] = hash
+		if !r.Applied.Unchanged(streamKey(cluster.Namespace, cluster.Name, podIndex), hash) {
+			changed[podIndex] = true
+			anyChanged = true
+		}
+	}
+	if !anyChanged {
+		return int32(len(distResult.UnassignedTargets)), nil
+	}
+
 	// Two-phase apply avoids double-collection when a target moves between pods.
 	// A single ordered pass can start the new owner before the old owner has
 	// dropped the target (e.g. moving from pod 2 to pod 0). Phase 1 shrinks
@@ -798,7 +837,7 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		}
 		for podIndex := 0; podIndex < numPods; podIndex++ {
 			podPlan, ok := distResult.PerPodPlans[podIndex]
-			if !ok {
+			if !ok || !changed[podIndex] {
 				continue
 			}
 			shrink := shrinkPodPlan(podPlan, plan.CurrentTargetAssignment[podIndex])
@@ -821,14 +860,17 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 
 	for podIndex := 0; podIndex < numPods; podIndex++ {
 		podPlan, ok := distResult.PerPodPlans[podIndex]
-		if !ok {
+		if !ok || !changed[podIndex] {
 			continue
 		}
 		url := podURL(podIndex)
 		logger.Info("sending config to gNMIc pod", "url", url)
-		if err := r.sendApplyRequest(ctx, url, podPlan, httpClient); err != nil {
+		if err := r.sendApplyBody(ctx, url, bodies[podIndex], httpClient); err != nil {
 			return 0, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
 		}
+		// Recorded only after the POST succeeds. Recording the attempt would
+		// make a failed apply look applied until the plan changes again.
+		r.Applied.Record(streamKey(cluster.Namespace, cluster.Name, podIndex), hashes[podIndex])
 		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets))
 	}
 
@@ -946,15 +988,20 @@ func shrinkPodPlan(podPlan *gnmic.ApplyPlan, previous map[string]struct{}) *gnmi
 	return out
 }
 
-// sendApplyRequest sends an apply plan to a single gNMIc pod
+// sendApplyRequest sends an apply plan to a single gNMIc pod.
 func (r *ClusterReconciler) sendApplyRequest(ctx context.Context, url string, plan *gnmic.ApplyPlan, httpClient *http.Client) error {
-	logger := log.FromContext(ctx)
-
-	// marshal the plan to JSON
 	jsonData, err := json.Marshal(plan)
 	if err != nil {
 		return fmt.Errorf("failed to marshal apply plan: %w", err)
 	}
+	return r.sendApplyBody(ctx, url, jsonData, httpClient)
+}
+
+// sendApplyBody POSTs an already-marshalled plan. The install pass marshals up
+// front to fingerprint the payload, so re-marshalling here would double the
+// cost of the thing this change exists to reduce.
+func (r *ClusterReconciler) sendApplyBody(ctx context.Context, url string, jsonData []byte, httpClient *http.Client) error {
+	logger := log.FromContext(ctx)
 
 	logger.Info("sending config to gNMIc pod", "url", url, "payloadSize", len(jsonData))
 

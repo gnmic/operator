@@ -65,6 +65,11 @@ type TargetStateReconciler struct {
 	// streams tracks active SSE goroutines.
 	// Key: "namespace/clusterName/podIndex"
 	streams map[string]context.CancelFunc
+
+	// Applied is the Cluster controller's record of what each pod holds. This
+	// controller is the only component that learns when a pod went away, so it
+	// is the one that invalidates. Nil is valid and disables the coupling.
+	Applied *ApplyCache
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=clusters,verbs=get;list;watch
@@ -191,6 +196,13 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 			if receivedEvents {
 				delay = reconnectMinDelay
 			}
+			// The stream ended for a reason other than this operator
+			// cancelling it, so the pod may have restarted and come back
+			// empty. Its recorded configuration can no longer be trusted;
+			// drop it so the next reconcile re-applies to this pod. A blip
+			// that did not restart the pod costs one redundant apply, which
+			// is the direction to err in.
+			r.Applied.Invalidate(streamKey(cluster.Namespace, cluster.Name, podIndex))
 			logger.Info("SSE stream disconnected, reconnecting", "delay", delay)
 			sleepOrDone(ctx, delay)
 			delay = backoff(delay)

@@ -155,9 +155,16 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+	// Shared between the Cluster and TargetState controllers: the first records
+	// what it applied to each pod, the second invalidates a pod's record when
+	// its SSE stream drops, which is the operator's only sign that a pod may
+	// have restarted and lost its configuration.
+	applyCache := controller.NewApplyCache()
+
 	clusterReconciler := &controller.ClusterReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Applied: applyCache,
 	}
 	if err = clusterReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
@@ -254,8 +261,9 @@ func main() {
 		}
 	}
 	if err = (&controller.TargetStateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		Applied: applyCache,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetState")
 		os.Exit(1)
