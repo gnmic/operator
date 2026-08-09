@@ -43,6 +43,8 @@ spec:
             {{- end }}
             - --discovery-chunk-size={{ .Values.discovery.chunkSize }}
             - --discovery-buffer-size={{ .Values.discovery.bufferSize }}
+            - --kube-api-qps={{ .Values.kubeApi.qps }}
+            - --kube-api-burst={{ .Values.kubeApi.burst }}
           env:
             - name: POD_NAMESPACE
               valueFrom:

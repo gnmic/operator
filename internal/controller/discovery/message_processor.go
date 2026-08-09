@@ -234,6 +234,13 @@ func (m *MessageProcessor) processEvent(ctx context.Context, event core.Discover
 	// Apply events
 	err := m.applyEvent(ctx, event, logger)
 	if err == nil {
+		// Logged here rather than in applyEvent: this is the single-event path, whereas
+		// applySnapshot calls applyEvent once per discovered target and logs aggregate
+		// counts instead.
+		logger.Info("applied discovery event",
+			"event", event.Event,
+			"name", event.Target.Name,
+		)
 		switch event.Event {
 		case core.EventApply:
 			m.targetCount++
@@ -345,10 +352,6 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 				"targetName", event.Target.Name,
 			)
 			return err
-		} else {
-			logger.Info("deleted target object",
-				"name", event.Target.Name,
-			)
 		}
 	case core.EventApply:
 		target := generateTargetResource(event.Target, m.targetSource)
@@ -358,10 +361,6 @@ func (m *MessageProcessor) applyEvent(ctx context.Context, event core.DiscoveryE
 				"targetName", event.Target.Name,
 			)
 			return err
-		} else {
-			logger.Info("applied target object",
-				"name", event.Target.Name,
-			)
 		}
 	}
 

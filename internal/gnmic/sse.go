@@ -105,9 +105,16 @@ func StreamTargetState(ctx context.Context, httpClient *http.Client, podURL stri
 				continue
 			}
 
-			events <- SSEEvent{
+			// A bare send here blocks forever once the buffer is full and the consumer
+			// has stopped draining, so the goroutine never returns to scanner.Scan(),
+			// never observes the closed body, and leaks along with its connection.
+			select {
+			case events <- SSEEvent{
 				EventType: currentEventType,
 				Data:      data,
+			}:
+			case <-ctx.Done():
+				return ctx.Err()
 			}
 		}
 	}

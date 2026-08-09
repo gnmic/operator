@@ -78,6 +78,11 @@ const (
 	clusterFinalizer  = "operator.gnmic.dev/cluster-finalizer"
 	defaultRestPort   = 7890
 	controllerCACMSfx = "-controller-ca"
+
+	// readinessBackstopInterval is how often to re-check StatefulSet readiness when it is
+	// not yet satisfied. Readiness changes already arrive via the Owns(&appsv1.StatefulSet{})
+	// watch, so this only needs to cover a missed event, not to drive the wait.
+	readinessBackstopInterval = 20 * time.Second
 )
 
 // Condition types for Cluster status
@@ -136,8 +141,9 @@ func (r *ClusterReconciler) FetchCredentials(namespace, secretRef string) (*gnmi
 //+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=pods,verbs=list;watch
+// Secrets are read-only everywhere in this operator (credential and issuer-CA lookups);
+// list and watch are required because they are served from the informer cache.
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=issuers,verbs=get;list;watch
 
@@ -357,8 +363,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			pipelineData.TargetProfiles[targetProfile.Namespace+gnmic.Delimiter+targetProfile.Name] = targetProfile.Spec
 		}
-		logger.Info("cluster pipeline targets", "targets", targets)
-		logger.Info("cluster pipeline target profiles", "targetProfiles", targetProfilesNames)
+		logger.Info("cluster pipeline resolved targets", "count", len(targets), "targetProfiles", len(targetProfilesNames))
 
 		// retrieve subscriptions for this pipeline
 		subscriptions, err := r.resolveSubscriptions(ctx, &pipeline)
@@ -368,7 +373,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		for _, subscription := range subscriptions {
 			pipelineData.Subscriptions[subscription.Namespace+gnmic.Delimiter+subscription.Name] = subscription.Spec
 		}
-		logger.Info("cluster pipeline subscriptions", "subscriptions", subscriptions)
+		logger.Info("cluster pipeline resolved subscriptions", "count", len(subscriptions))
 
 		// retrieve outputs for this pipeline
 		outputs, err := r.resolveOutputs(ctx, &pipeline)
@@ -390,7 +395,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				}
 			}
 		}
-		logger.Info("cluster pipeline outputs", "outputs", outputs)
+		logger.Info("cluster pipeline resolved outputs", "count", len(outputs))
 
 		// retrieve inputs for this pipeline
 		inputs, err := r.resolveInputs(ctx, &pipeline)
@@ -400,7 +405,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		for _, input := range inputs {
 			pipelineData.Inputs[pipelineNN+gnmic.Delimiter+input.Name] = input.Spec
 		}
-		logger.Info("cluster pipeline inputs", "inputs", inputs)
+		logger.Info("cluster pipeline resolved inputs", "count", len(inputs))
 
 		// retrieve output processors for this pipeline (order: refs first, then sorted selectors)
 		outputProcessors, err := r.resolveOutputProcessors(ctx, &pipeline)
@@ -412,7 +417,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			pipelineData.OutputProcessors[processorNN] = processor.Spec
 			pipelineData.OutputProcessorOrder = append(pipelineData.OutputProcessorOrder, processorNN)
 		}
-		logger.Info("cluster pipeline output processors", "outputProcessors", outputProcessors)
+		logger.Info("cluster pipeline resolved output processors", "count", len(outputProcessors))
 
 		// retrieve input processors for this pipeline (order: refs first, then sorted selectors)
 		inputProcessors, err := r.resolveInputProcessors(ctx, &pipeline)
@@ -424,7 +429,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			pipelineData.InputProcessors[processorNN] = processor.Spec
 			pipelineData.InputProcessorOrder = append(pipelineData.InputProcessorOrder, processorNN)
 		}
-		logger.Info("cluster pipeline input processors", "inputProcessors", inputProcessors)
+		logger.Info("cluster pipeline resolved input processors", "count", len(inputProcessors))
 
 		// retrieve tunnel target policies for this pipeline
 		tunnelTargetPolicies, err := r.resolveTunnelTargetPolicies(ctx, &pipeline)
@@ -496,8 +501,13 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	desiredReplicas := ptr.Deref(statefulSet.Spec.Replicas, 0)
 	// only apply new config when all desired replicas are ready
 	if statefulSet.Status.ReadyReplicas < desiredReplicas {
-		logger.Info("waiting for gNMIc pods to be ready before applying config")
-		return ctrl.Result{RequeueAfter: time.Second}, nil
+		logger.Info("waiting for gNMIc pods to be ready before applying config",
+			"readyReplicas", statefulSet.Status.ReadyReplicas, "desiredReplicas", desiredReplicas)
+		// The StatefulSet is watched via Owns() with no predicate, so ReadyReplicas
+		// transitions already wake this controller. This requeue is only a backstop for a
+		// missed event; at 1s it re-ran the entire plan build once per second for the whole
+		// duration of a rollout.
+		return ctrl.Result{RequeueAfter: readinessBackstopInterval}, nil
 	}
 	// A reconcile queued while Pipelines were empty can run after a newer
 	// reconcile already applied a non-empty plan. Re-list immediately before
