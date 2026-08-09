@@ -270,3 +270,14 @@ integration-test-%: integration-env-check ## Run a single suite, e.g. make integ
 integration-suites: ## List the available integration suites
 	@ls -1 $(IT_SUITE_DIR)
 
+# CI entrypoint: create the gnmic-it cluster, run every suite, always tear down.
+# Suites share no cluster with run-integration-tests, so the two jobs can run
+# in parallel. Serialize suites (-p 1) so namespace teardown cannot race.
+.PHONY: run-integration-tests-v2
+run-integration-tests-v2: ## Bring up the gnmi-gen suite env, run all suites, tear down
+	$(MAKE) integration-env-up
+	@status=0; \
+	$(MAKE) integration-test IT_PARALLEL=1 || status=$$?; \
+	$(MAKE) integration-env-down; \
+	exit $$status
+
