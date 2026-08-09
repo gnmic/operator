@@ -54,13 +54,14 @@ spec:
               port: 8080
             initialDelaySeconds: 1
             periodSeconds: 2
-            failureThreshold: 30
+            # Scale suites expand hundreds of servers; give the pod time to bind.
+            failureThreshold: 90
           resources:
             requests:
               cpu: 100m
               memory: 64Mi
             limits:
-              memory: 512Mi
+              memory: 2Gi
       volumes:
         - name: config
           configMap:

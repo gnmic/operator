@@ -4,11 +4,16 @@ package harness
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
 // Condition types set by the operator. Mirrors the constants in
@@ -112,6 +117,55 @@ func WaitTargetState(t *testing.T, k *K8s, name, want string) {
 			return false, err.Error()
 		}
 		return tgt.Status.State == want, fmt.Sprintf("state=%q clusters=%d", tgt.Status.State, tgt.Status.Clusters)
+	})
+}
+
+// WaitTargetsReady waits until every named Target reports aggregate
+// connectionState READY. One List per poll — serial Get of hundreds of CRs
+// is too slow and stresses the API after chaos.
+func WaitTargetsReady(t *testing.T, k *K8s, timeout time.Duration, names []string) {
+	t.Helper()
+	WaitFor(t, timeout, time.Second, "all Target CRs READY", func() (bool, string) {
+		var list gnmicv1alpha1.TargetList
+		if err := k.Client.List(k.Ctx, &list, client.InNamespace(k.Namespace)); err != nil {
+			return false, err.Error()
+		}
+		byName := make(map[string]*gnmicv1alpha1.Target, len(list.Items))
+		for i := range list.Items {
+			byName[list.Items[i].Name] = &list.Items[i]
+		}
+		var bad []string
+		for _, name := range names {
+			tgt, ok := byName[name]
+			if !ok {
+				bad = append(bad, name+"(missing)")
+				continue
+			}
+			if tgt.Status.State == "READY" {
+				continue
+			}
+			detail := tgt.Status.State
+			if detail == "" {
+				detail = "empty"
+			}
+			for cname, cs := range tgt.Status.ClusterStates {
+				detail += fmt.Sprintf(" %s:%s/%s", cname, cs.State, cs.ConnectionState)
+			}
+			bad = append(bad, fmt.Sprintf("%s=%s", name, detail))
+		}
+		if len(bad) == 0 {
+			return true, ""
+		}
+		sort.Strings(bad)
+		shown := bad
+		if len(shown) > 8 {
+			shown = shown[:8]
+		}
+		msg := fmt.Sprintf("%d not READY: %s", len(bad), strings.Join(shown, "; "))
+		if len(bad) > 8 {
+			msg += fmt.Sprintf(" …+%d", len(bad)-8)
+		}
+		return false, msg
 	})
 }
 

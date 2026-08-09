@@ -1,0 +1,45 @@
+# expand.end is filled at runtime from SCALE_TARGETS (+1 spare).
+# Placeholder __SCALE_END__ must stay — do not use {{ }} here; those belong to gnmi-gen.
+global:
+  seed: 42
+  shutdown_timeout: 5s
+
+api:
+  listen: 0.0.0.0:8080
+
+data_profiles:
+  interface_counter:
+    type: uint64
+    update_frequency: 10s
+    random:
+      distribution: counter
+      min: 100000
+      max: 900000
+      step_min: 100
+      step_max: 10000
+
+  system_name:
+    type: string
+    update_frequency: 30s
+    random:
+      value: dev-{{.index}}
+
+servers:
+  # Fleet targets on :57400+ plus one spare for address-move tests.
+  - name: dev-{{.index}}
+    expand:
+      index:
+        start: 1
+        end: __SCALE_END__
+      listen:
+        host: 0.0.0.0
+        port_start: 57400
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter
+      - path: /system/name
+        profile: system_name

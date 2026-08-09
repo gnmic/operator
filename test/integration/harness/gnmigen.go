@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -201,12 +204,20 @@ func (g *GnmiGen) Reboot(downtime time.Duration, targets ...string) error {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return err
 	}
+	var rejected []string
 	for _, r := range out.Results {
 		if !r.Accepted {
-			return fmt.Errorf("reboot of %s not accepted: %s", r.Target, r.Error)
+			rejected = append(rejected, fmt.Sprintf("%s (%s)", r.Target, r.Error))
 		}
 	}
-	return nil
+	if len(rejected) == 0 {
+		return nil
+	}
+	if len(rejected) == len(out.Results) {
+		return fmt.Errorf("reboot: none accepted: %s", strings.Join(rejected, "; "))
+	}
+	// Partial accept is normal during overlapping chaos waves.
+	return fmt.Errorf("reboot: %d/%d not accepted: %s", len(rejected), len(out.Results), strings.Join(rejected, "; "))
 }
 
 // --- polling assertions --------------------------------------------------
@@ -308,4 +319,145 @@ func (g *GnmiGen) ConsistentlyCollectedOnce(t *testing.T, dur time.Duration, per
 		}
 		return true, ""
 	})
+}
+
+// FleetStreamStats is one sample of stream counts across a set of targets.
+type FleetStreamStats struct {
+	Exact   int // targets with exactly want streams
+	Over    int // targets with more than want
+	Under   int // targets with fewer than want (including errors)
+	Samples map[string]int
+}
+
+// SampleFleetStreams counts open streams for every named target in one pass.
+func (g *GnmiGen) SampleFleetStreams(perTarget int, targets []string) FleetStreamStats {
+	st := FleetStreamStats{Samples: make(map[string]int, len(targets))}
+	for _, name := range targets {
+		n := g.StreamCount(name)
+		st.Samples[name] = n
+		switch {
+		case n == perTarget:
+			st.Exact++
+		case n > perTarget:
+			st.Over++
+		default:
+			st.Under++
+		}
+	}
+	return st
+}
+
+// WaitFleetStreams waits until every target has exactly perTarget streams.
+// One poll loop covers the whole fleet; serial WaitStreams would take too long
+// at hundreds of targets.
+func (g *GnmiGen) WaitFleetStreams(t *testing.T, timeout time.Duration, perTarget int, targets []string) {
+	t.Helper()
+	WaitFor(t, timeout, 2*time.Second, fmt.Sprintf("fleet exactly %d stream(s) each", perTarget), func() (bool, string) {
+		st := g.SampleFleetStreams(perTarget, targets)
+		if st.Exact == len(targets) {
+			return true, ""
+		}
+		return false, formatFleetStreamMismatch(st, perTarget, 8)
+	})
+}
+
+func formatFleetStreamMismatch(st FleetStreamStats, perTarget, limit int) string {
+	var under, over []string
+	for name, n := range st.Samples {
+		switch {
+		case n > perTarget:
+			over = append(over, fmt.Sprintf("%s=%d", name, n))
+		case n < perTarget:
+			under = append(under, fmt.Sprintf("%s=%d", name, n))
+		}
+	}
+	sort.Strings(under)
+	sort.Strings(over)
+	msg := fmt.Sprintf("exact=%d over=%d under=%d (of %d)", st.Exact, st.Over, st.Under, len(st.Samples))
+	if len(under) > 0 {
+		msg += "; under=[" + joinCapped(under, limit) + "]"
+	}
+	if len(over) > 0 {
+		msg += "; over=[" + joinCapped(over, limit) + "]"
+	}
+	return msg
+}
+
+func joinCapped(items []string, limit int) string {
+	if len(items) <= limit {
+		return strings.Join(items, " ")
+	}
+	return strings.Join(items[:limit], " ") + fmt.Sprintf(" …+%d", len(items)-limit)
+}
+
+// ConsistentlyFleetCollectedOnce holds the fleet invariant over a window.
+func (g *GnmiGen) ConsistentlyFleetCollectedOnce(t *testing.T, dur time.Duration, perTarget int, targets []string) {
+	t.Helper()
+	Consistently(t, dur, 2*time.Second, fmt.Sprintf("fleet exactly %d stream(s) each", perTarget), func() (bool, string) {
+		st := g.SampleFleetStreams(perTarget, targets)
+		if st.Over > 0 {
+			return false, fmt.Sprintf("%d target(s) over-collected", st.Over)
+		}
+		if st.Exact != len(targets) {
+			return false, fmt.Sprintf("exact=%d under=%d (of %d)", st.Exact, st.Under, len(targets))
+		}
+		return true, ""
+	})
+}
+
+// RebootRandom reboots a random non-empty subset of currently-up targets with
+// a downtime uniformly chosen in [min, max]. maxSubset caps wave size so
+// overlapping chaos does not reboot the entire fleet every tick (which mostly
+// yields "busy or rebooting" and a reconnect storm). maxSubset <= 0 means
+// min(32, len(targets)/4) with a floor of 1.
+func (g *GnmiGen) RebootRandom(targets []string, min, max time.Duration, maxSubset int) error {
+	if len(targets) == 0 {
+		return nil
+	}
+	if max < min {
+		min, max = max, min
+	}
+	pool := g.upTargets(targets)
+	if len(pool) == 0 {
+		return fmt.Errorf("reboot: no targets currently up")
+	}
+	capN := maxSubset
+	if capN <= 0 {
+		capN = len(pool) / 4
+		if capN < 1 {
+			capN = 1
+		}
+		if capN > 32 {
+			capN = 32
+		}
+	}
+	if capN > len(pool) {
+		capN = len(pool)
+	}
+	n := 1 + rand.Intn(capN)
+	perm := rand.Perm(len(pool))
+	subset := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		subset = append(subset, pool[perm[i]])
+	}
+	span := max - min
+	downtime := min
+	if span > 0 {
+		downtime = min + time.Duration(rand.Int63n(int64(span)+1))
+	}
+	return g.Reboot(downtime, subset...)
+}
+
+func (g *GnmiGen) upTargets(names []string) []string {
+	all, err := g.Targets()
+	if err != nil {
+		return append([]string(nil), names...)
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if t, ok := all[n]; ok && t.Status == "up" {
+			out = append(out, n)
+		}
+	}
+	return out
 }
