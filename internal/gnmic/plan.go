@@ -43,6 +43,11 @@ type PlanBuilder struct {
 	prometheusOutputPorts map[string]map[string]int32
 	// target distribution capacity
 	targetDistributionCapacity int
+	// credsCache memoises credential lookups for the duration of a single Build().
+	// Thousands of targets typically share a handful of secrets, so without this the
+	// same secret is fetched once per target. Deliberately not retained across builds:
+	// a longer-lived cache would stop credential rotation from taking effect.
+	credsCache map[string]*Credentials
 }
 
 type resourceRelationship struct {
@@ -104,6 +109,9 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 		TunnelTargetMatches:     make(map[string]*TunnelTargetMatch),
 		PrometheusPorts:         make(map[string]int32),
 	}
+	// Credentials are memoised per build only — see credsCache.
+	b.credsCache = make(map[string]*Credentials)
+
 	// 1) collect relationships across all pipelines
 	b.collectRelationships(plan)
 
@@ -269,6 +277,25 @@ func (b *PlanBuilder) findTargetCurrentAssignmentBoundedLoadHashing(targetCR v1a
 	return &podIdx
 }
 
+// fetchCredentialsCached resolves a secret reference, reusing any value already fetched
+// during the current Build(). The cache is cleared at the start of every Build() so that a
+// rotated secret is picked up on the next reconcile.
+func (b *PlanBuilder) fetchCredentialsCached(namespace, secretRef string) (*Credentials, error) {
+	key := namespace + Delimiter + secretRef
+	if creds, ok := b.credsCache[key]; ok {
+		return creds, nil
+	}
+	creds, err := b.credsFetcher.FetchCredentials(namespace, secretRef)
+	if err != nil {
+		return nil, err
+	}
+	if b.credsCache == nil {
+		b.credsCache = make(map[string]*Credentials)
+	}
+	b.credsCache[key] = creds
+	return creds, nil
+}
+
 func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData *PipelineData) error {
 	for targetNN, target := range pipelineData.Targets {
 		if _, ok := plan.Targets[targetNN]; ok {
@@ -287,7 +314,7 @@ func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData *PipelineData) 
 		var creds *Credentials
 		if profileSpec.CredentialsRef != "" && b.credsFetcher != nil {
 			var err error
-			creds, err = b.credsFetcher.FetchCredentials(namespace, profileSpec.CredentialsRef)
+			creds, err = b.fetchCredentialsCached(namespace, profileSpec.CredentialsRef)
 			if err != nil {
 				return err
 			}
@@ -430,7 +457,7 @@ func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData *Pi
 		var creds *Credentials
 		if profileSpec.CredentialsRef != "" && b.credsFetcher != nil {
 			var err error
-			creds, err = b.credsFetcher.FetchCredentials(namespace, profileSpec.CredentialsRef)
+			creds, err = b.fetchCredentialsCached(namespace, profileSpec.CredentialsRef)
 			if err != nil {
 				return err
 			}

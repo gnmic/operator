@@ -36,13 +36,23 @@ securityContext:
     drop:
       - "ALL"
 
+# Memory scales with the number of cached objects, not just Target count: the manager
+# caches every Secret, ConfigMap, Service, StatefulSet and Certificate in the cluster.
+# 256Mi is not enough for a few thousand Targets. Measure RSS in your own environment and
+# raise these above the observed peak with headroom.
 resources:
   limits:
     cpu: 500m
-    memory: 256Mi
+    memory: 1Gi
   requests:
-    cpu: 10m
-    memory: 64Mi
+    cpu: 100m
+    memory: 256Mi
+
+# Kubernetes API client rate limits. The client-go defaults (20 QPS / 30 burst) throttle
+# every controller in the process behind whichever one is busiest.
+kubeApi:
+  qps: 50
+  burst: 100
 
 nodeSelector: {}
 

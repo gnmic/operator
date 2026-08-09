@@ -71,6 +71,8 @@ func main() {
 	var apiAddr string
 	var discoveryChunkSize int
 	var discoveryBufferSize int
+	var kubeAPIQPS float64
+	var kubeAPIBurst int
 	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -80,6 +82,8 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.IntVar(&discoveryChunkSize, "discovery-chunk-size", 100, "Maximum number of targets/events sent in a single discovery message.")
 	flag.IntVar(&discoveryBufferSize, "discovery-buffer-size", 10, "Amount of discovery messages that can be queued in the channel buffer.")
+	flag.Float64Var(&kubeAPIQPS, "kube-api-qps", 50, "Maximum sustained queries per second to the Kubernetes API server. The client-go default (20) is too low for large target populations.")
+	flag.IntVar(&kubeAPIBurst, "kube-api-burst", 100, "Maximum burst of queries to the Kubernetes API server.")
 	opts := zap.Options{
 		Development: devMode,
 	}
@@ -90,7 +94,15 @@ func main() {
 
 	discoveryRegistry := discovery.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// The rest-client defaults (20 QPS / 30 burst) throttle every controller in the
+	// process behind whichever one is busiest. With a few thousand Targets that shows up
+	// as inexplicably slow Cluster reconciles rather than as an obvious error.
+	restConfig := ctrl.GetConfigOrDie()
+	restConfig.QPS = float32(kubeAPIQPS)
+	restConfig.Burst = kubeAPIBurst
+	setupLog.Info("configured Kubernetes API client rate limits", "qps", restConfig.QPS, "burst", restConfig.Burst)
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
