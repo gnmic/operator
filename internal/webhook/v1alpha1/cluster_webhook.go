@@ -81,7 +81,7 @@ var _ admission.Validator[*operatorv1alpha1.Cluster] = &ClusterCustomValidator{}
 func (v *ClusterCustomValidator) ValidateCreate(_ context.Context, cluster *operatorv1alpha1.Cluster) (admission.Warnings, error) {
 	clusterlog.Info("Validation for Cluster upon creation", "name", cluster.GetName())
 
-	return nil, validateClusterSpec(&cluster.Spec)
+	return unwatchedNamespaceWarning("Cluster", cluster.GetNamespace()), validateClusterSpec(&cluster.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Cluster.

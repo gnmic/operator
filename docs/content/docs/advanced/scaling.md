@@ -8,6 +8,10 @@ description: >
 
 The gNMIc Operator supports horizontal scaling of collector clusters. This page explains how scaling works and best practices for production deployments.
 
+> This page is about sizing the gNMIc **collector pods**. For the operator pod itself — its
+> memory footprint, `--watch-namespaces`, and Kubernetes API rate limits — see
+> [Operator Resources](../operator-resources/).
+
 ## Scaling a Cluster
 
 To scale a cluster, update the `replicas` field:

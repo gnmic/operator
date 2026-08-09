@@ -22,6 +22,7 @@ import (
 	"flag"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -34,6 +35,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -73,6 +75,7 @@ func main() {
 	var discoveryBufferSize int
 	var kubeAPIQPS float64
 	var kubeAPIBurst int
+	var watchNamespaces string
 	flag.StringVar(&apiAddr, "api-bind-address", "", "The address the operator API endpoint binds to. Disabled if empty.")
 	flag.BoolVar(&devMode, "dev-mode", false, "Enable development mode.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
@@ -84,6 +87,7 @@ func main() {
 	flag.IntVar(&discoveryBufferSize, "discovery-buffer-size", 10, "Amount of discovery messages that can be queued in the channel buffer.")
 	flag.Float64Var(&kubeAPIQPS, "kube-api-qps", 50, "Maximum sustained queries per second to the Kubernetes API server. The client-go default (20) is too low for large target populations.")
 	flag.IntVar(&kubeAPIBurst, "kube-api-burst", 100, "Maximum burst of queries to the Kubernetes API server.")
+	flag.StringVar(&watchNamespaces, "watch-namespaces", "", "Comma-separated list of namespaces to watch. Empty (the default) watches all namespaces, which caches every Secret, ConfigMap, Service, StatefulSet and Certificate in the cluster.")
 	opts := zap.Options{
 		Development: devMode,
 	}
@@ -102,8 +106,35 @@ func main() {
 	restConfig.Burst = kubeAPIBurst
 	setupLog.Info("configured Kubernetes API client rate limits", "qps", restConfig.QPS, "burst", restConfig.Burst)
 
+	// Restricting the cache to specific namespaces is the single largest reduction in
+	// informer footprint available: the manager caches every Secret, ConfigMap, Service,
+	// StatefulSet and Certificate it touches, cluster-wide, and Secrets in particular are
+	// unbounded and unrelated to Target count.
+	//
+	// This is safe to scope because every resolution path is already namespace-local — a
+	// Pipeline only ever resolves Targets, Subscriptions, Outputs, Inputs and Processors in
+	// its own namespace, and credentials are read from the Target's namespace. Nothing is
+	// read from the operator's own namespace: its TLS material comes from mounted files, not
+	// the API.
+	namespaces := parseWatchNamespaces(watchNamespaces)
+	cacheOpts := cache.Options{}
+	if len(namespaces) > 0 {
+		cacheOpts.DefaultNamespaces = make(map[string]cache.Config, len(namespaces))
+		for _, ns := range namespaces {
+			cacheOpts.DefaultNamespaces[ns] = cache.Config{}
+		}
+		setupLog.Info("restricting cache to namespaces", "namespaces", namespaces)
+	} else {
+		setupLog.Info("watching all namespaces; set --watch-namespaces to reduce cache footprint")
+	}
+	// The webhooks are registered cluster-wide, so they receive admission requests for
+	// namespaces this instance does not reconcile. Give them the same list so they can warn
+	// rather than silently accept resources that will never be acted on.
+	webhookv1alpha1.SetWatchedNamespaces(namespaces)
+
 	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
+		Cache:                  cacheOpts,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
@@ -289,4 +320,23 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+// parseWatchNamespaces splits the --watch-namespaces value into a deduplicated, ordered
+// list. An empty or whitespace-only value yields nil, meaning "watch all namespaces".
+func parseWatchNamespaces(value string) []string {
+	seen := make(map[string]struct{})
+	var namespaces []string
+	for _, ns := range strings.Split(value, ",") {
+		ns = strings.TrimSpace(ns)
+		if ns == "" {
+			continue
+		}
+		if _, ok := seen[ns]; ok {
+			continue
+		}
+		seen[ns] = struct{}{}
+		namespaces = append(namespaces, ns)
+	}
+	return namespaces
 }
