@@ -1,6 +1,6 @@
 CLAB_VERSION ?= 0.70.1
 KIND_VERSION ?= v0.20.0
-GNMIC_VERSION ?= 0.44.1
+GNMIC_VERSION ?= 0.47.0
 KUBECTL_VERSION ?= v1.31.0
 TEST_CLUSTER_NAME ?= test-kind
 CERT_MANAGER_VERSION ?= v1.19.3
@@ -189,9 +189,9 @@ IT_CONTEXT      := kind-$(IT_CLUSTER_NAME)
 IT_KUBECTL      := kubectl --context $(IT_CONTEXT)
 IT_OPERATOR_IMG ?= gnmic-operator:integration
 GNMIGEN_IMAGE   ?= registry.kmrd.dev/gnmic/gnmigen:0.0.0
-GNMIC_IMAGE     ?= ghcr.io/openconfig/gnmic:0.46.0
+GNMIC_IMAGE     ?= ghcr.io/openconfig/gnmic:0.47.0
 # A second pinned tag, so rollout tests can prove an image change took effect.
-GNMIC_IMAGE_ALT ?= ghcr.io/openconfig/gnmic:0.44.0-amd64
+GNMIC_IMAGE_ALT ?= ghcr.io/openconfig/gnmic:0.47.0-amd64
 IT_SUITE_DIR    := test/integration/suite
 IT_TIMEOUT      ?= 30m
 IT_PARALLEL     ?= 2
@@ -283,12 +283,9 @@ run-integration-tests-v2: ## Bring up the gnmi-gen suite env, run all suites, te
 	exit $$status
 
 # Nightly / local-only fleet suite. Not wired into CI.
-# SCALE_TARGETS defaults to 200, SCALE_REPLICAS to 4.
-# e.g. SCALE_TARGETS=50 SCALE_REPLICAS=2 make integration-test-scale
-SCALE_TARGETS  ?= 200
-SCALE_REPLICAS ?= 4
+# SCALE_TARGETS defaults to 200; override e.g. SCALE_TARGETS=50 make integration-test-scale
+SCALE_TARGETS ?= 200
 .PHONY: integration-test-scale
 integration-test-scale: integration-env-check ## Run 013-scale (sets RUN_SCALE=1)
-	RUN_SCALE=1 SCALE_TARGETS=$(SCALE_TARGETS) SCALE_REPLICAS=$(SCALE_REPLICAS) \
-		go test -tags=integration -count=1 -timeout 45m -v ./$(IT_SUITE_DIR)/013-scale/...
+	RUN_SCALE=1 SCALE_TARGETS=$(SCALE_TARGETS) go test -tags=integration -count=1 -timeout 45m -v ./$(IT_SUITE_DIR)/013-scale/...
 
