@@ -4,7 +4,8 @@
 // single-target churn cost, sustained membership change, and mass reboot.
 //
 // Gated behind RUN_SCALE=1 (see TestMain). Not part of the default CI lane.
-// Fleet size defaults to 200 and is overridable with SCALE_TARGETS.
+// Fleet size defaults to 200 (SCALE_TARGETS) and collector pods to 4
+// (SCALE_REPLICAS).
 package scale
 
 import (
@@ -29,13 +30,13 @@ const (
 	cluster  = "c1"
 	pipeline = "fleet"
 	output   = "prom"
-	replicas = 4
 )
 
 var (
 	s         *harness.Suite
 	targets   []string
 	fleetN    int
+	replicas  int
 	spareSim  string
 	sparePort int
 	minPerPod int
@@ -47,9 +48,14 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "013-scale: skipped (set RUN_SCALE=1 to enable)")
 		os.Exit(0)
 	}
-	fleetN = scaleTargets()
-	if fleetN < 4 {
-		fmt.Fprintf(os.Stderr, "013-scale: SCALE_TARGETS=%d too small (min 4)\n", fleetN)
+	fleetN = envInt("SCALE_TARGETS", 200)
+	replicas = envInt("SCALE_REPLICAS", 4)
+	if replicas < 1 {
+		fmt.Fprintf(os.Stderr, "013-scale: SCALE_REPLICAS=%d too small (min 1)\n", replicas)
+		os.Exit(1)
+	}
+	if fleetN < replicas {
+		fmt.Fprintf(os.Stderr, "013-scale: SCALE_TARGETS=%d < SCALE_REPLICAS=%d\n", fleetN, replicas)
 		os.Exit(1)
 	}
 	spareSim = fmt.Sprintf("dev-%d", fleetN+1)
@@ -59,8 +65,8 @@ func TestMain(m *testing.M) {
 	for i := 1; i <= fleetN; i++ {
 		targets[i-1] = fmt.Sprintf("dev-%d", i)
 	}
-	fmt.Fprintf(os.Stderr, "[harness] suite 013-scale: SCALE_TARGETS=%d spare=%s placement=%d..%d per pod\n",
-		fleetN, spareSim, minPerPod, maxPerPod)
+	fmt.Fprintf(os.Stderr, "[harness] suite 013-scale: SCALE_TARGETS=%d SCALE_REPLICAS=%d spare=%s placement=%d..%d per pod\n",
+		fleetN, replicas, spareSim, minPerPod, maxPerPod)
 
 	require := append(append([]string{}, targets...), spareSim)
 	os.Exit(harness.RunSuite(m, harness.Options{
@@ -68,18 +74,19 @@ func TestMain(m *testing.M) {
 		GnmiGenConfigData: renderGnmiGenConfig(fleetN + 1),
 		RequireTargets:    require,
 		Baseline:          []string{"fixtures/baseline.yaml"},
+		BaselineVars:      map[string]any{"Replicas": replicas},
 		AfterBaseline:     applyFleetTargets,
 	}, &s))
 }
 
-func scaleTargets() int {
-	v := os.Getenv("SCALE_TARGETS")
+func envInt(name string, def int) int {
+	v := os.Getenv(name)
 	if v == "" {
-		return 200
+		return def
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n <= 0 {
-		return 200
+		return def
 	}
 	return n
 }
@@ -147,12 +154,12 @@ func waitFleetReady(t *testing.T) time.Duration {
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
 		TargetsCount:      harness.I32(int32(fleetN)),
 		UnassignedTargets: harness.I32(0),
-		ReadyReplicas:     harness.I32(replicas),
+		ReadyReplicas:     harness.I32(int32(replicas)),
 	})
 	s.GnmiGen.WaitFleetStreams(t, harness.Long, 1, targets)
 	s.GnmiGen.WaitStreams(t, spareSim, 0)
 	elapsed := time.Since(start)
-	t.Logf("fleet converged in %s (SCALE_TARGETS=%d)", elapsed, fleetN)
+	t.Logf("fleet converged in %s (SCALE_TARGETS=%d SCALE_REPLICAS=%d)", elapsed, fleetN, replicas)
 	return elapsed
 }
 

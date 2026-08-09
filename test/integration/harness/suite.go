@@ -49,6 +49,9 @@ type Options struct {
 	GnmiGenConfigData []byte
 	// Baseline fixtures applied after the simulator is up, before m.Run.
 	Baseline []string
+	// BaselineVars are merged into every baseline fixture template (on top of
+	// the harness base vars). Used for suite-wide knobs like replica count.
+	BaselineVars map[string]any
 	// RequireTargets are simulated targets that must report "up" before tests
 	// start.
 	RequireTargets []string
@@ -107,7 +110,7 @@ func New(opts Options) (*Suite, error) {
 	}
 
 	for _, f := range opts.Baseline {
-		if err := s.applyBaseline(f); err != nil {
+		if err := s.applyBaseline(f, opts.BaselineVars); err != nil {
 			return s, fmt.Errorf("applying baseline %s: %w", f, err)
 		}
 	}
@@ -306,12 +309,12 @@ func (s *Suite) waitTargetsUp(names []string) error {
 	}
 }
 
-func (s *Suite) applyBaseline(path string) error {
+func (s *Suite) applyBaseline(path string, vars map[string]any) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	_, err = s.K8s.applyYAML(string(b), nil)
+	_, err = s.K8s.applyYAML(string(b), vars)
 	return err
 }
 
