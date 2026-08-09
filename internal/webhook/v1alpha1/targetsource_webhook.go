@@ -83,7 +83,7 @@ func (v *TargetSourceCustomValidator) ValidateCreate(_ context.Context, targetso
 
 	// TODO(user): fill in your validation logic upon object creation.
 
-	return nil, nil
+	return unwatchedNamespaceWarning("TargetSource", targetsource.GetNamespace()), nil
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type TargetSource.

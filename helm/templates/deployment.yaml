@@ -45,6 +45,9 @@ spec:
             - --discovery-buffer-size={{ .Values.discovery.bufferSize }}
             - --kube-api-qps={{ .Values.kubeApi.qps }}
             - --kube-api-burst={{ .Values.kubeApi.burst }}
+            {{- if .Values.watchNamespaces }}
+            - --watch-namespaces={{ join "," .Values.watchNamespaces }}
+            {{- end }}
           env:
             - name: POD_NAMESPACE
               valueFrom:

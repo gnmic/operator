@@ -54,6 +54,21 @@ kubeApi:
   qps: 50
   burst: 100
 
+# Namespaces to watch. Empty (the default) watches the whole cluster, which caches every
+# Secret, ConfigMap, Service, StatefulSet and Certificate in it — Secrets in particular are
+# unbounded and unrelated to how many Targets you have.
+#
+# Restricting this is the single largest reduction in memory footprint available. It is safe
+# because the operator never resolves across namespaces: a Pipeline only ever uses Targets,
+# Subscriptions, Outputs, Inputs and Processors from its own namespace, and credentials come
+# from the Target's namespace.
+#
+# The ClusterRole is left cluster-scoped either way; narrowing it to a Role per namespace is
+# a separate change.
+#   watchNamespaces:
+#     - network-telemetry
+watchNamespaces: []
+
 nodeSelector: {}
 
 tolerations: []

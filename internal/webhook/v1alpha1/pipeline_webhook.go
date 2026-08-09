@@ -81,7 +81,7 @@ var _ admission.Validator[*operatorv1alpha1.Pipeline] = &PipelineCustomValidator
 func (v *PipelineCustomValidator) ValidateCreate(_ context.Context, pipeline *operatorv1alpha1.Pipeline) (admission.Warnings, error) {
 	pipelinelog.Info("Validation for Pipeline upon creation", "name", pipeline.GetName())
 
-	return nil, validatePipelineSpec(&pipeline.Spec)
+	return unwatchedNamespaceWarning("Pipeline", pipeline.GetNamespace()), validatePipelineSpec(&pipeline.Spec)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type Pipeline.

@@ -122,19 +122,56 @@ affinity:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `resources.limits.cpu` | CPU limit | `500m` |
-| `resources.limits.memory` | Memory limit | `256Mi` |
-| `resources.requests.cpu` | CPU request | `10m` |
-| `resources.requests.memory` | Memory request | `64Mi` |
+| `resources.limits.memory` | Memory limit | `1Gi` |
+| `resources.requests.cpu` | CPU request | `100m` |
+| `resources.requests.memory` | Memory request | `256Mi` |
 
 ```yaml
 resources:
   limits:
     cpu: 1000m
-    memory: 512Mi
+    memory: 2Gi
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 512Mi
 ```
+
+Operator memory is driven by the number of objects it caches cluster-wide — Secrets in
+particular — not by how many Targets it manages. Treat these defaults as a starting point
+and measure. See [Operator Resources]({{< relref "../advanced/operator-resources" >}}).
+
+### Watched Namespaces
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `watchNamespaces` | Namespaces to watch. Empty watches the whole cluster | `[]` |
+
+```yaml
+watchNamespaces:
+  - network-telemetry
+```
+
+Restricting this is the largest single reduction in operator memory footprint. Resources in
+unwatched namespaces are accepted but never reconciled; creating a `Cluster`, `Pipeline` or
+`TargetSource` in one produces an admission warning. See
+[Operator Resources]({{< relref "../advanced/operator-resources" >}}).
+
+### Kubernetes API Rate Limits
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `kubeApi.qps` | Sustained queries per second to the Kubernetes API server | `50` |
+| `kubeApi.burst` | Maximum burst of queries to the Kubernetes API server | `100` |
+
+```yaml
+kubeApi:
+  qps: 100
+  burst: 200
+```
+
+The client-go defaults (20 QPS / 30 burst) are shared by every controller in the process, so
+one busy controller throttles the rest. See
+[Operator Resources]({{< relref "../advanced/operator-resources" >}}).
 
 ### Leader Election
 
