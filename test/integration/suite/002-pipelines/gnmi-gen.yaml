@@ -1,0 +1,60 @@
+global:
+  seed: 42
+  shutdown_timeout: 5s
+
+api:
+  listen: 0.0.0.0:8080
+
+data_profiles:
+  interface_counter:
+    type: uint64
+    update_frequency: 1s
+    random:
+      distribution: counter
+      min: 100000
+      max: 900000
+      step_min: 100
+      step_max: 10000
+
+  system_name:
+    type: string
+    update_frequency: 10s
+    random:
+      value: leaf-{{.index}}
+
+  system_name_spine:
+    type: string
+    update_frequency: 10s
+    random:
+      value: spine-1
+
+servers:
+  - name: leaf{{.index}}
+    expand:
+      index:
+        start: 1
+        end: 2
+      listen:
+        host: 0.0.0.0
+        port_start: 57400
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter
+      - path: /system/name
+        profile: system_name
+
+  - name: spine1
+    listen: 0.0.0.0:57402
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter
+      - path: /system/name
+        profile: system_name_spine

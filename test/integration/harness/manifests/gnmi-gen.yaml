@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gnmi-gen
+  namespace: {{ .Namespace }}
+  labels:
+    app: gnmi-gen
+spec:
+  # Headless on purpose. DNS resolves straight to the pod IP, so collectors can
+  # dial any simulated target port without it being enumerated here. A ClusterIP
+  # Service would require one entry per simulated target.
+  clusterIP: None
+  selector:
+    app: gnmi-gen
+  ports:
+    - name: api
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gnmi-gen
+  namespace: {{ .Namespace }}
+  labels:
+    app: gnmi-gen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gnmi-gen
+  template:
+    metadata:
+      labels:
+        app: gnmi-gen
+      annotations:
+        gnmi-gen.config/hash: "{{ .ConfigHash }}"
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: gnmi-gen
+          image: {{ .GnmiGenImage }}
+          imagePullPolicy: IfNotPresent
+          args: ["--config", "/config/gnmi-gen.yaml"]
+          ports:
+            - name: api
+              containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          readinessProbe:
+            httpGet:
+              path: /api/v1/targets
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: gnmi-gen-config

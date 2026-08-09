@@ -177,3 +177,96 @@ apply-test-clusters: ## Apply the test clusters for testing
 .PHONY: apply-test-resources
 apply-test-resources: apply-test-targets apply-test-subscriptions apply-test-outputs apply-test-pipelines apply-test-clusters apply-test-targetsources
 
+##@ Integration Suite
+
+# The assertion-driven suite under test/integration/suite, backed by simulated
+# devices. It runs on its own kind cluster so it never contends with
+# run-integration-tests for a cluster name, a topology, or a port; the two can
+# run at the same time.
+
+IT_CLUSTER_NAME ?= gnmic-it
+IT_CONTEXT      := kind-$(IT_CLUSTER_NAME)
+IT_KUBECTL      := kubectl --context $(IT_CONTEXT)
+IT_OPERATOR_IMG ?= gnmic-operator:integration
+GNMIGEN_IMAGE   ?= registry.kmrd.dev/gnmic/gnmigen:0.0.0
+GNMIC_IMAGE     ?= ghcr.io/openconfig/gnmic:0.46.0
+# A second pinned tag, so rollout tests can prove an image change took effect.
+GNMIC_IMAGE_ALT ?= ghcr.io/openconfig/gnmic:0.44.0-amd64
+IT_SUITE_DIR    := test/integration/suite
+IT_TIMEOUT      ?= 30m
+IT_PARALLEL     ?= 2
+
+export GNMIGEN_IMAGE
+export GNMIC_IMAGE
+export GNMIC_IMAGE_ALT
+
+.PHONY: integration-env-up
+integration-env-up: install-kind ## Create the integration kind cluster and deploy the operator into it
+	@if kind get clusters 2>/dev/null | grep -qx "$(IT_CLUSTER_NAME)"; then \
+		echo "kind cluster $(IT_CLUSTER_NAME) already exists"; \
+	else \
+		kind create cluster --name $(IT_CLUSTER_NAME); \
+	fi
+	$(IT_KUBECTL) apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	@echo "waiting for cert-manager..."
+	$(IT_KUBECTL) wait --namespace cert-manager --for=condition=Available deployment --all --timeout=180s
+	$(MAKE) integration-images
+	$(MAKE) integration-deploy-operator
+
+.PHONY: integration-images
+integration-images: ## Build the operator image and load it, gnmi-gen and gnmic into the integration cluster
+	$(MAKE) docker-build IMG=$(IT_OPERATOR_IMG)
+	kind load docker-image $(IT_OPERATOR_IMG) --name $(IT_CLUSTER_NAME)
+	@for img in $(GNMIGEN_IMAGE) $(GNMIC_IMAGE) $(GNMIC_IMAGE_ALT); do \
+		docker image inspect $$img >/dev/null 2>&1 || docker pull $$img; \
+		kind load docker-image $$img --name $(IT_CLUSTER_NAME); \
+	done
+
+# `make deploy` runs `kustomize edit set image`, which rewrites
+# config/manager/kustomization.yaml in place. Restore it so running the
+# integration suite never leaves a diff in the working tree.
+define it_deploy
+	$(MAKE) deploy IMG=$(IT_OPERATOR_IMG) KUBECTL="$(IT_KUBECTL)"; \
+	status=$$?; \
+	git checkout -- config/manager/kustomization.yaml 2>/dev/null || true; \
+	exit $$status
+endef
+
+.PHONY: integration-deploy-operator
+integration-deploy-operator: ## Deploy or redeploy the operator into the integration cluster
+	@$(it_deploy)
+	@echo "waiting for the operator to be available..."
+	$(IT_KUBECTL) wait --namespace gnmic-system --for=condition=Available deployment/gnmic-controller-manager --timeout=180s
+
+.PHONY: integration-env-refresh
+integration-env-refresh: ## Rebuild the operator image and restart it, without recreating the cluster
+	$(MAKE) integration-images
+	@$(it_deploy)
+	$(IT_KUBECTL) -n gnmic-system rollout restart deployment/gnmic-controller-manager
+	$(IT_KUBECTL) -n gnmic-system rollout status deployment/gnmic-controller-manager --timeout=180s
+
+.PHONY: integration-env-down
+integration-env-down: ## Delete the integration kind cluster
+	kind delete cluster --name $(IT_CLUSTER_NAME) || true
+
+.PHONY: integration-env-check
+integration-env-check: ## Fail fast with an actionable message if the integration environment is not ready
+	@kind get clusters 2>/dev/null | grep -qx "$(IT_CLUSTER_NAME)" || \
+		{ echo "kind cluster $(IT_CLUSTER_NAME) not found. Run: make integration-env-up"; exit 1; }
+	@$(IT_KUBECTL) get deployment/gnmic-controller-manager -n gnmic-system >/dev/null 2>&1 || \
+		{ echo "operator not deployed in $(IT_CLUSTER_NAME). Run: make integration-env-up"; exit 1; }
+	@$(IT_KUBECTL) wait --namespace gnmic-system --for=condition=Available deployment/gnmic-controller-manager --timeout=60s
+
+.PHONY: integration-test
+integration-test: integration-env-check ## Run every integration suite
+	go test -tags=integration -count=1 -p $(IT_PARALLEL) -timeout $(IT_TIMEOUT) -v ./$(IT_SUITE_DIR)/...
+
+# Run one suite by directory name, e.g. make integration-test-000-spike
+.PHONY: integration-test-%
+integration-test-%: integration-env-check ## Run a single suite, e.g. make integration-test-001-cluster
+	go test -tags=integration -count=1 -timeout $(IT_TIMEOUT) -v ./$(IT_SUITE_DIR)/$*/...
+
+.PHONY: integration-suites
+integration-suites: ## List the available integration suites
+	@ls -1 $(IT_SUITE_DIR)
+

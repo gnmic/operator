@@ -152,6 +152,32 @@ func TestDistributeTargetsEdgeCases(t *testing.T) {
 	}
 }
 
+func TestDistributeTargets_EmptyTargetsStillEmitsPodPlans(t *testing.T) {
+	plan := &ApplyPlan{
+		Targets:       map[string]*gapi.TargetConfig{},
+		Subscriptions: map[string]*gapi.SubscriptionConfig{},
+		Outputs:       map[string]map[string]any{},
+		Inputs:        map[string]map[string]any{},
+	}
+	numPods := 2
+	distResult := DistributeTargets(plan, numPods, nil)
+	if len(distResult.PerPodPlans) != numPods {
+		t.Fatalf("expected %d pod plans, got %d", numPods, len(distResult.PerPodPlans))
+	}
+	for i := 0; i < numPods; i++ {
+		dp, ok := distResult.PerPodPlans[i]
+		if !ok {
+			t.Fatalf("missing plan for pod %d", i)
+		}
+		if len(dp.Targets) != 0 {
+			t.Errorf("pod %d: expected empty targets, got %d", i, len(dp.Targets))
+		}
+	}
+	if len(distResult.UnassignedTargets) != 0 {
+		t.Errorf("unexpected unassigned: %v", distResult.UnassignedTargets)
+	}
+}
+
 func TestDistributeTargets_CapacityOverflow(t *testing.T) {
 	plan := &ApplyPlan{
 		Targets: map[string]*gapi.TargetConfig{

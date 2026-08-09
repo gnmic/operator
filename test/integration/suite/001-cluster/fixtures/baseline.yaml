@@ -1,0 +1,24 @@
+# Baseline for 001-cluster: credentials and a target profile only.
+#
+# There is deliberately no Cluster here. Clusters are the thing under test in
+# this suite, so each test creates and destroys its own.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sim-credentials
+stringData:
+  username: gnmic
+  password: gnmic
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: default
+spec:
+  credentialsRef: sim-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  # An empty tls block means TLS with verification skipped, matching gnmi-gen's
+  # self-signed listeners.
+  tls: {}
+  retryTimer: 2s

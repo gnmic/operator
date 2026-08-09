@@ -59,6 +59,7 @@ import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/gnmic"
 	"github.com/gnmic/operator/internal/utils"
+	gapi "github.com/openconfig/gnmic/pkg/api/types"
 )
 
 // ClusterReconciler reconciles a Cluster object
@@ -498,6 +499,15 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Info("waiting for gNMIc pods to be ready before applying config")
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
+	// A reconcile queued while Pipelines were empty can run after a newer
+	// reconcile already applied a non-empty plan. Re-list immediately before
+	// apply and bail out if membership moved under us.
+	if fresh, err := r.listPipelinesForCluster(ctx, &cluster); err != nil {
+		return ctrl.Result{}, err
+	} else if !pipelineSetEqual(pipelines, fresh) {
+		logger.Info("pipelines changed during reconcile, requeueing before apply")
+		return ctrl.Result{Requeue: true}, nil
+	}
 	// send the plan to all gNMIc pods with distributed targets
 	// distrubute to desired replicas only, this makes redistribution fast in case of scaling down.
 	numPods := int(desiredReplicas)
@@ -645,16 +655,49 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 		}
 	}
-	// update status if changed
+	// Re-fetch before comparing: a concurrent reconcile may have already
+	// written a newer status, and comparing against the start-of-reconcile
+	// copy can skip a needed update (e.g. stale empty reconcile sees
+	// pipelinesCount=0 in-memory while the live status is still 1).
+	clusterNN := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	if err := r.Get(ctx, clusterNN, &cluster); err != nil {
+		return ctrl.Result{}, err
+	}
 	if !clusterStatusEqual(cluster.Status, newStatus) {
-		cluster.Status = newStatus
-		if err := r.Status().Update(ctx, &cluster); err != nil {
-			logger.Error(err, "failed to update cluster status")
+		var statusErr error
+		for attempt := 0; attempt < 5; attempt++ {
+			if attempt > 0 {
+				if err := r.Get(ctx, clusterNN, &cluster); err != nil {
+					statusErr = err
+					break
+				}
+			}
+			cluster.Status = newStatus
+			if err := r.Status().Update(ctx, &cluster); err != nil {
+				if apierrors.IsConflict(err) {
+					statusErr = err
+					continue
+				}
+				statusErr = err
+				break
+			}
+			statusErr = nil
+			break
+		}
+		if statusErr != nil {
+			logger.Error(statusErr, "failed to update cluster status")
+			return ctrl.Result{}, statusErr
 		}
 	}
 
 	if configError != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+	// An empty apply from a briefly stale cache can race a Pipeline create.
+	// Requeue once so the next pass sees the live membership and restores
+	// config if needed; non-empty applies are left alone.
+	if configApplied && len(pipelines) == 0 {
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -702,27 +745,80 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		return 0, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 	distResult := gnmic.DistributeTargets(plan, numPods, cluster.Spec.TargetDistribution)
-	// apply config to each pod with distributed targets
+
+	scheme := "http"
+	if cluster.Spec.API != nil && cluster.Spec.API.TLS != nil && cluster.Spec.API.TLS.IssuerRef != "" {
+		scheme = "https"
+	}
+	podURL := func(podIndex int) string {
+		// statefulSet pods have predictable DNS names:
+		//  <statefulset-name>-<ordinal>.<service-name>.<namespace>.svc.<cluster-domain>
+		podDNS := fmt.Sprintf("%s-%d.%s.%s.svc.%s", stsName, podIndex, stsName, cluster.Namespace, gnmic.ClusterDomain())
+		return fmt.Sprintf("%s://%s:%d/api/v1/config/apply", scheme, podDNS, restPort)
+	}
+
+	// Two-phase apply avoids double-collection when a target moves between pods.
+	// A single ordered pass can start the new owner before the old owner has
+	// dropped the target (e.g. moving from pod 2 to pod 0). Phase 1 shrinks
+	// each pod to the intersection of its previous and next assignment so
+	// movers are stopped everywhere; phase 2 installs the full new sets.
+	// Pods that are about to disappear on scale-down are drained explicitly.
+	if len(plan.CurrentTargetAssignment) > 0 {
+		template, ok := distResult.PerPodPlans[0]
+		if !ok {
+			for _, p := range distResult.PerPodPlans {
+				template = p
+				break
+			}
+		}
+		for podIndex := range plan.CurrentTargetAssignment {
+			if podIndex < numPods {
+				continue
+			}
+			if template == nil {
+				break
+			}
+			drain := shrinkPodPlan(template, nil)
+			url := podURL(podIndex)
+			logger.Info("draining gNMIc pod before scale-down", "url", url)
+			if err := r.sendApplyRequest(ctx, url, drain, httpClient); err != nil {
+				// The pod may already be gone; do not fail the reconcile for that.
+				logger.Info("drain of scaled-down pod failed (continuing)", "pod", podIndex, "error", err)
+			}
+		}
+		for podIndex := 0; podIndex < numPods; podIndex++ {
+			podPlan, ok := distResult.PerPodPlans[podIndex]
+			if !ok {
+				continue
+			}
+			shrink := shrinkPodPlan(podPlan, plan.CurrentTargetAssignment[podIndex])
+			url := podURL(podIndex)
+			logger.Info("shrinking gNMIc pod targets before reassignment", "url", url, "targets", len(shrink.Targets))
+			if err := r.sendApplyRequest(ctx, url, shrink, httpClient); err != nil {
+				return 0, fmt.Errorf("failed to shrink config on pod %d: %w", podIndex, err)
+			}
+		}
+		// gNMIc's config/apply returns before Subscribe streams are fully torn
+		// down. Give movers a beat to drop on the old owner before phase 2
+		// starts them on the new one; otherwise a scale transition briefly
+		// double-collects.
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+
 	for podIndex := 0; podIndex < numPods; podIndex++ {
-		// distribute targets for this pod
 		podPlan, ok := distResult.PerPodPlans[podIndex]
 		if !ok {
 			continue
 		}
-		// build the URL for this pod
-		// statefulSet pods have predictable DNS names:
-		//  <statefulset-name>-<ordinal>.<service-name>.<namespace>.svc.<cluster-domain>
-		podDNS := fmt.Sprintf("%s-%d.%s.%s.svc.%s", stsName, podIndex, stsName, cluster.Namespace, gnmic.ClusterDomain())
-		scheme := "http"
-		if cluster.Spec.API != nil && cluster.Spec.API.TLS != nil && cluster.Spec.API.TLS.IssuerRef != "" {
-			scheme = "https"
-		}
-		url := fmt.Sprintf("%s://%s:%d/api/v1/config/apply", scheme, podDNS, restPort)
+		url := podURL(podIndex)
 		logger.Info("sending config to gNMIc pod", "url", url)
 		if err := r.sendApplyRequest(ctx, url, podPlan, httpClient); err != nil {
 			return 0, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
 		}
-
 		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets))
 	}
 
@@ -811,6 +907,33 @@ func (r *ClusterReconciler) getIssuerCA(ctx context.Context, namespace, issuerNa
 	}
 
 	return caCert, nil
+}
+
+// shrinkPodPlan returns a copy of podPlan whose Targets are the intersection of
+// the desired set and the pod's previously assigned targets. A nil previous set
+// yields an empty target map — used to drain a pod.
+func shrinkPodPlan(podPlan *gnmic.ApplyPlan, previous map[string]struct{}) *gnmic.ApplyPlan {
+	out := &gnmic.ApplyPlan{
+		Targets:             maps.Clone(podPlan.Targets),
+		Subscriptions:       podPlan.Subscriptions,
+		Outputs:             podPlan.Outputs,
+		Inputs:              podPlan.Inputs,
+		Processors:          podPlan.Processors,
+		TunnelTargetMatches: podPlan.TunnelTargetMatches,
+	}
+	if out.Targets == nil {
+		out.Targets = make(map[string]*gapi.TargetConfig)
+	}
+	clear(out.Targets)
+	if previous == nil {
+		return out
+	}
+	for name, cfg := range podPlan.Targets {
+		if _, ok := previous[name]; ok {
+			out.Targets[name] = cfg
+		}
+	}
+	return out
 }
 
 // sendApplyRequest sends an apply plan to a single gNMIc pod
@@ -2122,6 +2245,22 @@ func (r *ClusterReconciler) listPipelinesForCluster(ctx context.Context, cluster
 		}
 	}
 	return result, nil
+}
+
+func pipelineSetEqual(a, b []gnmicv1alpha1.Pipeline) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	names := make(map[string]struct{}, len(a))
+	for i := range a {
+		names[a[i].Name] = struct{}{}
+	}
+	for i := range b {
+		if _, ok := names[b[i].Name]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // buildConfigContent builds the gnmic configuration from the cluster and its pipelines
