@@ -1,0 +1,51 @@
+# A Prometheus output, so that deleting the cluster has an output Service to
+# garbage-collect as well as the StatefulSet, Service and ConfigMap.
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: {{ .Tag }}-leaf1
+  labels:
+    tag: {{ .Tag }}
+spec:
+  address: {{ .GnmiGenHost }}:57400
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ .Tag }}-if
+  labels:
+    tag: {{ .Tag }}
+spec:
+  mode: STREAM/SAMPLE
+  sampleInterval: 1s
+  encoding: JSON_IETF
+  paths:
+    - /interface/statistics/in-octets
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: {{ .Tag }}-prom
+  labels:
+    tag: {{ .Tag }}
+spec:
+  type: prometheus
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: {{ .Tag }}
+spec:
+  clusterRef: {{ .Cluster }}
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        tag: {{ .Tag }}
+  subscriptionSelectors:
+    - matchLabels:
+        tag: {{ .Tag }}
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          tag: {{ .Tag }}

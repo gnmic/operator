@@ -37,9 +37,12 @@ func DistributeTargets(plan *ApplyPlan, numPods int, targetDistribution *v1alpha
 	}
 	newAssignment := placement.distributeTargets(plan.Targets, placementOptions)
 
+	// Always emit a plan for every pod, including when there are no targets.
+	// An empty PerPodPlans map would skip apply entirely and leave collectors
+	// streaming after the last Pipeline is deleted or disabled.
 	assigned := make(map[string]struct{})
-	result := make(map[int]*ApplyPlan)
-	for podIndex, targets := range newAssignment {
+	result := make(map[int]*ApplyPlan, numPods)
+	for podIndex := 0; podIndex < numPods; podIndex++ {
 		result[podIndex] = &ApplyPlan{
 			Targets:             make(map[string]*gapi.TargetConfig),
 			Subscriptions:       plan.Subscriptions,
@@ -48,8 +51,15 @@ func DistributeTargets(plan *ApplyPlan, numPods int, targetDistribution *v1alpha
 			Processors:          plan.Processors,
 			TunnelTargetMatches: plan.TunnelTargetMatches,
 		}
+	}
+	for podIndex, targets := range newAssignment {
+		podPlan, ok := result[podIndex]
+		if !ok {
+			// Placement returned a pod outside 0..numPods-1; ignore.
+			continue
+		}
 		for _, targetNN := range targets {
-			result[podIndex].Targets[targetNN] = plan.Targets[targetNN]
+			podPlan.Targets[targetNN] = plan.Targets[targetNN]
 			assigned[targetNN] = struct{}{}
 		}
 	}

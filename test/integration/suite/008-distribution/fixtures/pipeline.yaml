@@ -1,0 +1,20 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: {{ .Name }}
+spec:
+  clusterRef: {{ .Cluster }}
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        suite: "008"
+{{- if ne .ExtraLabel "" }}
+        {{ .ExtraLabel }}: "{{ .ExtraValue }}"
+{{- end }}
+  subscriptionSelectors:
+    - matchLabels:
+        suite: "008"
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          suite: "008"

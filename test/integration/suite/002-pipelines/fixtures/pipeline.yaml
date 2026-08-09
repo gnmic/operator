@@ -1,0 +1,34 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: {{ .Name }}
+spec:
+  clusterRef: c1
+  enabled: {{ .Enabled }}
+{{- if .TargetRefs }}
+  targetRefs:
+{{- range .TargetRefs }}
+    - {{ . }}
+{{- end }}
+{{- end }}
+{{- if .TargetRole }}
+  targetSelectors:
+    - matchLabels:
+        role: {{ .TargetRole }}
+{{- end }}
+{{- if .SubGroup }}
+  subscriptionSelectors:
+    - matchLabels:
+        group: {{ .SubGroup }}
+{{- end }}
+{{- if .SubGroups }}
+  subscriptionSelectors:
+{{- range .SubGroups }}
+    - matchLabels:
+        group: {{ . }}
+{{- end }}
+{{- end }}
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          type: metrics
