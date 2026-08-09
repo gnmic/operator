@@ -1006,6 +1006,27 @@ func (p generationOrLabelsChangedPredicate) Update(e event.UpdateEvent) bool {
 	return !maps.Equal(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels())
 }
 
+// secretDataChangedPredicate triggers reconciliation only when a Secret's
+// contents change.
+//
+// Secrets carry no generation, so the predicates used for the CRDs do not apply
+// and the default would wake the controller on every write to every Secret in
+// scope — annotations, ownership churn, cert-manager renewals of unrelated
+// material. Only Data decides what gets baked into a TargetConfig, so only Data
+// is worth a reconcile.
+type secretDataChangedPredicate struct {
+	predicate.Funcs
+}
+
+func (secretDataChangedPredicate) Update(e event.UpdateEvent) bool {
+	oldSecret, okOld := e.ObjectOld.(*corev1.Secret)
+	newSecret, okNew := e.ObjectNew.(*corev1.Secret)
+	if !okOld || !okNew {
+		return false
+	}
+	return !maps.EqualFunc(oldSecret.Data, newSecret.Data, bytes.Equal)
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.m = &sync.RWMutex{}
@@ -1060,6 +1081,11 @@ func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&gnmicv1alpha1.TunnelTargetPolicy{},
 			handler.EnqueueRequestsFromMapFunc(r.findClustersForTunnelTargetPolicy),
 			builder.WithPredicates(specOrLabelsPredicate),
+		).
+		Watches(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.findClustersForSecret),
+			builder.WithPredicates(secretDataChangedPredicate{}),
 		).
 		Complete(r)
 }
@@ -1153,32 +1179,114 @@ func (r *ClusterReconciler) findClustersForTargetProfile(ctx context.Context, ob
 	if !ok {
 		return nil
 	}
+	return r.findClustersUsingProfiles(ctx, profile.Namespace, map[string]struct{}{profile.Name: {}})
+}
 
-	// list all targets in the same namespace
+// findClustersForSecret finds all Clusters collecting with the credentials this
+// Secret holds.
+//
+// Without this the credentials baked into each TargetConfig are only rebuilt
+// when something else happens to wake the Cluster reconciler, so a rotated
+// password reaches the pods whenever the next unrelated event does — or at the
+// resync, which is the framework default of about ten hours.
+func (r *ClusterReconciler) findClustersForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
+	secret, ok := obj.(*corev1.Secret)
+	if !ok {
+		return nil
+	}
+	// A TargetProfile is the only thing that turns a Secret into target
+	// credentials. Most Secrets in a namespace belong to something else
+	// entirely, and they stop here at the cost of one cached list.
+	var profileList gnmicv1alpha1.TargetProfileList
+	if err := r.List(ctx, &profileList, client.InNamespace(secret.Namespace)); err != nil {
+		return nil
+	}
+	profiles := make(map[string]struct{})
+	for i := range profileList.Items {
+		if profileList.Items[i].Spec.CredentialsRef == secret.Name {
+			profiles[profileList.Items[i].Name] = struct{}{}
+		}
+	}
+	if len(profiles) == 0 {
+		return nil
+	}
+	return r.findClustersUsingProfiles(ctx, secret.Namespace, profiles)
+}
+
+// profileUser is something that names a TargetProfile and can itself be
+// selected by a Pipeline, which is what makes it a path from a profile to a
+// cluster.
+type profileUser struct {
+	name   string
+	labels map[string]string
+	kind   string // as understood by pipelineReferencesResource
+}
+
+// findClustersUsingProfiles resolves a set of TargetProfile names to the
+// Clusters that collect with them.
+//
+// Three cached lists regardless of the size of the set. The obvious
+// implementation calls findClustersReferencingResource once per matching
+// target, which re-lists every Pipeline each time and turns a single event into
+// O(targets x pipelines) work.
+func (r *ClusterReconciler) findClustersUsingProfiles(ctx context.Context, namespace string, profiles map[string]struct{}) []reconcile.Request {
 	var targetList gnmicv1alpha1.TargetList
-	if err := r.List(ctx, &targetList, client.InNamespace(profile.Namespace)); err != nil {
+	if err := r.List(ctx, &targetList, client.InNamespace(namespace)); err != nil {
+		return nil
+	}
+	var users []profileUser
+	for i := range targetList.Items {
+		t := &targetList.Items[i]
+		if _, ok := profiles[t.Spec.Profile]; ok {
+			users = append(users, profileUser{name: t.Name, labels: t.Labels, kind: "target"})
+		}
+	}
+
+	// Tunnel targets are discovered at runtime rather than declared, so their
+	// credentials come from the policy's profile and no Target object exists to
+	// find them by.
+	var policyList gnmicv1alpha1.TunnelTargetPolicyList
+	if err := r.List(ctx, &policyList, client.InNamespace(namespace)); err != nil {
+		return nil
+	}
+	for i := range policyList.Items {
+		p := &policyList.Items[i]
+		if _, ok := profiles[p.Spec.Profile]; ok {
+			users = append(users, profileUser{name: p.Name, labels: p.Labels, kind: "tunnel-target-policy"})
+		}
+	}
+	if len(users) == 0 {
 		return nil
 	}
 
-	// find clusters for each target that uses this profile
-	seen := make(map[types.NamespacedName]struct{})
-	var results []reconcile.Request
-
-	for _, target := range targetList.Items {
-		if target.Spec.Profile != profile.Name {
+	var pipelineList gnmicv1alpha1.PipelineList
+	if err := r.List(ctx, &pipelineList, client.InNamespace(namespace)); err != nil {
+		return nil
+	}
+	clusterSet := make(map[string]struct{})
+	for i := range pipelineList.Items {
+		pipeline := &pipelineList.Items[i]
+		if !pipeline.Spec.Enabled {
 			continue
 		}
-		// find clusters referencing this target
-		targetResults := r.findClustersReferencingResource(ctx, target.Namespace, target.Name, target.Labels, "target")
-		for _, req := range targetResults {
-			if _, ok := seen[req.NamespacedName]; !ok {
-				seen[req.NamespacedName] = struct{}{}
-				results = append(results, req)
+		if _, done := clusterSet[pipeline.Spec.ClusterRef]; done {
+			continue
+		}
+		for _, u := range users {
+			if pipelineReferencesResource(pipeline, u.name, u.labels, u.kind) {
+				clusterSet[pipeline.Spec.ClusterRef] = struct{}{}
+				break
 			}
 		}
 	}
 
-	return results
+	requests := make([]reconcile.Request, 0, len(clusterSet))
+	for clusterName := range clusterSet {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: clusterName, Namespace: namespace},
+		})
+	}
+	return requests
 }
 
 // findClustersForTunnelTargetPolicy finds all Clusters that have Pipelines referencing this TunnelTargetPolicy

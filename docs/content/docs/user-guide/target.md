@@ -122,6 +122,28 @@ spec:
   credentialsRef: device-credentials
 ```
 
+### Rotating Credentials
+
+Update the Secret and the operator pushes the new credentials to the collectors
+on its own — no need to touch the TargetProfile, the Targets or the Cluster:
+
+```bash
+kubectl create secret generic device-credentials \
+  --from-literal=username=admin \
+  --from-literal=password=newpassword \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+The operator watches Secrets referenced by a TargetProfile and reconciles every
+Cluster collecting with them. Only a change to the Secret's data triggers this;
+adding a label or an annotation does not.
+
+Rotation is not atomic across a cluster. The collectors are reconfigured one
+after another, so for a short window some pods present the old credentials and
+some the new. Where the device rejects the old ones, expect connection errors on
+the targets that have not been reconfigured yet; they clear as the rollout
+completes.
+
 ## TLS Configuration
 
 The `TargetProfile` controls **connection-level TLS settings** for gNMI connections. For **client certificate authentication (mTLS)**, see [Cluster Client TLS]({{< ref "../user-guide/cluster#gnmi-client-tls-target-connections" >}}).
