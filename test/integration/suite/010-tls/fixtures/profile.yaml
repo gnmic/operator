@@ -1,0 +1,14 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: {{ .Name }}
+spec:
+  credentialsRef: sim-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  retryTimer: 2s
+{{- if .TLS }}
+  # Empty object enables TLS with skip-verify unless Cluster.clientTLS.bundleRef
+  # supplies a CA (there is no skipVerify field on TargetProfile).
+  tls: {}
+{{- end }}

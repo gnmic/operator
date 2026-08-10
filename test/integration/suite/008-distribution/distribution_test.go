@@ -486,7 +486,14 @@ func TestDist008_NoDoubleCollectionDuringScale(t *testing.T) {
 	s.GnmiGen.AssertCollectedOnce(t, 1, allTargets...)
 }
 
-// TestDist009_PodDeletionRecoversAssignments checks unplanned pod loss.
+// TestDist009_PodDeletionRecoversAssignments checks unplanned pod loss, and
+// that the apply-cache record for the dead pod is invalidated so the
+// recreated pod is re-configured.
+//
+// The Cluster controller fingerprints each pod's apply payload and skips the
+// POST when the hash matches. A restart leaves the desired plan unchanged, so
+// without invalidation (TargetState SSE disconnect) the short-circuit would
+// skip the re-apply forever and the victim's targets would stay uncollected.
 func TestDist009_PodDeletionRecoversAssignments(t *testing.T) {
 	const cluster = "poddel"
 	startCluster(t, cluster, 3, 0, allTargets)
@@ -495,24 +502,66 @@ func TestDist009_PodDeletionRecoversAssignments(t *testing.T) {
 	estab := establishedSnapshot(allTargets)
 	victim := harness.PodName(cluster, 1)
 
+	var owned, survivors []string
+	for _, name := range allTargets {
+		switch before[name] {
+		case victim:
+			owned = append(owned, name)
+		case "":
+			t.Fatalf("%s has no owner before deletion", name)
+		default:
+			survivors = append(survivors, name)
+		}
+	}
+	if len(owned) == 0 {
+		t.Fatalf("%s owns no targets; cannot assert re-apply", victim)
+	}
+
 	pod := &corev1.Pod{}
 	pod.Name = victim
 	pod.Namespace = s.Namespace
 	// The StatefulSet recreates the pod immediately, so do not wait for absence.
 	s.K8s.DeleteNow(t, pod)
 
+	// Prove the restart emptied the victim's work before asserting recovery.
+	for _, name := range owned {
+		s.GnmiGen.WaitStreams(t, name, 0)
+	}
+
 	s.K8s.WaitReadyPods(t, cluster, 3, harness.Long)
 	waitAssigned(t, cluster, allTargets)
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{ReadyReplicas: harness.I32(3)})
+	s.GnmiGen.AssertCollectedOnce(t, 1, allTargets...)
 
 	after := assignments(t, cluster, allTargets)
-	for tgt, pod := range after {
-		if pod == "" {
-			t.Errorf("%s has no owner after recovery", tgt)
+	for _, name := range owned {
+		if after[name] == "" {
+			t.Errorf("%s has no owner after recovery", name)
 		}
 	}
-	assertEstablishedPreserved(t, estab, before, after)
-	s.GnmiGen.AssertCollectedOnce(t, 1, allTargets...)
+
+	// Survivors must not have been churned by the re-apply of the victim.
+	survivorBefore := map[string]string{}
+	survivorAfter := map[string]string{}
+	for _, name := range survivors {
+		survivorBefore[name] = before[name]
+		survivorAfter[name] = after[name]
+	}
+	assertEstablishedPreserved(t, estab, survivorBefore, survivorAfter)
+
+	// Victim's targets must be new streams — same pod name, new process.
+	for _, name := range owned {
+		was := estab[name]
+		now := s.GnmiGen.EstablishedAt(name)
+		if was.IsZero() || now.IsZero() {
+			t.Errorf("%s missing established_at before=%v after=%v", name, was, now)
+			continue
+		}
+		if now.Sub(was).Abs() <= time.Second {
+			t.Errorf("%s stream survived pod restart on %s (established_at=%s); config was not re-applied",
+				name, victim, now)
+		}
+	}
 }
 
 // TestDist010_AddingTargetDoesNotChurnExisting checks membership growth is
@@ -596,4 +645,37 @@ spec:
 	}
 	assertEstablishedPreserved(t, estab, before, after)
 	s.GnmiGen.AssertCollectedOnce(t, 1, rest...)
+}
+
+// TestDist012_AssignmentSurvivesOperatorRestart checks placement is
+// deterministic across a manager restart. Runs last in this package: it
+// restarts the shared controller in gnmic-system.
+//
+// An empty apply-cache after restart means every pod is re-configured once, so
+// streams may refresh; the assert is that owners do not reshuffle and the
+// collected-once invariant holds after the manager is back.
+func TestDist012_AssignmentSurvivesOperatorRestart(t *testing.T) {
+	const cluster = "oprestart"
+	startCluster(t, cluster, 3, 0, allTargets)
+
+	before := assignments(t, cluster, allTargets)
+	assertBalanced(t, before, 3)
+	assertDisjoint(t, before)
+
+	s.K8s.RestartOperator(t)
+
+	harness.WaitClusterReady(t, s.K8s, cluster)
+	s.K8s.WaitReadyPods(t, cluster, 3, harness.Long)
+	waitAssigned(t, cluster, allTargets)
+	s.GnmiGen.AssertCollectedOnce(t, 1, allTargets...)
+
+	after := assignments(t, cluster, allTargets)
+	for _, name := range allTargets {
+		if before[name] != after[name] {
+			t.Errorf("%s reshuffled: %q -> %q", name, before[name], after[name])
+		}
+	}
+	assertBalanced(t, after, 3)
+	assertDisjoint(t, after)
+	s.GnmiGen.ConsistentlyCollectedOnce(t, 10*time.Second, 1, allTargets...)
 }

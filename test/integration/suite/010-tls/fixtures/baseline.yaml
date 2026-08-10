@@ -1,0 +1,59 @@
+# Shared props for 010-tls. Profiles and Targets are created per test; the
+# Cluster starts without TLS so individual tests can opt into clientTLS / api.tls.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sim-credentials
+stringData:
+  username: gnmic
+  password: gnmic
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: {{ .GnmicImage }}
+  replicas: 1
+  api:
+    restPort: 7890
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: if-counters
+  labels:
+    suite: "010"
+spec:
+  mode: STREAM/SAMPLE
+  sampleInterval: 1s
+  encoding: JSON_IETF
+  paths:
+    - /interface/statistics/in-octets
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: prom
+  labels:
+    suite: "010"
+spec:
+  type: prometheus
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: collect
+spec:
+  clusterRef: c1
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        suite: "010"
+  subscriptionSelectors:
+    - matchLabels:
+        suite: "010"
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          suite: "010"

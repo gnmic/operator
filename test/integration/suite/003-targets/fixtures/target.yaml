@@ -1,0 +1,12 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: {{ .Name }}
+  labels:
+    vendor: gnmi-gen
+{{- if ne .Role "" }}
+    role: {{ .Role }}
+{{- end }}
+spec:
+  address: {{ .GnmiGenHost }}:{{ .Port }}
+  profile: {{ .Profile }}

@@ -55,6 +55,10 @@ type Options struct {
 	// RequireTargets are simulated targets that must report "up" before tests
 	// start.
 	RequireTargets []string
+	// BeforeGnmiGen runs after the namespace exists and before the simulator is
+	// deployed. Used by suites that must stage Secrets (e.g. TLS server certs)
+	// for gnmi-gen to mount at startup.
+	BeforeGnmiGen func(*Suite) error
 	// AfterBaseline runs after baseline fixtures are applied, before m.Run.
 	// Used by suites that generate large numbers of CRs (e.g. 013-scale).
 	AfterBaseline func(*Suite) error
@@ -68,6 +72,10 @@ type Suite struct {
 	K8s       *K8s
 	GnmiGen   *GnmiGen
 	Ctx       context.Context
+
+	// GnmiGenTLSSecret, when set before deployGnmiGen, mounts that Secret at
+	// /tls inside the simulator pod (tls.crt / tls.key).
+	GnmiGenTLSSecret string
 
 	forward *Forward
 	cancel  context.CancelFunc
@@ -98,6 +106,12 @@ func New(opts Options) (*Suite, error) {
 		return nil, fmt.Errorf("creating namespace: %w", err)
 	}
 	logf("suite %s: namespace %s ready", opts.Name, namespace)
+
+	if opts.BeforeGnmiGen != nil {
+		if err := opts.BeforeGnmiGen(s); err != nil {
+			return s, fmt.Errorf("before gnmi-gen: %w", err)
+		}
+	}
 
 	if err := s.deployGnmiGen(opts.GnmiGenConfig, opts.GnmiGenConfigData); err != nil {
 		return s, fmt.Errorf("deploying gnmi-gen: %w", err)
@@ -196,7 +210,10 @@ func (s *Suite) deployGnmiGen(configPath string, data []byte) error {
 		return fmt.Errorf("applying config: %w", err)
 	}
 
-	vars := map[string]any{"ConfigHash": hex.EncodeToString(sum[:8])}
+	vars := map[string]any{
+		"ConfigHash": hex.EncodeToString(sum[:8]),
+		"TLSSecret":  s.GnmiGenTLSSecret,
+	}
 	if _, err := s.K8s.applyYAML(gnmiGenManifests, vars); err != nil {
 		return err
 	}

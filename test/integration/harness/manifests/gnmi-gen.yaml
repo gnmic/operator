@@ -48,6 +48,11 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+{{- if .TLSSecret }}
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+{{- end }}
           readinessProbe:
             httpGet:
               path: /api/v1/targets
@@ -66,3 +71,8 @@ spec:
         - name: config
           configMap:
             name: gnmi-gen-config
+{{- if .TLSSecret }}
+        - name: tls
+          secret:
+            secretName: {{ .TLSSecret }}
+{{- end }}

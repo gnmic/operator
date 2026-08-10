@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log/slog"
-	"maps"
 	"os"
 	"sort"
 	"strconv"
@@ -144,10 +143,12 @@ func (b *PlanBuilder) Build() (*ApplyPlan, error) {
 		if err := b.buildTunnelTargetMatches(plan, pipelineData); err != nil {
 			return nil, err
 		}
-		// 2.7) assign prometheus output ports
-		if err := b.assignPrometheusOutputPorts(plan, pipelineData); err != nil {
-			return nil, err
-		}
+	}
+
+	// Assign Prometheus listen ports across the whole plan so two pipelines
+	// sharing (or each having) a prometheus output cannot both land on :9804.
+	if err := b.assignPrometheusOutputPorts(plan); err != nil {
+		return nil, err
 	}
 
 	return plan, nil
@@ -218,36 +219,38 @@ func (b *PlanBuilder) collectRelationships(plan *ApplyPlan) {
 			}
 		}
 		// output -> processors
-		// ordered relationship between outputs and their processors.
-		// builds map[outputNN][]processorNN where the slice maintains the order from the pipeline.
-		processorNames := make([]string, 0, len(pipelineData.OutputProcessors))
-		for processorNN := range pipelineData.OutputProcessors {
-			processorNames = append(processorNames, processorNN)
+		// Prefer OutputProcessorOrder (refs then sorted selectors). Fall back to
+		// sorted map keys for callers that only populate the map.
+		processorNames := pipelineData.OutputProcessorOrder
+		if len(processorNames) == 0 {
+			processorNames = make([]string, 0, len(pipelineData.OutputProcessors))
+			for processorNN := range pipelineData.OutputProcessors {
+				processorNames = append(processorNames, processorNN)
+			}
+			sort.Strings(processorNames)
 		}
 
 		for outputNN := range pipelineData.Outputs {
 			if _, ok := b.relationships.outputProcessors[outputNN]; !ok {
 				b.relationships.outputProcessors[outputNN] = make([]string, 0)
 			}
-			for _, processorName := range processorNames {
-				b.relationships.outputProcessors[outputNN] = append(b.relationships.outputProcessors[outputNN], processorName)
-			}
+			b.relationships.outputProcessors[outputNN] = append(b.relationships.outputProcessors[outputNN], processorNames...)
 		}
 		// input -> processors
-		// ordered relationship between inputs and their processors.
-		// builds map[inputNN][]processorNN where the slice maintains the order from the pipeline.
-		inputProcessorNames := make([]string, 0, len(pipelineData.InputProcessors))
-		for processorNN := range pipelineData.InputProcessors {
-			inputProcessorNames = append(inputProcessorNames, processorNN)
+		inputProcessorNames := pipelineData.InputProcessorOrder
+		if len(inputProcessorNames) == 0 {
+			inputProcessorNames = make([]string, 0, len(pipelineData.InputProcessors))
+			for processorNN := range pipelineData.InputProcessors {
+				inputProcessorNames = append(inputProcessorNames, processorNN)
+			}
+			sort.Strings(inputProcessorNames)
 		}
 
 		for inputNN := range pipelineData.Inputs {
 			if _, ok := b.relationships.inputProcessors[inputNN]; !ok {
 				b.relationships.inputProcessors[inputNN] = make([]string, 0)
 			}
-			for _, processorName := range inputProcessorNames {
-				b.relationships.inputProcessors[inputNN] = append(b.relationships.inputProcessors[inputNN], processorName)
-			}
+			b.relationships.inputProcessors[inputNN] = append(b.relationships.inputProcessors[inputNN], inputProcessorNames...)
 		}
 	}
 }
@@ -471,23 +474,24 @@ func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData *Pi
 	return nil
 }
 
-func (b *PlanBuilder) assignPrometheusOutputPorts(plan *ApplyPlan, pipelineData *PipelineData) error {
+func (b *PlanBuilder) assignPrometheusOutputPorts(plan *ApplyPlan) error {
 	promoutputs := make([]string, 0)
-	for outputNN, outputSpec := range pipelineData.Outputs {
-		if outputSpec.Type != PrometheusOutputType {
-			continue
+	for outputNN, cfg := range plan.Outputs {
+		if t, _ := cfg["type"].(string); t == PrometheusOutputType {
+			promoutputs = append(promoutputs, outputNN)
 		}
-		promoutputs = append(promoutputs, outputNN)
 	}
-	pipelinePortMap, err := assignPorts(promoutputs, PrometheusDefaultPort, PrmetheusPortPoolSize)
+	if len(promoutputs) == 0 {
+		return nil
+	}
+	portMap, err := assignPorts(promoutputs, PrometheusDefaultPort, PrmetheusPortPoolSize)
 	if err != nil {
 		return err
 	}
-	maps.Copy(plan.PrometheusPorts, pipelinePortMap)
-	for outputPNN, port := range pipelinePortMap {
+	plan.PrometheusPorts = portMap
+	for outputPNN, port := range portMap {
 		plan.Outputs[outputPNN]["listen"] = fmt.Sprintf(":%d", port)
 	}
-
 	return nil
 }
 

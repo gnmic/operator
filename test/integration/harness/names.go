@@ -36,6 +36,12 @@ func HeadlessServiceName(cluster string) string { return resourcePrefix + cluste
 func ConfigMapName(cluster string) string       { return resourcePrefix + cluster + "-config" }
 func TunnelServiceName(cluster string) string   { return resourcePrefix + cluster + "-grpc-tunnel" }
 func ClientCertName(cluster string) string      { return resourcePrefix + cluster + "-client-tls" }
+func APICertName(cluster string, ordinal int) string {
+	return fmt.Sprintf("%s%s-%d-tls", resourcePrefix, cluster, ordinal)
+}
+func ControllerCAConfigMap(cluster string) string {
+	return resourcePrefix + cluster + "-controller-ca"
+}
 
 func PromServiceName(cluster, pipeline, output string) string {
 	return fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster, pipeline, output)

@@ -1,0 +1,31 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ .Name }}
+  labels:
+    suite: "004"
+spec:
+  mode: {{ .Mode }}
+{{- if ne .SampleInterval "" }}
+  sampleInterval: {{ .SampleInterval }}
+{{- end }}
+{{- if ne .HeartbeatInterval "" }}
+  heartbeatInterval: {{ .HeartbeatInterval }}
+{{- end }}
+{{- if .UpdatesOnly }}
+  updatesOnly: true
+{{- end }}
+{{- if .SuppressRedundant }}
+  suppressRedundant: true
+{{- end }}
+{{- if ne .Prefix "" }}
+  prefix: {{ .Prefix }}
+{{- end }}
+{{- if ne .Target "" }}
+  target: {{ .Target }}
+{{- end }}
+  encoding: JSON_IETF
+  paths:
+{{- range .Paths }}
+    - {{ . }}
+{{- end }}

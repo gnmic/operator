@@ -377,7 +377,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			return ctrl.Result{}, err
 		}
 		for _, subscription := range subscriptions {
-			pipelineData.Subscriptions[subscription.Namespace+gnmic.Delimiter+subscription.Name] = subscription.Spec
+			// Key by pipeline like outputs so two pipelines sharing one
+			// Subscription CR each get their own output binding. A flat
+			// namespace/name key merges both pipelines' outputs onto every
+			// target that uses the subscription.
+			pipelineData.Subscriptions[pipelineNN+gnmic.Delimiter+subscription.Name] = subscription.Spec
 		}
 		logger.Info("cluster pipeline resolved subscriptions", "count", len(subscriptions))
 
@@ -1490,11 +1494,29 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 		needsUpdate = true
 	}
 
-	// update volumes if they changed (needed when scaling with TLS enabled)
+	// update volumes if they changed (needed when scaling with TLS enabled, or
+	// when clientTLS / api.tls / tunnel TLS is added or removed after create)
 	// projected volumes include per-pod certificate secrets, so they change when replicas change
 	if !volumesEqual(current.Spec.Template.Spec.Volumes, desired.Spec.Template.Spec.Volumes) {
 		current.Spec.Template.Spec.Volumes = desired.Spec.Template.Spec.Volumes
 		needsUpdate = true
+	}
+
+	// volumeMounts (and the Env they depend on, e.g. POD_NAME for subPathExpr)
+	// must stay in lockstep with volumes — otherwise enabling clientTLS/api.tls
+	// on a live Cluster adds Secret/ConfigMap volumes that are never mounted,
+	// or mounts that fail with CreateContainerConfigError.
+	if len(desired.Spec.Template.Spec.Containers) > 0 && len(current.Spec.Template.Spec.Containers) > 0 {
+		desiredCtr := &desired.Spec.Template.Spec.Containers[0]
+		currentCtr := &current.Spec.Template.Spec.Containers[0]
+		if !volumeMountsEqual(currentCtr.VolumeMounts, desiredCtr.VolumeMounts) {
+			currentCtr.VolumeMounts = desiredCtr.VolumeMounts
+			needsUpdate = true
+		}
+		if !envVarsEqual(currentCtr.Env, desiredCtr.Env) {
+			currentCtr.Env = desiredCtr.Env
+			needsUpdate = true
+		}
 	}
 
 	if needsUpdate {
@@ -1529,6 +1551,54 @@ func volumesEqual(a, b []corev1.Volume) bool {
 				return false
 			}
 		} else if (va.Projected == nil) != (vb.Projected == nil) {
+			return false
+		}
+		// secret / configMap volume identity (clientTLS, CA bundles)
+		if (va.Secret == nil) != (vb.Secret == nil) {
+			return false
+		}
+		if va.Secret != nil && vb.Secret != nil && va.Secret.SecretName != vb.Secret.SecretName {
+			return false
+		}
+		if (va.ConfigMap == nil) != (vb.ConfigMap == nil) {
+			return false
+		}
+		if va.ConfigMap != nil && vb.ConfigMap != nil && va.ConfigMap.Name != vb.ConfigMap.Name {
+			return false
+		}
+	}
+	return true
+}
+
+// volumeMountsEqual compares mount name+path pairs.
+func volumeMountsEqual(a, b []corev1.VolumeMount) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	type key struct{ name, path, sub string }
+	aSet := make(map[key]struct{}, len(a))
+	for _, m := range a {
+		aSet[key{m.Name, m.MountPath, m.SubPathExpr}] = struct{}{}
+	}
+	for _, m := range b {
+		if _, ok := aSet[key{m.Name, m.MountPath, m.SubPathExpr}]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// envVarsEqual compares env var names (value/valueFrom identity ignored beyond presence).
+func envVarsEqual(a, b []corev1.EnvVar) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aNames := make(map[string]struct{}, len(a))
+	for _, e := range a {
+		aNames[e.Name] = struct{}{}
+	}
+	for _, e := range b {
+		if _, ok := aNames[e.Name]; !ok {
 			return false
 		}
 	}
@@ -3567,20 +3637,8 @@ func (r *ClusterReconciler) reconcilePrometheusService(ctx context.Context, clus
 
 // buildPrometheusService builds a service for a Prometheus output
 func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluster, serviceName, outputName, pipelineName string, port int32, urlPath string, outputSpec *gnmicv1alpha1.OutputSpec) *corev1.Service {
-	labels := map[string]string{
-		"app.kubernetes.io/name":       LabelValueName,
-		"app.kubernetes.io/managed-by": LabelValueManagedBy,
-		LabelClusterName:               cluster.Name,
-		LabelServiceType:               LabelValueOutputTypePrometheus,
-		LabelOutputName:                outputName,
-		LabelPipelineName:              pipelineName,
-	}
-
-	annotations := map[string]string{
-		"prometheus.io/scrape": "true",
-		"prometheus.io/port":   strconv.Itoa(int(port)),
-		"prometheus.io/path":   urlPath,
-	}
+	labels := map[string]string{}
+	annotations := map[string]string{}
 	// default to ClusterIP if no service config is provided
 	serviceType := corev1.ServiceTypeClusterIP
 
@@ -3595,6 +3653,18 @@ func (r *ClusterReconciler) buildPrometheusService(cluster *gnmicv1alpha1.Cluste
 			maps.Copy(labels, outputSpec.Service.Labels)
 		}
 	}
+
+	// Operator labels and scrape annotations win over user-supplied keys with
+	// the same name so ServiceMonitors and GC ownership stay reliable.
+	labels["app.kubernetes.io/name"] = LabelValueName
+	labels["app.kubernetes.io/managed-by"] = LabelValueManagedBy
+	labels[LabelClusterName] = cluster.Name
+	labels[LabelServiceType] = LabelValueServiceTypePrometheusOutput
+	labels[LabelOutputName] = outputName
+	labels[LabelPipelineName] = pipelineName
+	annotations["prometheus.io/scrape"] = "true"
+	annotations["prometheus.io/port"] = strconv.Itoa(int(port))
+	annotations["prometheus.io/path"] = urlPath
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -3644,12 +3714,13 @@ type listenPortAndPath struct {
 	Path   string `yaml:"path,omitempty" json:"path,omitempty"`
 }
 
-// parseListenPortAndPath parses the "listen" and "path" fields from output config and returns the port and path.
-// supports formats: "listen: ":9804", "0.0.0.0:9804", "localhost:9804", "[::1]:9804", "[2001:db8::8a2e:370:7334]:9804".
-// returns the default port 9804 if not specified.
-// returns the default path /metrics if not specified.
+// parseListenPortAndPath parses the "listen" and "path" fields from output config.
+// Supports: ":9804", "0.0.0.0:9804", "localhost:9804", "[::1]:9804".
+// When listen is unset, port is 0 so callers can use the plan-assigned port
+// from assignPrometheusOutputPorts — do not invent PrometheusDefaultPort here
+// or the Service will disagree with the collector's actual listen address.
 func parseListenPortAndPath(configRaw []byte) (int32, string, error) {
-	if configRaw == nil {
+	if len(configRaw) == 0 {
 		return 0, "", nil
 	}
 
@@ -3658,16 +3729,12 @@ func parseListenPortAndPath(configRaw []byte) (int32, string, error) {
 		return 0, "", err
 	}
 
+	config.Path = strings.TrimSpace(config.Path)
 	config.Listen = strings.TrimSpace(config.Listen)
 	if config.Listen == "" {
-		config.Listen = fmt.Sprintf(":%d", gnmic.PrometheusDefaultPort)
-	}
-	config.Path = strings.TrimSpace(config.Path)
-	if config.Path == "" {
-		config.Path = gnmic.PrometheusDefaultPath
+		return 0, config.Path, nil
 	}
 
-	// parse the port from the listen string value
 	idx := strings.LastIndex(config.Listen, ":")
 	if idx == -1 {
 		return 0, "", fmt.Errorf("invalid listen format: %s", config.Listen)

@@ -13,15 +13,16 @@ func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.Subscript
 	mode, streamMode := specModeToConfig(subscription.Mode)
 
 	config := &gapi.SubscriptionConfig{
-		Name:        subNN,
-		Prefix:      subscription.Prefix,
-		Paths:       subscription.Paths,
-		Mode:        mode,
-		StreamMode:  streamMode,
-		UpdatesOnly: subscription.UpdatesOnly,
-		Depth:       subscription.Depth,
-		Target:      subscription.Target,
-		Outputs:     outputs,
+		Name:              subNN,
+		Prefix:            subscription.Prefix,
+		Paths:             subscription.Paths,
+		Mode:              mode,
+		StreamMode:        streamMode,
+		UpdatesOnly:       subscription.UpdatesOnly,
+		SuppressRedundant: subscription.SuppressRedundant,
+		Depth:             subscription.Depth,
+		Target:            subscription.Target,
+		Outputs:           outputs,
 	}
 
 	if len(outputs) > 0 {

@@ -148,15 +148,20 @@ spec:
 
 func waitFleetReady(t *testing.T) time.Duration {
 	t.Helper()
+	return waitFleetReadyWithin(t, harness.Long)
+}
+
+func waitFleetReadyWithin(t *testing.T, timeout time.Duration) time.Duration {
+	t.Helper()
 	restoreFleetAddresses(t)
 	start := time.Now()
-	s.K8s.WaitReadyPods(t, cluster, replicas, harness.Long)
+	s.K8s.WaitReadyPods(t, cluster, replicas, timeout)
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
 		TargetsCount:      harness.I32(int32(fleetN)),
 		UnassignedTargets: harness.I32(0),
 		ReadyReplicas:     harness.I32(int32(replicas)),
 	})
-	s.GnmiGen.WaitFleetStreams(t, harness.Long, 1, targets)
+	s.GnmiGen.WaitFleetStreams(t, timeout, 1, targets)
 	s.GnmiGen.WaitStreams(t, spareSim, 0)
 	elapsed := time.Since(start)
 	t.Logf("fleet converged in %s (SCALE_TARGETS=%d SCALE_REPLICAS=%d)", elapsed, fleetN, replicas)
@@ -186,14 +191,67 @@ func assertSuiteResourceUsage(t *testing.T) {
 	if len(gens) == 0 {
 		t.Fatal("no gnmi-gen pods")
 	}
+	genUsages := s.K8s.PodUsagesOf(t, gens)
 	for _, p := range gens {
-		harness.AssertPodUsageWithinLimits(t, p, s.K8s.PodUsageOf(t, p))
+		u := genUsages[p.Name]
+		harness.LogPodUsage(t, u)
+		harness.AssertPodUsageWithinLimitsQuiet(t, p, u)
 	}
-	for _, p := range s.K8s.ClusterPods(t, cluster) {
-		harness.AssertPodUsageWithinLimits(t, p, s.K8s.PodUsageOf(t, p))
+
+	collectors := s.K8s.ClusterPods(t, cluster)
+	colUsages := s.K8s.PodUsagesOf(t, collectors)
+	var maxCPU, sumCPU float64
+	var maxMem, sumMem uint64
+	var maxCPUName, maxMemName string
+	for _, p := range collectors {
+		u := colUsages[p.Name]
+		harness.AssertPodUsageWithinLimitsQuiet(t, p, u)
+		sumCPU += u.CPUCores
+		sumMem += u.MemoryBytes
+		if u.CPUCores >= maxCPU {
+			maxCPU, maxCPUName = u.CPUCores, p.Name
+		}
+		if u.MemoryBytes >= maxMem {
+			maxMem, maxMemName = u.MemoryBytes, p.Name
+		}
 	}
-	for _, p := range s.K8s.OperatorPods(t) {
-		harness.AssertPodUsageWithinLimits(t, p, s.K8s.PodUsageOf(t, p))
+	n := float64(len(collectors))
+	if n == 0 {
+		t.Fatal("no collector pods")
+	}
+	t.Logf("usage collectors: n=%d cpu[avg=%.3f max=%.3f %s] cores mem[avg=%.1f max=%.1f %s] MiB",
+		len(collectors), sumCPU/n, maxCPU, maxCPUName,
+		float64(sumMem)/(n*1024*1024), float64(maxMem)/(1024*1024), maxMemName)
+
+	ops := s.K8s.OperatorPods(t)
+	opUsages := s.K8s.PodUsagesOf(t, ops)
+	for _, p := range ops {
+		u := opUsages[p.Name]
+		harness.LogPodUsage(t, u)
+		harness.AssertPodUsageWithinLimitsQuiet(t, p, u)
+	}
+}
+
+// assertOperatorMemStable fails if working-set grew more than maxGrowthBytes
+// across a sample window (leak / runaway cache growth smoke check).
+func assertOperatorMemStable(t *testing.T, windows []harness.UsageWindow, maxGrowthBytes uint64) {
+	t.Helper()
+	for _, w := range windows {
+		if w.Samples < 2 {
+			t.Fatalf("%s: need ≥2 samples for stability, got %d", w.Name, w.Samples)
+		}
+		if w.MemMax < w.MemMin {
+			continue
+		}
+		growth := w.MemMax - w.MemMin
+		if growth > maxGrowthBytes {
+			t.Fatalf("%s memory grew %.1f MiB over soak (min=%.1f max=%.1f; allow ≤%.1f MiB)",
+				w.Name,
+				float64(growth)/(1024*1024),
+				float64(w.MemMin)/(1024*1024),
+				float64(w.MemMax)/(1024*1024),
+				float64(maxGrowthBytes)/(1024*1024))
+		}
 	}
 }
 
@@ -230,13 +288,29 @@ func establishedSnapshot() map[string]time.Time {
 }
 
 func TestScale001_FleetConverges(t *testing.T) {
-	elapsed := waitFleetReady(t)
-	harness.WaitClusterCondition(t, s.K8s, cluster, harness.CondReady, metav1.ConditionTrue, harness.Long)
+	const timeout = 10 * time.Minute
+	// Sample through converge so peak CPU is visible, not only the idle
+	// post-Ready reading that AssertPodUsageWithinLimits would see.
+	opSampler := s.K8s.StartOperatorUsageSampler(2 * time.Second)
+	elapsed := waitFleetReadyWithin(t, timeout)
+	harness.WaitClusterCondition(t, s.K8s, cluster, harness.CondReady, metav1.ConditionTrue, timeout)
 
 	promSvc := harness.PromServiceName(cluster, pipeline, output)
 	s.K8s.WaitExists(t, promSvc, &corev1.Service{})
-	s.K8s.WaitClusterPrometheusSources(t, cluster, pipeline, output, targets, harness.Long)
+	s.K8s.WaitClusterPrometheusSources(t, cluster, pipeline, output, targets, timeout)
+	convergeWindows := opSampler.StopAndLog(t, "converge")
+	for _, p := range s.K8s.OperatorPods(t) {
+		for _, w := range convergeWindows {
+			if w.Name == p.Name {
+				harness.AssertUsageWindowWithinLimits(t, p, w)
+			}
+		}
+	}
+
 	assertSuiteResourceUsage(t)
+	// Short soak: steady-state memory should not climb after Ready.
+	soak := s.K8s.SampleOperatorUsageFor(t, 30*time.Second, 2*time.Second, "post-converge soak")
+	assertOperatorMemStable(t, soak, 32*1024*1024)
 	t.Logf("013-1 converge_seconds=%.1f scale_targets=%d", elapsed.Seconds(), fleetN)
 }
 
@@ -323,6 +397,7 @@ func TestScale003_SingleTargetChangeIsCheap(t *testing.T) {
 
 func TestScale004_ChurnKeepsInvariant(t *testing.T) {
 	waitFleetReady(t)
+	opSampler := s.K8s.StartOperatorUsageSampler(2 * time.Second)
 
 	var overHits atomic.Int32
 	stop := make(chan struct{})
@@ -376,12 +451,22 @@ spec:
 		if _, err := s.K8s.ApplyYAMLNoCleanup(b.String(), nil); err != nil {
 			close(stop)
 			wg.Wait()
+			_ = opSampler.Stop()
 			t.Fatalf("recreating targets: %v", err)
 		}
 		time.Sleep(5 * time.Second)
 	}
 	close(stop)
 	wg.Wait()
+
+	windows := opSampler.StopAndLog(t, "target churn")
+	for _, p := range s.K8s.OperatorPods(t) {
+		for _, w := range windows {
+			if w.Name == p.Name {
+				harness.AssertUsageWindowWithinLimits(t, p, w)
+			}
+		}
+	}
 
 	if overHits.Load() > 0 {
 		t.Fatalf("observed %d samples with >1 stream during churn", overHits.Load())
@@ -406,6 +491,7 @@ spec:
 func TestScale005_ChaosRebootsRecover(t *testing.T) {
 	waitFleetReady(t)
 	restartsBefore := s.K8s.RestartCounts(t, cluster)
+	opSampler := s.K8s.StartOperatorUsageSampler(2 * time.Second)
 
 	var overHits atomic.Int32
 	stop := make(chan struct{})
@@ -452,6 +538,7 @@ func TestScale005_ChaosRebootsRecover(t *testing.T) {
 	// Design: within 2 minutes of the last reboot (targets already up above).
 	s.GnmiGen.WaitFleetStreams(t, harness.Medium, 1, targets)
 	if overHits.Load() > 0 {
+		_ = opSampler.Stop()
 		t.Fatalf("observed %d samples with >1 stream during/after chaos", overHits.Load())
 	}
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
@@ -467,5 +554,14 @@ func TestScale005_ChaosRebootsRecover(t *testing.T) {
 	harness.WaitTargetsReady(t, s.K8s, readyTimeout, targets)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 	harness.AssertNoPanics(t, s.K8s.OperatorLogs(t, 15*time.Minute))
+
+	windows := opSampler.StopAndLog(t, "chaos reboots")
+	for _, p := range s.K8s.OperatorPods(t) {
+		for _, w := range windows {
+			if w.Name == p.Name {
+				harness.AssertUsageWindowWithinLimits(t, p, w)
+			}
+		}
+	}
 	assertSuiteResourceUsage(t)
 }

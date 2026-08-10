@@ -1,0 +1,17 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Processor
+metadata:
+  name: {{ .Name }}
+  labels:
+    suite: "006"
+{{- if .Chain }}
+    chain: {{ .Chain }}
+{{- end }}
+spec:
+  type: event-add-tag
+  config:
+    # Without a matcher, gNMIc never adds tags (see event-add-tag docs).
+    value-names:
+      - "."
+    add:
+      {{ .TagKey }}: {{ .TagValue }}
