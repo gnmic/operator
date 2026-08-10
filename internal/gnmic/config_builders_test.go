@@ -164,13 +164,21 @@ func TestConvert(t *testing.T) {
 
 func TestBuildSubscriptionConfig(t *testing.T) {
 	spec := &gnmicv1alpha1.SubscriptionSpec{
-		Prefix: "/interfaces",
-		Paths:  []string{"/interfaces/interface"},
-		Mode:   "STREAM/SAMPLE",
+		Prefix:            "/interfaces",
+		Paths:             []string{"/interfaces/interface"},
+		Mode:              "STREAM/SAMPLE",
+		SuppressRedundant: true,
+		UpdatesOnly:       true,
 	}
 	cfg := buildSubscriptionConfig("default/sub1", spec, []string{"default/out1"}, nil)
 	if cfg.Mode != "STREAM" || cfg.StreamMode != "SAMPLE" {
 		t.Fatalf("mode = %s/%s", cfg.Mode, cfg.StreamMode)
+	}
+	if !cfg.SuppressRedundant {
+		t.Fatal("expected SuppressRedundant")
+	}
+	if !cfg.UpdatesOnly {
+		t.Fatal("expected UpdatesOnly")
 	}
 
 	mode, stream := specModeToConfig("ONCE")

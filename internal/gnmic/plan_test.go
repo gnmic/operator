@@ -129,6 +129,74 @@ func TestAssignPorts(t *testing.T) {
 	}
 }
 
+func TestAssignPrometheusPortsDistinctAcrossPipelines(t *testing.T) {
+	sub := gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/"}, Mode: "ONCE"}
+	p1 := NewPipelineData()
+	p1.Subscriptions["ns/p1/sub"] = sub
+	p1.Outputs["ns/p1/out1"] = gnmicv1alpha1.OutputSpec{Type: PrometheusOutputType}
+	p2 := NewPipelineData()
+	p2.Subscriptions["ns/p2/sub"] = sub
+	p2.Outputs["ns/p2/out1"] = gnmicv1alpha1.OutputSpec{Type: PrometheusOutputType}
+
+	plan, err := NewPlanBuilder("c", nil).AddPipeline("p1", p1).AddPipeline("p2", p2).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := plan.PrometheusPorts["ns/p1/out1"], plan.PrometheusPorts["ns/p2/out1"]
+	if a == 0 || b == 0 {
+		t.Fatalf("missing ports: %v", plan.PrometheusPorts)
+	}
+	if a == b {
+		t.Fatalf("pipelines collided on port %d", a)
+	}
+}
+
+func TestSharedSubscriptionKeepsPerPipelineOutputs(t *testing.T) {
+	profile := gnmicv1alpha1.TargetProfileSpec{Encoding: "JSON"}
+	sub := gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/"}, Mode: "ONCE"}
+
+	p1 := NewPipelineData()
+	p1.TargetProfiles["default/default"] = profile
+	p1.Targets["default/leaf1"] = gnmicv1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "leaf1"},
+		Spec:       gnmicv1alpha1.TargetSpec{Address: "10.0.0.1:57400", Profile: "default"},
+	}
+	p1.Subscriptions["default/p1/sub"] = sub
+	p1.Outputs["default/p1/out"] = gnmicv1alpha1.OutputSpec{Type: FileOutputType}
+
+	p2 := NewPipelineData()
+	p2.TargetProfiles["default/default"] = profile
+	p2.Targets["default/spine1"] = gnmicv1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "spine1"},
+		Spec:       gnmicv1alpha1.TargetSpec{Address: "10.0.0.2:57400", Profile: "default"},
+	}
+	p2.Subscriptions["default/p2/sub"] = sub
+	p2.Outputs["default/p2/out"] = gnmicv1alpha1.OutputSpec{Type: FileOutputType}
+
+	plan, err := NewPlanBuilder("c", &mockCredsFetcher{}).
+		AddPipeline("p1", p1).
+		AddPipeline("p2", p2).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leafSubs := plan.Targets["default/leaf1"].Subscriptions
+	spineSubs := plan.Targets["default/spine1"].Subscriptions
+	if len(leafSubs) != 1 || leafSubs[0] != "default/p1/sub" {
+		t.Fatalf("leaf subscriptions = %v", leafSubs)
+	}
+	if len(spineSubs) != 1 || spineSubs[0] != "default/p2/sub" {
+		t.Fatalf("spine subscriptions = %v", spineSubs)
+	}
+	if outs := plan.Subscriptions["default/p1/sub"].Outputs; len(outs) != 1 || outs[0] != "default/p1/out" {
+		t.Fatalf("p1 sub outputs = %v", outs)
+	}
+	if outs := plan.Subscriptions["default/p2/sub"].Outputs; len(outs) != 1 || outs[0] != "default/p2/out" {
+		t.Fatalf("p2 sub outputs = %v", outs)
+	}
+}
+
 func TestHash32(t *testing.T) {
 	if hash32("x") == hash32("y") {
 		t.Fatal("expected different hashes")

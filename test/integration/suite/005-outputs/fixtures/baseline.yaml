@@ -1,0 +1,75 @@
+# Shared props for 005-outputs. Pipelines and Outputs are created per test.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sim-credentials
+stringData:
+  username: gnmic
+  password: gnmic
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: default
+spec:
+  credentialsRef: sim-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  tls: {}
+  retryTimer: 2s
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: {{ .GnmicImage }}
+  replicas: 1
+  api:
+    restPort: 7890
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: leaf1
+  labels:
+    vendor: gnmi-gen
+    role: leaf
+spec:
+  address: {{ .GnmiGenHost }}:57400
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: leaf2
+  labels:
+    vendor: gnmi-gen
+    role: leaf
+spec:
+  address: {{ .GnmiGenHost }}:57401
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: spine1
+  labels:
+    vendor: gnmi-gen
+    role: spine
+spec:
+  address: {{ .GnmiGenHost }}:57402
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: if-counters
+  labels:
+    suite: "005"
+spec:
+  mode: STREAM/SAMPLE
+  sampleInterval: 1s
+  encoding: JSON_IETF
+  paths:
+    - /interface/statistics/in-octets

@@ -1,0 +1,11 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: {{ .Name }}
+  labels:
+    suite: "005"
+spec:
+  type: file
+  config:
+    filename: {{ .Filename }}
+    format: event

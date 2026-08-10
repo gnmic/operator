@@ -1,0 +1,27 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: {{ .Name }}
+spec:
+  clusterRef: c1
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        vendor: gnmi-gen
+  subscriptionSelectors:
+    - matchLabels:
+        suite: "006"
+  outputs:
+    outputRefs:
+      - sink
+{{- if .ProcessorChain }}
+    processorSelectors:
+      - matchLabels:
+          chain: {{ .ProcessorChain }}
+{{- end }}
+{{- if .ProcessorRefs }}
+    processorRefs:
+{{- range .ProcessorRefs }}
+      - {{ . }}
+{{- end }}
+{{- end }}

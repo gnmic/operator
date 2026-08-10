@@ -1,0 +1,33 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: {{ .Name }}
+  labels:
+    suite: "005"
+{{- if .ExtraLabelKey }}
+    {{ .ExtraLabelKey }}: {{ .ExtraLabelValue }}
+{{- end }}
+spec:
+  type: prometheus
+{{- if .Expiration }}
+  config:
+    expiration: {{ .Expiration }}
+{{- else }}
+  config: {}
+{{- end }}
+{{- if .ServiceType }}
+  service:
+    type: {{ .ServiceType }}
+{{- if .ServiceLabels }}
+    labels:
+{{- range $k, $v := .ServiceLabels }}
+      {{ $k }}: {{ printf "%q" $v }}
+{{- end }}
+{{- end }}
+{{- if .ServiceAnnotations }}
+    annotations:
+{{- range $k, $v := .ServiceAnnotations }}
+      {{ $k }}: {{ printf "%q" $v }}
+{{- end }}
+{{- end }}
+{{- end }}

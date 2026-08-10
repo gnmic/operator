@@ -14,6 +14,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var labelValueRE = regexp.MustCompile(`([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"`)
@@ -158,23 +159,70 @@ func (k *K8s) PromListenPort(t *testing.T, service string) int {
 // forward) and returns the concatenated body.
 func (k *K8s) ScrapeClusterPrometheus(t *testing.T, cluster, pipeline, output string) string {
 	t.Helper()
+	body, err := k.ScrapeClusterPrometheusQuiet(cluster, pipeline, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// ScrapeClusterPrometheusQuiet is the non-fatal form for polling helpers.
+func (k *K8s) ScrapeClusterPrometheusQuiet(cluster, pipeline, output string) (string, error) {
+	return k.scrapeClusterPrometheus(cluster, pipeline, output)
+}
+
+func (k *K8s) scrapeClusterPrometheus(cluster, pipeline, output string) (string, error) {
 	svc := PromServiceName(cluster, pipeline, output)
-	port := k.PromListenPort(t, svc)
+	var svcObj corev1.Service
+	if err := k.Client.Get(k.Ctx, types.NamespacedName{Namespace: k.Namespace, Name: svc}, &svcObj); err != nil {
+		return "", fmt.Errorf("getting prometheus service %s: %w", svc, err)
+	}
+	if len(svcObj.Spec.Ports) == 0 {
+		return "", fmt.Errorf("prometheus service %s has no ports", svc)
+	}
+	port := int(svcObj.Spec.Ports[0].Port)
+
+	var list corev1.PodList
+	if err := k.Client.List(k.Ctx, &list,
+		client.InNamespace(k.Namespace),
+		client.MatchingLabels{LabelClusterName: cluster}); err != nil {
+		return "", fmt.Errorf("listing collector pods: %w", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
 	var b strings.Builder
-	for _, pod := range k.ClusterPods(t, cluster) {
-		if !podReady(&pod) {
+	scraped := 0
+	for i := range list.Items {
+		pod := &list.Items[i]
+		if !podReady(pod) {
 			continue
 		}
 		fw, err := k.ForwardPodPort(pod.Name, port)
 		if err != nil {
-			t.Fatalf("port-forward %s:%d: %v", pod.Name, port, err)
+			return "", fmt.Errorf("port-forward %s:%d: %w", pod.Name, port, err)
 		}
-		body := Scrape(t, fw.URL+"/metrics")
+		resp, err := client.Get(fw.URL + "/metrics")
+		if err != nil {
+			fw.Close()
+			return "", fmt.Errorf("scraping %s: %w", fw.URL+"/metrics", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		fw.Close()
-		b.WriteString(body)
+		if err != nil {
+			return "", err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("scraping %s: %s", fw.URL+"/metrics", resp.Status)
+		}
+		b.Write(body)
 		b.WriteByte('\n')
+		scraped++
 	}
-	return b.String()
+	if scraped == 0 {
+		return "", fmt.Errorf("no ready collector pods to scrape for %s", svc)
+	}
+	return b.String(), nil
 }
 
 // WaitClusterPrometheusSources waits until the union of source label values
@@ -182,7 +230,10 @@ func (k *K8s) ScrapeClusterPrometheus(t *testing.T, cluster, pipeline, output st
 func (k *K8s) WaitClusterPrometheusSources(t *testing.T, cluster, pipeline, output string, want []string, timeout time.Duration) {
 	t.Helper()
 	Wait(t, timeout, fmt.Sprintf("prometheus sources for %d targets", len(want)), func() (bool, string) {
-		body := k.ScrapeClusterPrometheus(t, cluster, pipeline, output)
+		body, err := k.ScrapeClusterPrometheusQuiet(cluster, pipeline, output)
+		if err != nil {
+			return false, err.Error()
+		}
 		sources := LabelValues(body, "source")
 		missing := 0
 		for _, w := range want {

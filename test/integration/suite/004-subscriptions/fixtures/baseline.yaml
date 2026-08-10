@@ -1,0 +1,86 @@
+# Shared props for 004-subscriptions. Subscription CRs are created per test.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sim-credentials
+stringData:
+  username: gnmic
+  password: gnmic
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: default
+spec:
+  credentialsRef: sim-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  tls: {}
+  retryTimer: 2s
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: {{ .GnmicImage }}
+  replicas: 1
+  api:
+    restPort: 7890
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: leaf1
+  labels:
+    vendor: gnmi-gen
+spec:
+  address: {{ .GnmiGenHost }}:57400
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: leaf2
+  labels:
+    vendor: gnmi-gen
+spec:
+  address: {{ .GnmiGenHost }}:57401
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Target
+metadata:
+  name: spine1
+  labels:
+    vendor: gnmi-gen
+spec:
+  address: {{ .GnmiGenHost }}:57402
+  profile: default
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: prom
+  labels:
+    suite: "004"
+spec:
+  type: prometheus
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: collect
+spec:
+  clusterRef: c1
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        vendor: gnmi-gen
+  subscriptionSelectors:
+    - matchLabels:
+        suite: "004"
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          suite: "004"

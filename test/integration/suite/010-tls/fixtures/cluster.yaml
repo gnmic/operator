@@ -1,0 +1,22 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: {{ .Name }}
+spec:
+  image: {{ .GnmicImage }}
+  replicas: {{ .Replicas }}
+  api:
+    restPort: {{ .RestPort }}
+{{- if .APIIssuer }}
+    tls:
+      issuerRef: {{ .APIIssuer }}
+{{- end }}
+{{- if or .ClientIssuer .BundleRef }}
+  clientTLS:
+{{- if .ClientIssuer }}
+    issuerRef: {{ .ClientIssuer }}
+{{- end }}
+{{- if .BundleRef }}
+    bundleRef: {{ .BundleRef }}
+{{- end }}
+{{- end }}

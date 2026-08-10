@@ -1,0 +1,47 @@
+# Suite-local cert-manager issuers. selfsigned-issuer bootstraps the CA;
+# suite-ca-issuer signs both gnmi-gen's server cert and Cluster client/API certs.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: suite-ca
+spec:
+  isCA: true
+  commonName: suite-ca
+  secretName: suite-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: suite-ca-issuer
+spec:
+  ca:
+    secretName: suite-ca-secret
+---
+# Second CA used only as a negative trust bundle for 010-4.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wrong-ca
+spec:
+  isCA: true
+  commonName: wrong-ca
+  secretName: wrong-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer

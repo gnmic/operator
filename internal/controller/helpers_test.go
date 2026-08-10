@@ -52,13 +52,18 @@ func TestPipelineReferencesResource(t *testing.T) {
 
 func TestParseListenPortAndPath(t *testing.T) {
 	port, path, err := parseListenPortAndPath([]byte(`listen: ":9805"`))
-	if err != nil || port != 9805 || path != "/metrics" {
+	if err != nil || port != 9805 || path != "" {
 		t.Fatalf("port=%d path=%q err=%v", port, path, err)
 	}
 
 	port, path, err = parseListenPortAndPath([]byte("listen: \"127.0.0.1:8080\"\npath: /custom\n"))
 	if err != nil || port != 8080 || path != "/custom" {
 		t.Fatalf("port=%d path=%q err=%v", port, path, err)
+	}
+
+	port, path, err = parseListenPortAndPath([]byte(`{}`))
+	if err != nil || port != 0 || path != "" {
+		t.Fatalf("empty config: port=%d path=%q err=%v", port, path, err)
 	}
 
 	if _, _, err := parseListenPortAndPath([]byte("not yaml")); err == nil {

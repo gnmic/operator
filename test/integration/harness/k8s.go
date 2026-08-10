@@ -254,6 +254,13 @@ func (k *K8s) Target(t *testing.T, name string) *gnmicv1alpha1.Target {
 	return o
 }
 
+func (k *K8s) TargetProfile(t *testing.T, name string) *gnmicv1alpha1.TargetProfile {
+	t.Helper()
+	o := &gnmicv1alpha1.TargetProfile{}
+	k.get(t, name, o)
+	return o
+}
+
 // WaitExists blocks until a named object exists, then leaves it in obj.
 func (k *K8s) WaitExists(t *testing.T, name string, obj client.Object) {
 	t.Helper()
@@ -444,6 +451,63 @@ func AssertNoPanics(t *testing.T, logs string) {
 	if strings.Contains(logs, "panic: ") || strings.Contains(logs, "runtime error:") {
 		t.Fatalf("panic found in logs:\n%s", logs)
 	}
+}
+
+// Operator deployment in gnmic-system. Suites that restart it (008-12) must
+// run alone or last: a restart affects every suite sharing the cluster.
+const (
+	OperatorNamespace  = "gnmic-system"
+	OperatorDeployment = "gnmic-controller-manager"
+)
+
+// RestartOperator rolls the controller-manager Deployment and waits until a
+// new pod is Ready. Touches cluster-global state outside the suite namespace.
+func (k *K8s) RestartOperator(t *testing.T) {
+	t.Helper()
+	before := map[types.UID]struct{}{}
+	for _, p := range k.OperatorPods(t) {
+		before[p.UID] = struct{}{}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), Long)
+	defer cancel()
+	deploy, err := k.Clientset.AppsV1().Deployments(OperatorNamespace).Get(ctx, OperatorDeployment, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("getting operator deployment: %v", err)
+	}
+	if deploy.Spec.Template.Annotations == nil {
+		deploy.Spec.Template.Annotations = map[string]string{}
+	}
+	deploy.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
+	if _, err := k.Clientset.AppsV1().Deployments(OperatorNamespace).Update(ctx, deploy, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("restarting operator: %v", err)
+	}
+
+	Wait(t, Long, "operator rollout complete", func() (bool, string) {
+		d, err := k.Clientset.AppsV1().Deployments(OperatorNamespace).Get(context.Background(), OperatorDeployment, metav1.GetOptions{})
+		if err != nil {
+			return false, err.Error()
+		}
+		if d.Status.UpdatedReplicas < 1 || d.Status.ReadyReplicas < 1 ||
+			d.Status.UnavailableReplicas > 0 || d.Status.ObservedGeneration < d.Generation {
+			return false, fmt.Sprintf("updated=%d ready=%d unavailable=%d gen=%d/%d",
+				d.Status.UpdatedReplicas, d.Status.ReadyReplicas, d.Status.UnavailableReplicas,
+				d.Status.ObservedGeneration, d.Generation)
+		}
+		pods, err := k.listOperatorPods()
+		if err != nil {
+			return false, err.Error()
+		}
+		for _, p := range pods {
+			if !podReady(&p) {
+				continue
+			}
+			if _, old := before[p.UID]; !old {
+				return true, ""
+			}
+		}
+		return false, "no new ready operator pod yet"
+	})
 }
 
 // OperatorPods lists controller-manager pods in gnmic-system.

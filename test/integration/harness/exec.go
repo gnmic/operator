@@ -21,6 +21,16 @@ import (
 // ConfigMap says it should have.
 func (k *K8s) Exec(t *testing.T, pod, container string, command ...string) string {
 	t.Helper()
+	out, err := k.ExecQuiet(pod, container, command...)
+	if err != nil {
+		t.Fatalf("exec %v in %s: %v", command, pod, err)
+	}
+	return out
+}
+
+// ExecQuiet is Exec without failing the test — for poll loops during rollouts
+// when the container may be briefly unavailable.
+func (k *K8s) ExecQuiet(pod, container string, command ...string) (string, error) {
 	req := k.Clientset.CoreV1().RESTClient().
 		Post().
 		Resource("pods").
@@ -36,14 +46,14 @@ func (k *K8s) Exec(t *testing.T, pod, container string, command ...string) strin
 
 	exec, err := remotecommand.NewSPDYExecutor(k.RestCfg, http.MethodPost, req.URL())
 	if err != nil {
-		t.Fatalf("building executor for %s: %v", pod, err)
+		return "", fmt.Errorf("building executor: %w", err)
 	}
 	var stdout, stderr bytes.Buffer
 	err = exec.StreamWithContext(k.Ctx, remotecommand.StreamOptions{Stdout: &stdout, Stderr: &stderr})
 	if err != nil {
-		t.Fatalf("exec %v in %s: %v (stderr: %s)", command, pod, err, stderr.String())
+		return stdout.String(), fmt.Errorf("%w (stderr: %s)", err, stderr.String())
 	}
-	return stdout.String()
+	return stdout.String(), nil
 }
 
 // CollectorAPI opens a port-forward to a collector pod's REST API and returns a
