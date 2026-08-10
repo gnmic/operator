@@ -70,6 +70,15 @@ type TargetStateReconciler struct {
 	// controller is the only component that learns when a pod went away, so it
 	// is the one that invalidates. Nil is valid and disables the coupling.
 	Applied *ApplyCache
+
+	// reportedMu protects reported and lastSweep.
+	reportedMu sync.Mutex
+	// reported is the set of target names each pod reported on its last poll,
+	// so releasing stale status entries does not need a full Target list every
+	// time. Key: "namespace/clusterName/podName".
+	reported map[string]map[string]struct{}
+	// lastSweep is when each pod last ran the full-list fallback.
+	lastSweep map[string]time.Time
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=clusters,verbs=get;list;watch
@@ -203,6 +212,11 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 			// that did not restart the pod costs one redundant apply, which
 			// is the direction to err in.
 			r.Applied.Invalidate(streamKey(cluster.Namespace, cluster.Name, podIndex))
+			// The remembered target set describes a pod we may have just lost
+			// sight of, so it can no longer be diffed against. Dropping it makes
+			// the next poll sweep, which is the only way to find entries
+			// orphaned during the gap.
+			r.forgetPod(podStateKey(cluster.Namespace, cluster.Name, podName))
 			logger.Info("SSE stream disconnected, reconnecting", "delay", delay)
 			sleepOrDone(ctx, delay)
 			delay = backoff(delay)
@@ -275,90 +289,54 @@ func (r *TargetStateReconciler) pollAndSync(
 		}
 
 		reportedTargets[targetName] = struct{}{}
-		targetNN := types.NamespacedName{Name: targetName, Namespace: targetNamespace}
 
-		for attempt := 0; attempt < maxConflictRetries; attempt++ {
-			var target gnmicv1alpha1.Target
-			if err := r.Get(ctx, targetNN, &target); err != nil {
-				if !apierrors.IsNotFound(err) {
-					logger.Error(err, "poll: failed to get target", "target", entry.Name)
-				}
-				break
-			}
-
-			if target.Status.ClusterStates == nil {
-				target.Status.ClusterStates = make(map[string]gnmicv1alpha1.ClusterTargetState)
-			}
-
-			target.Status.ClusterStates[clusterName] = gnmicv1alpha1.ClusterTargetState{
+		r.applyClusterState(ctx,
+			types.NamespacedName{Name: targetName, Namespace: targetNamespace},
+			clusterName,
+			gnmicv1alpha1.ClusterTargetState{
 				Pod:             podName,
 				State:           entry.State.State,
 				FailedReason:    entry.State.FailedReason,
 				ConnectionState: entry.State.ConnectionState,
 				Subscriptions:   entry.State.Subscriptions,
 				LastUpdated:     metav1.NewTime(entry.State.LastUpdated),
-			}
-
-			computeStatusSummary(&target.Status)
-
-			if err := r.Status().Update(ctx, &target); err != nil {
-				if apierrors.IsConflict(err) {
-					continue
-				}
-				logger.Error(err, "poll: failed to update target status", "target", entry.Name)
-			}
-			break
-		}
+			},
+			logger)
 	}
 
-	// remove stale entries: targets that have a clusterStates entry for this
-	// cluster/pod but are no longer reported by the pod
-	var targets gnmicv1alpha1.TargetList
-	if err := r.List(ctx, &targets, client.InNamespace(namespace)); err != nil {
-		logger.Error(err, "poll: failed to list targets for stale cleanup")
+	// Release entries this pod owns but no longer reports.
+	//
+	// The cheap path diffs against what the pod reported last poll, so the
+	// common case — a target moved or removed while we were watching — costs no
+	// API call at all. The full list only runs on the first poll of a stream and
+	// every staleSweepInterval after that, because an entry orphaned while the
+	// operator was down is reported by nobody and no diff can find it.
+	podKey := podStateKey(namespace, clusterName, podName)
+	for _, name := range r.swapReported(podKey, reportedTargets) {
+		logger.Info("poll: releasing stale cluster state", "target", name, "cluster", clusterName, "pod", podName)
+		r.removeClusterState(ctx, types.NamespacedName{Name: name, Namespace: namespace}, clusterName, logger)
+	}
+
+	if !r.dueForSweep(podKey) {
 		return
 	}
 
+	var targets gnmicv1alpha1.TargetList
+	if err := r.List(ctx, &targets, client.InNamespace(namespace)); err != nil {
+		logger.Error(err, "poll: failed to list targets for stale sweep")
+		return
+	}
 	for i := range targets.Items {
 		target := &targets.Items[i]
-		if target.Status.ClusterStates == nil {
-			continue
-		}
 		cs, ok := target.Status.ClusterStates[clusterName]
-		if !ok {
-			continue
-		}
-		// only clean up entries owned by this pod
-		if cs.Pod != podName {
+		if !ok || cs.Pod != podName {
 			continue
 		}
 		if _, reported := reportedTargets[target.Name]; reported {
 			continue
 		}
-
-		for attempt := 0; attempt < maxConflictRetries; attempt++ {
-			if attempt > 0 {
-				if err := r.Get(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, target); err != nil {
-					if !apierrors.IsNotFound(err) {
-						logger.Error(err, "poll: failed to re-fetch target for stale cleanup", "target", target.Name)
-					}
-					break
-				}
-			}
-
-			delete(target.Status.ClusterStates, clusterName)
-			computeStatusSummary(&target.Status)
-
-			if err := r.Status().Update(ctx, target); err != nil {
-				if apierrors.IsConflict(err) {
-					continue
-				}
-				logger.Error(err, "poll: failed to remove stale cluster state", "target", target.Name, "cluster", clusterName)
-				break
-			}
-			logger.Info("poll: removed stale cluster state", "target", target.Name, "cluster", clusterName, "pod", podName)
-			break
-		}
+		logger.Info("sweep: removing stale cluster state", "target", target.Name, "cluster", clusterName, "pod", podName)
+		r.removeClusterState(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, clusterName, logger)
 	}
 }
 
@@ -382,46 +360,19 @@ func (r *TargetStateReconciler) handleEvent(ctx context.Context, event gnmic.SSE
 
 	targetNN := types.NamespacedName{Name: targetName, Namespace: targetNamespace}
 
-	for attempt := 0; attempt < maxConflictRetries; attempt++ {
-		// always fetch a fresh copy before updating
-		var target gnmicv1alpha1.Target
-		if err := r.Get(ctx, targetNN, &target); err != nil {
-			if !apierrors.IsNotFound(err) {
-				logger.Error(err, "failed to get target", "target", event.Data.Name)
-			}
-			return
-		}
-
-		if target.Status.ClusterStates == nil {
-			target.Status.ClusterStates = make(map[string]gnmicv1alpha1.ClusterTargetState)
-		}
-
-		if event.EventType == gnmic.SSEEventDelete {
-			delete(target.Status.ClusterStates, clusterName)
-		} else {
-			target.Status.ClusterStates[clusterName] = gnmicv1alpha1.ClusterTargetState{
-				Pod:             podName,
-				State:           stateObj.State,
-				FailedReason:    stateObj.FailedReason,
-				ConnectionState: stateObj.ConnectionState,
-				Subscriptions:   stateObj.Subscriptions,
-				LastUpdated:     metav1.NewTime(stateObj.LastUpdated),
-			}
-		}
-
-		computeStatusSummary(&target.Status)
-
-		if err := r.Status().Update(ctx, &target); err != nil {
-			if apierrors.IsConflict(err) {
-				continue // retry with a fresh read
-			}
-			logger.Error(err, "failed to update target status", "target", event.Data.Name)
-			return
-		}
-		return // success
+	if event.EventType == gnmic.SSEEventDelete {
+		r.removeClusterState(ctx, targetNN, clusterName, logger)
+		return
 	}
 
-	logger.Info("giving up after max conflict retries", "target", event.Data.Name, "retries", maxConflictRetries)
+	r.applyClusterState(ctx, targetNN, clusterName, gnmicv1alpha1.ClusterTargetState{
+		Pod:             podName,
+		State:           stateObj.State,
+		FailedReason:    stateObj.FailedReason,
+		ConnectionState: stateObj.ConnectionState,
+		Subscriptions:   stateObj.Subscriptions,
+		LastUpdated:     metav1.NewTime(stateObj.LastUpdated),
+	}, logger)
 }
 
 // computeStatusSummary updates the top-level summary fields (Clusters, ConnectionState)
