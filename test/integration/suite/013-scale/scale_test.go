@@ -4,8 +4,14 @@
 // single-target churn cost, sustained membership change, and mass reboot.
 //
 // Gated behind RUN_SCALE=1 (see TestMain). Not part of the default CI lane.
-// Fleet size defaults to 200 (SCALE_TARGETS) and collector pods to 4
-// (SCALE_REPLICAS).
+// Tunables (env vars, with defaults):
+//
+//	SCALE_TARGETS=200
+//	SCALE_REPLICAS=4
+//	SCALE_CPU_REQUEST=500m
+//	SCALE_CPU_LIMIT=2
+//	SCALE_MEMORY_REQUEST=512Mi
+//	SCALE_MEMORY_LIMIT=2Gi
 package scale
 
 import (
@@ -37,6 +43,10 @@ var (
 	targets   []string
 	fleetN    int
 	replicas  int
+	cpuReq    string
+	cpuLim    string
+	memReq    string
+	memLim    string
 	spareSim  string
 	sparePort int
 	minPerPod int
@@ -50,6 +60,10 @@ func TestMain(m *testing.M) {
 	}
 	fleetN = envInt("SCALE_TARGETS", 200)
 	replicas = envInt("SCALE_REPLICAS", 4)
+	cpuReq = envStr("SCALE_CPU_REQUEST", "500m")
+	cpuLim = envStr("SCALE_CPU_LIMIT", "2")
+	memReq = envStr("SCALE_MEMORY_REQUEST", "512Mi")
+	memLim = envStr("SCALE_MEMORY_LIMIT", "2Gi")
 	if replicas < 1 {
 		fmt.Fprintf(os.Stderr, "013-scale: SCALE_REPLICAS=%d too small (min 1)\n", replicas)
 		os.Exit(1)
@@ -65,8 +79,8 @@ func TestMain(m *testing.M) {
 	for i := 1; i <= fleetN; i++ {
 		targets[i-1] = fmt.Sprintf("dev-%d", i)
 	}
-	fmt.Fprintf(os.Stderr, "[harness] suite 013-scale: SCALE_TARGETS=%d SCALE_REPLICAS=%d spare=%s placement=%d..%d per pod\n",
-		fleetN, replicas, spareSim, minPerPod, maxPerPod)
+	fmt.Fprintf(os.Stderr, "[harness] suite 013-scale: SCALE_TARGETS=%d SCALE_REPLICAS=%d cpu=%s/%s mem=%s/%s spare=%s placement=%d..%d per pod\n",
+		fleetN, replicas, cpuReq, cpuLim, memReq, memLim, spareSim, minPerPod, maxPerPod)
 
 	require := append(append([]string{}, targets...), spareSim)
 	os.Exit(harness.RunSuite(m, harness.Options{
@@ -74,8 +88,14 @@ func TestMain(m *testing.M) {
 		GnmiGenConfigData: renderGnmiGenConfig(fleetN + 1),
 		RequireTargets:    require,
 		Baseline:          []string{"fixtures/baseline.yaml"},
-		BaselineVars:      map[string]any{"Replicas": replicas},
-		AfterBaseline:     applyFleetTargets,
+		BaselineVars: map[string]any{
+			"Replicas":      replicas,
+			"CPURequest":    cpuReq,
+			"CPULimit":      cpuLim,
+			"MemoryRequest": memReq,
+			"MemoryLimit":   memLim,
+		},
+		AfterBaseline: applyFleetTargets,
 	}, &s))
 }
 
@@ -89,6 +109,14 @@ func envInt(name string, def int) int {
 		return def
 	}
 	return n
+}
+
+func envStr(name, def string) string {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return def
+	}
+	return v
 }
 
 // placementBand is avg±20% with a floor that matches the design's 40–60 band

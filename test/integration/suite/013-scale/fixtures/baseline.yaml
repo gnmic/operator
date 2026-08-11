@@ -1,5 +1,5 @@
 # Shared props for 013-scale. Target CRs are generated in AfterBaseline.
-# Cluster replicas come from SCALE_REPLICAS via BaselineVars.
+# Cluster replicas and collector resources come from SCALE_* via BaselineVars.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -30,11 +30,11 @@ spec:
     restPort: 7890
   resources:
     requests:
-      cpu: 500m
-      memory: 512Mi
+      cpu: "{{ .CPURequest }}"
+      memory: "{{ .MemoryRequest }}"
     limits:
-      cpu: "2"
-      memory: 2Gi
+      cpu: "{{ .CPULimit }}"
+      memory: "{{ .MemoryLimit }}"
 ---
 apiVersion: operator.gnmic.dev/v1alpha1
 kind: Subscription
