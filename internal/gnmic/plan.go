@@ -323,13 +323,7 @@ func (b *PlanBuilder) buildTargets(plan *ApplyPlan, pipelineData *PipelineData) 
 			}
 		}
 
-		var subscriptions []string
-		if subscriptionsMap, ok := b.relationships.targetSubscriptions[targetNN]; ok {
-			subscriptions = make([]string, 0, len(subscriptionsMap))
-			for subscriptionName := range subscriptionsMap {
-				subscriptions = append(subscriptions, subscriptionName)
-			}
-		}
+		subscriptions := sortedKeys(b.relationships.targetSubscriptions[targetNN])
 
 		targetConfig := buildTargetConfig(&target, &profileSpec, creds, b.clientTLS)
 		targetConfig.Subscriptions = subscriptions
@@ -346,14 +340,7 @@ func (b *PlanBuilder) buildSubscriptions(plan *ApplyPlan, pipelineData *Pipeline
 			continue
 		}
 
-		var outputs []string
-		if outputsMap, ok := b.relationships.subscriptionOutputs[subNN]; ok {
-			outputs = make([]string, 0, len(outputsMap))
-			for outputName := range outputsMap {
-				outputs = append(outputs, outputName)
-			}
-		}
-
+		outputs := sortedKeys(b.relationships.subscriptionOutputs[subNN])
 		subConfig := buildSubscriptionConfig(subNN, &subSpec, outputs, pipelineData.Subscriptions)
 
 		plan.Subscriptions[subNN] = subConfig
@@ -390,15 +377,7 @@ func (b *PlanBuilder) buildInputs(plan *ApplyPlan, pipelineData *PipelineData) e
 			continue
 		}
 
-		// collect outputs for this input
-		var outputs []string
-		if outputSet, ok := b.relationships.inputOutputs[inputNN]; ok {
-			outputs = make([]string, 0, len(outputSet))
-			for outputName := range outputSet {
-				outputs = append(outputs, outputName)
-			}
-		}
-
+		outputs := sortedKeys(b.relationships.inputOutputs[inputNN])
 		processors := b.relationships.inputProcessors[inputNN]
 		inputConfig, err := buildInputConfig(&inputSpec, outputs, processors)
 		if err != nil {
@@ -409,6 +388,21 @@ func (b *PlanBuilder) buildInputs(plan *ApplyPlan, pipelineData *PipelineData) e
 	}
 
 	return nil
+}
+
+// sortedKeys returns the keys of m in lexicographic order so set-like
+// relationship slices (outputs, subscriptions) in the apply plan are stable
+// across reconciles.
+func sortedKeys(m map[string]struct{}) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (b *PlanBuilder) buildProcessors(plan *ApplyPlan, pipelineData *PipelineData) error {

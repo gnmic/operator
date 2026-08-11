@@ -2,6 +2,8 @@ package gnmic
 
 import (
 	"errors"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -105,6 +107,54 @@ func TestPlanBuilder_CredentialsError(t *testing.T) {
 		Build()
 	if err == nil {
 		t.Fatal("expected credentials error")
+	}
+}
+
+func TestPlanBuilder_RelationshipSlicesSorted(t *testing.T) {
+	// Multiple names force map-iteration order to matter if slices are left unsorted.
+	pipeline := NewPipelineData()
+	pipeline.Targets["default/t1"] = gnmicv1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "t1"},
+		Spec:       gnmicv1alpha1.TargetSpec{Address: "10.0.0.1:57400", Profile: "default"},
+	}
+	pipeline.TargetProfiles["default/default"] = gnmicv1alpha1.TargetProfileSpec{Encoding: "JSON"}
+	pipeline.Subscriptions["default/sub-z"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/z"}, Mode: "ONCE"}
+	pipeline.Subscriptions["default/sub-a"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/a"}, Mode: "ONCE"}
+	pipeline.Subscriptions["default/sub-m"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/m"}, Mode: "ONCE"}
+	pipeline.Outputs["default/out-z"] = gnmicv1alpha1.OutputSpec{Type: "file"}
+	pipeline.Outputs["default/out-a"] = gnmicv1alpha1.OutputSpec{Type: "file"}
+	pipeline.Outputs["default/out-m"] = gnmicv1alpha1.OutputSpec{Type: "file"}
+	pipeline.Inputs["default/in1"] = gnmicv1alpha1.InputSpec{Type: "kafka"}
+
+	for i := 0; i < 20; i++ {
+		plan, err := NewPlanBuilder("cluster-a", nil).AddPipeline("pipe1", pipeline).Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		subs := plan.Targets["default/t1"].Subscriptions
+		if !slices.IsSorted(subs) {
+			t.Fatalf("target subscriptions not sorted: %v", subs)
+		}
+		outs := plan.Subscriptions["default/sub-a"].Outputs
+		if !slices.IsSorted(outs) {
+			t.Fatalf("subscription outputs not sorted: %v", outs)
+		}
+		inOuts := plan.Inputs["default/in1"]["outputs"].([]string)
+		if !slices.IsSorted(inOuts) {
+			t.Fatalf("input outputs not sorted: %v", inOuts)
+		}
+	}
+}
+
+func TestSortedKeys(t *testing.T) {
+	if sortedKeys(nil) != nil {
+		t.Fatal("expected nil for nil map")
+	}
+	got := sortedKeys(map[string]struct{}{"c": {}, "a": {}, "b": {}})
+	want := []string{"a", "b", "c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sortedKeys = %v, want %v", got, want)
 	}
 }
 
