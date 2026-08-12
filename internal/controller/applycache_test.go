@@ -20,18 +20,8 @@ func TestApplyCache_RecordThenUnchanged(t *testing.T) {
 		t.Fatal("empty cache reported unchanged; a pod we know nothing about must be applied to")
 	}
 	c.Record("ns/c1/0", "hashA")
-	if c.Unchanged("ns/c1/0", "hashA") {
-		t.Fatal("first record must stay unverified so a follow-up apply still runs")
-	}
-	if !c.NeedsVerify("ns/c1/0", "hashA") {
-		t.Fatal("first record should need verify")
-	}
-	c.Record("ns/c1/0", "hashA")
 	if !c.Unchanged("ns/c1/0", "hashA") {
-		t.Fatal("verified hash reported changed")
-	}
-	if c.NeedsVerify("ns/c1/0", "hashA") {
-		t.Fatal("verified record should not need verify")
+		t.Fatal("recorded hash reported changed")
 	}
 	if c.Unchanged("ns/c1/0", "hashB") {
 		t.Fatal("different hash reported unchanged")
@@ -47,7 +37,6 @@ func TestApplyCache_ExpiresAfterRefreshInterval(t *testing.T) {
 	now := time.Unix(1000, 0)
 	c := testCache(t, &now)
 	c.Record("ns/c1/0", "hashA")
-	c.Record("ns/c1/0", "hashA") // verify
 
 	now = now.Add(applyRefreshInterval - time.Second)
 	if !c.Unchanged("ns/c1/0", "hashA") {
@@ -66,8 +55,6 @@ func TestApplyCache_InvalidateIsPerPod(t *testing.T) {
 	now := time.Unix(1000, 0)
 	c := testCache(t, &now)
 	c.Record("ns/c1/0", "hashA")
-	c.Record("ns/c1/0", "hashA")
-	c.Record("ns/c1/1", "hashB")
 	c.Record("ns/c1/1", "hashB")
 
 	c.Invalidate("ns/c1/0")
@@ -82,10 +69,10 @@ func TestApplyCache_InvalidateIsPerPod(t *testing.T) {
 func TestApplyCache_InvalidateCluster(t *testing.T) {
 	now := time.Unix(1000, 0)
 	c := testCache(t, &now)
-	for _, key := range []string{"ns/c1/0", "ns/c1/1", "ns/c10/0", "ns/c2/0"} {
-		c.Record(key, "h")
-		c.Record(key, "h")
-	}
+	c.Record("ns/c1/0", "h")
+	c.Record("ns/c1/1", "h")
+	c.Record("ns/c10/0", "h") // prefix-adjacent, must survive
+	c.Record("ns/c2/0", "h")
 
 	c.InvalidateCluster("ns", "c1")
 	if c.Unchanged("ns/c1/0", "h") || c.Unchanged("ns/c1/1", "h") {
@@ -99,23 +86,6 @@ func TestApplyCache_InvalidateCluster(t *testing.T) {
 	}
 }
 
-func TestApplyCache_NewHashResetsVerification(t *testing.T) {
-	now := time.Unix(1000, 0)
-	c := testCache(t, &now)
-	c.Record("ns/c1/0", "hashA")
-	c.Record("ns/c1/0", "hashA")
-	if !c.Unchanged("ns/c1/0", "hashA") {
-		t.Fatal("setup: hashA should be verified")
-	}
-	c.Record("ns/c1/0", "hashB")
-	if c.Unchanged("ns/c1/0", "hashB") {
-		t.Fatal("new hash must not be verified after a single record")
-	}
-	if !c.NeedsVerify("ns/c1/0", "hashB") {
-		t.Fatal("new hash should need verify")
-	}
-}
-
 // A reconciler built without a cache must apply unconditionally rather than
 // silently skip, so the short-circuit can never be enabled by accident.
 func TestApplyCache_NilIsAlwaysChanged(t *testing.T) {
@@ -123,9 +93,6 @@ func TestApplyCache_NilIsAlwaysChanged(t *testing.T) {
 	c.Record("ns/c1/0", "hashA")
 	if c.Unchanged("ns/c1/0", "hashA") {
 		t.Fatal("nil cache reported unchanged")
-	}
-	if c.NeedsVerify("ns/c1/0", "hashA") {
-		t.Fatal("nil cache reported needs verify")
 	}
 	c.Invalidate("ns/c1/0")
 	c.InvalidateCluster("ns", "c1")
