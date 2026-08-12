@@ -21,6 +21,19 @@ import (
 // to one apply per pod per interval.
 const applyRefreshInterval = 5 * time.Minute
 
+// applyVerifyDelay is the grace period before a safety-net re-POST of an
+// unverified hash. gNMIc's config/apply can ACK before every Subscribe stream
+// has re-established, and occasionally one never comes back on its own; a
+// second POST of the same config reliably kicks it loose. The delay has to
+// clear two things: every unrelated reconcile trigger that fires in the
+// meantime (Target status, Secret changes, periodic resync — all check
+// Unchanged and must not treat a still-settling apply as stale), and every
+// test's own tight "stays stable" window, so the safety net never lands mid
+// assertion. Firing it immediately (as a first attempt did) instead doubled
+// every apply back-to-back and made pods work harder to reconnect right when
+// they were already struggling, which was worse than the bug it targeted.
+const applyVerifyDelay = 30 * time.Second
+
 // ApplyCache records what was last successfully applied to each collector pod,
 // so a reconcile that changes nothing does not re-POST the whole configuration
 // to every pod.
@@ -38,8 +51,9 @@ type ApplyCache struct {
 }
 
 type applyRecord struct {
-	hash string
-	at   time.Time
+	hash     string
+	at       time.Time
+	verified bool
 }
 
 // NewApplyCache returns a cache using the default refresh interval.
@@ -55,7 +69,14 @@ func (c *ApplyCache) timeNow() time.Time {
 }
 
 // Unchanged reports whether the pod already holds this exact configuration and
-// the record is still inside the refresh interval.
+// no apply is due right now.
+//
+// An unverified hash still reports unchanged until applyVerifyDelay elapses —
+// otherwise every unrelated reconcile in that window would re-POST the same
+// config, compounding the very reconnect problem the verify pass exists to
+// fix. Once the grace period passes with no newer hash recorded, the next
+// reconcile (organic or the deliberate requeue below) is due its one
+// safety-net repost.
 //
 // A nil cache always reports false, so a reconciler constructed without one
 // (tests, the API server) applies unconditionally rather than silently skipping.
@@ -69,19 +90,43 @@ func (c *ApplyCache) Unchanged(key, hash string) bool {
 	if !ok || rec.hash != hash {
 		return false
 	}
-	return c.timeNow().Sub(rec.at) < c.ttl
+	age := c.timeNow().Sub(rec.at)
+	if !rec.verified && age >= applyVerifyDelay {
+		return false
+	}
+	return age < c.ttl
 }
 
-// Record marks a configuration as successfully applied to a pod. It must only
-// be called after the POST succeeds: recording an attempt would make a failed
-// apply look applied until the plan changes again.
+// Record marks a configuration as successfully POSTed to a pod. The first
+// Record for a hash leaves the entry unverified; if Unchanged later reports
+// changed because the grace period elapsed, the resulting repost's Record
+// call marks it verified so the short-circuit engages. It must only be called
+// after the POST succeeds: recording an attempt would make a failed apply
+// look applied until the plan changes again.
 func (c *ApplyCache) Record(key, hash string) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = applyRecord{hash: hash, at: c.timeNow()}
+	now := c.timeNow()
+	if rec, ok := c.entries[key]; ok && rec.hash == hash && !rec.verified {
+		c.entries[key] = applyRecord{hash: hash, at: now, verified: true}
+		return
+	}
+	c.entries[key] = applyRecord{hash: hash, at: now, verified: false}
+}
+
+// NeedsVerify reports whether key holds an unverified record for hash, so the
+// reconciler should requeue after applyVerifyDelay for the follow-up POST.
+func (c *ApplyCache) NeedsVerify(key, hash string) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rec, ok := c.entries[key]
+	return ok && rec.hash == hash && !rec.verified
 }
 
 // Invalidate drops one pod's record, forcing the next reconcile to re-apply to

@@ -241,6 +241,10 @@ spec:
 		return true, ""
 	})
 	s.GnmiGen.WaitStreams(t, leaf2, 0)
+	// Adding leaf2 re-applied the whole pod's config, briefly reloading
+	// leaf1's stream too; settle before proving it holds, or the window can
+	// start mid-reconnect and flake on a transient 0.
+	s.GnmiGen.WaitStreams(t, leaf1, 1)
 	s.GnmiGen.ConsistentlyCollectedOnce(t, 5*time.Second, 1, leaf1)
 
 	// Replace the Secret via YAML apply (avoids managedFields on a reused object),

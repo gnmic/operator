@@ -283,9 +283,21 @@ run-integration-tests-v2: ## Bring up the gnmi-gen suite env, run all suites, te
 	exit $$status
 
 # Nightly / local-only fleet suite. Not wired into CI.
-# SCALE_TARGETS defaults to 200; override e.g. SCALE_TARGETS=50 make integration-test-scale
+# Override e.g. SCALE_TARGETS=50 SCALE_REPLICAS=2 SCALE_CPU_LIMIT=1 make integration-test-scale
 SCALE_TARGETS ?= 200
+SCALE_REPLICAS ?= 4
+SCALE_CPU_REQUEST ?= 500m
+SCALE_CPU_LIMIT ?= 2
+SCALE_MEMORY_REQUEST ?= 512Mi
+SCALE_MEMORY_LIMIT ?= 2Gi
 .PHONY: integration-test-scale
 integration-test-scale: integration-env-check ## Run 013-scale (sets RUN_SCALE=1)
-	RUN_SCALE=1 SCALE_TARGETS=$(SCALE_TARGETS) go test -tags=integration -count=1 -timeout 45m -v ./$(IT_SUITE_DIR)/013-scale/...
+	RUN_SCALE=1 \
+	SCALE_TARGETS=$(SCALE_TARGETS) \
+	SCALE_REPLICAS=$(SCALE_REPLICAS) \
+	SCALE_CPU_REQUEST=$(SCALE_CPU_REQUEST) \
+	SCALE_CPU_LIMIT=$(SCALE_CPU_LIMIT) \
+	SCALE_MEMORY_REQUEST=$(SCALE_MEMORY_REQUEST) \
+	SCALE_MEMORY_LIMIT=$(SCALE_MEMORY_LIMIT) \
+	go test -tags=integration -count=1 -timeout 45m -v ./$(IT_SUITE_DIR)/013-scale/...
 
