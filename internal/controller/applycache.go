@@ -21,6 +21,12 @@ import (
 // to one apply per pod per interval.
 const applyRefreshInterval = 5 * time.Minute
 
+// applyVerifyDelay is how soon to re-POST the same payload after the first
+// successful apply. gNMIc's config/apply can ACK before every Subscribe stream
+// has re-established; without a second pass, ApplyCache would short-circuit
+// until applyRefreshInterval and leave targets with paths=[] for minutes.
+const applyVerifyDelay = 2 * time.Second
+
 // ApplyCache records what was last successfully applied to each collector pod,
 // so a reconcile that changes nothing does not re-POST the whole configuration
 // to every pod.
@@ -29,6 +35,10 @@ const applyRefreshInterval = 5 * time.Minute
 // it costs one redundant apply per pod, which is the safe direction to fail.
 // Persisting it would make a stale entry survive the restart that might have
 // been the only thing left to clear it.
+//
+// Each hash is applied twice before the short-circuit engages: the first POST
+// installs the plan, the second (after applyVerifyDelay) recovers targets that
+// missed the reconnect window. Only then is the record marked verified.
 type ApplyCache struct {
 	mu      sync.Mutex
 	entries map[string]applyRecord
@@ -38,8 +48,9 @@ type ApplyCache struct {
 }
 
 type applyRecord struct {
-	hash string
-	at   time.Time
+	hash     string
+	at       time.Time
+	verified bool
 }
 
 // NewApplyCache returns a cache using the default refresh interval.
@@ -54,8 +65,9 @@ func (c *ApplyCache) timeNow() time.Time {
 	return time.Now()
 }
 
-// Unchanged reports whether the pod already holds this exact configuration and
-// the record is still inside the refresh interval.
+// Unchanged reports whether the pod already holds this exact configuration,
+// the record has been verified by a second successful apply, and the record
+// is still inside the refresh interval.
 //
 // A nil cache always reports false, so a reconciler constructed without one
 // (tests, the API server) applies unconditionally rather than silently skipping.
@@ -66,22 +78,40 @@ func (c *ApplyCache) Unchanged(key, hash string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	rec, ok := c.entries[key]
-	if !ok || rec.hash != hash {
+	if !ok || rec.hash != hash || !rec.verified {
 		return false
 	}
 	return c.timeNow().Sub(rec.at) < c.ttl
 }
 
-// Record marks a configuration as successfully applied to a pod. It must only
-// be called after the POST succeeds: recording an attempt would make a failed
-// apply look applied until the plan changes again.
+// Record marks a configuration as successfully POSTed to a pod. The first
+// Record for a hash leaves the entry unverified so the next reconcile re-applies
+// once; the second Record of the same hash marks it verified and enables the
+// short-circuit. It must only be called after the POST succeeds.
 func (c *ApplyCache) Record(key, hash string) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = applyRecord{hash: hash, at: c.timeNow()}
+	now := c.timeNow()
+	if rec, ok := c.entries[key]; ok && rec.hash == hash && !rec.verified {
+		c.entries[key] = applyRecord{hash: hash, at: now, verified: true}
+		return
+	}
+	c.entries[key] = applyRecord{hash: hash, at: now, verified: false}
+}
+
+// NeedsVerify reports whether key holds an unverified record for hash, so the
+// reconciler should requeue for the follow-up apply.
+func (c *ApplyCache) NeedsVerify(key, hash string) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	rec, ok := c.entries[key]
+	return ok && rec.hash == hash && !rec.verified
 }
 
 // Invalidate drops one pod's record, forcing the next reconcile to re-apply to

@@ -534,13 +534,15 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	configApplied := false
 	var configError error
 	var unassignedTargets int32
-	if unassigned, err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
+	var verifyApply bool
+	if unassigned, needsVerify, err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
 		logger.Error(err, "failed to apply config to gNMIc pods")
 		configError = err
 	} else {
 		configApplied = true
 		unassignedTargets = unassigned
-		logger.Info("successfully applied config to gNMIc cluster", "pods", numPods)
+		verifyApply = needsVerify
+		logger.Info("successfully applied config to gNMIc cluster", "pods", numPods, "verifyPending", needsVerify)
 	}
 
 	// calculate resource counts from pipelineDataMap
@@ -719,6 +721,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if configApplied && len(pipelines) == 0 {
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
+	// First POST of a new plan is unverified: requeue so a second apply can
+	// recover targets that missed the Subscribe reconnect window.
+	if verifyApply {
+		return ctrl.Result{RequeueAfter: applyVerifyDelay}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -750,7 +757,7 @@ func clusterStatusEqual(a, b gnmicv1alpha1.ClusterStatus) bool {
 
 // applyConfigToPods sends the apply plan to all gNMIc pods with distributed targets.
 // Returns the number of targets that could not be assigned due to capacity limits.
-func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan *gnmic.ApplyPlan, numPods int) (int32, error) {
+func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmicv1alpha1.Cluster, plan *gnmic.ApplyPlan, numPods int) (unassigned int32, needsVerify bool, err error) {
 	logger := log.FromContext(ctx)
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
@@ -762,7 +769,7 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 	// create an HTTP client to send the apply plan to the gNMIc pods
 	httpClient, err := r.createHTTPClientForCluster(ctx, cluster)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create HTTP client: %w", err)
+		return 0, false, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 	distResult := gnmic.DistributeTargets(plan, numPods, cluster.Spec.TargetDistribution)
 
@@ -796,7 +803,7 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		}
 		body, err := json.Marshal(podPlan)
 		if err != nil {
-			return 0, fmt.Errorf("failed to marshal apply plan for pod %d: %w", podIndex, err)
+			return 0, false, fmt.Errorf("failed to marshal apply plan for pod %d: %w", podIndex, err)
 		}
 		hash := fingerprint(body)
 		bodies[podIndex] = body
@@ -807,7 +814,7 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		}
 	}
 	if !anyChanged {
-		return int32(len(distResult.UnassignedTargets)), nil
+		return int32(len(distResult.UnassignedTargets)), false, nil
 	}
 
 	// Two-phase apply avoids double-collection when a target moves between pods.
@@ -848,7 +855,7 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 			url := podURL(podIndex)
 			logger.Info("shrinking gNMIc pod targets before reassignment", "url", url, "targets", len(shrink.Targets))
 			if err := r.sendApplyRequest(ctx, url, shrink, httpClient); err != nil {
-				return 0, fmt.Errorf("failed to shrink config on pod %d: %w", podIndex, err)
+				return 0, false, fmt.Errorf("failed to shrink config on pod %d: %w", podIndex, err)
 			}
 		}
 		// gNMIc's config/apply returns before Subscribe streams are fully torn
@@ -857,7 +864,7 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		// double-collects.
 		select {
 		case <-ctx.Done():
-			return 0, ctx.Err()
+			return 0, false, ctx.Err()
 		case <-time.After(time.Second):
 		}
 	}
@@ -870,20 +877,26 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 		url := podURL(podIndex)
 		logger.Info("sending config to gNMIc pod", "url", url)
 		if err := r.sendApplyBody(ctx, url, bodies[podIndex], httpClient); err != nil {
-			return 0, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
+			return 0, false, fmt.Errorf("failed to apply config to pod %d: %w", podIndex, err)
 		}
 		// Recorded only after the POST succeeds. Recording the attempt would
 		// make a failed apply look applied until the plan changes again.
-		r.Applied.Record(streamKey(cluster.Namespace, cluster.Name, podIndex), hashes[podIndex])
+		// The first Record leaves the entry unverified so the reconciler
+		// requeues for a follow-up POST (see NeedsVerify).
+		key := streamKey(cluster.Namespace, cluster.Name, podIndex)
+		r.Applied.Record(key, hashes[podIndex])
+		if r.Applied.NeedsVerify(key, hashes[podIndex]) {
+			needsVerify = true
+		}
 		logger.Info("config applied to pod", "pod", podIndex, "targets", len(podPlan.Targets))
 	}
 
-	unassigned := int32(len(distResult.UnassignedTargets))
+	unassigned = int32(len(distResult.UnassignedTargets))
 	if unassigned > 0 {
 		logger.Info("targets unassigned due to capacity limits", "count", unassigned)
 	}
 
-	return unassigned, nil
+	return unassigned, needsVerify, nil
 }
 
 func (r *ClusterReconciler) createHTTPClientForCluster(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (*http.Client, error) {
