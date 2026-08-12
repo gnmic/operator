@@ -223,7 +223,9 @@ func TestOut003_ServiceTypeHonored(t *testing.T) {
 	applyPipeline(t, "p1", []string{"out1"}, "")
 	waitClusterReady(t)
 
-	svc := s.K8s.Service(t, harness.PromServiceName(cluster, "p1", "out1"))
+	// Cluster Ready can precede the per-pipeline Service reconcile; wait for
+	// the Service itself rather than racing it.
+	svc := waitPromService(t, "p1", "out1")
 	if svc.Spec.Type != corev1.ServiceTypeNodePort {
 		t.Fatalf("type=%s want NodePort", svc.Spec.Type)
 	}
@@ -336,6 +338,10 @@ func TestOut006_DeletingOutputRemovesService(t *testing.T) {
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
 		OutputsCount: harness.I32(0),
 	})
+	// The delete's config/apply briefly reloads every stream on the pod;
+	// settle to 1-per-target before proving it holds, or the window can start
+	// mid-reconnect and flake on a transient 0.
+	s.GnmiGen.WaitFleetStreams(t, harness.Medium, 1, allTargets)
 	s.GnmiGen.ConsistentlyCollectedOnce(t, 10*time.Second, 1, allTargets...)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 }
