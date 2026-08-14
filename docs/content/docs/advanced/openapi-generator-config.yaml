@@ -5,5 +5,9 @@ inputSpec: /local/internal/apiserver/openapi.yaml
 outputDir: /local/docs/content/docs/advanced/rest-api-documentation
 templateDir: /local/docs/content/docs/advanced/openapi-templates
 files:
-  README.mustache:
+  _index.mustache:
     destinationFilename: _index.md
+  apis.mustache:
+    destinationFilename: Apis/DefaultAPI.md
+  models.mustache:
+    destinationFilename: Models/Target.md
