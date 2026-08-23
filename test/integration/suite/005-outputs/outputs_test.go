@@ -223,7 +223,9 @@ func TestOut003_ServiceTypeHonored(t *testing.T) {
 	applyPipeline(t, "p1", []string{"out1"}, "")
 	waitClusterReady(t)
 
-	svc := s.K8s.Service(t, harness.PromServiceName(cluster, "p1", "out1"))
+	// Cluster Ready can precede the per-pipeline Service reconcile; wait for
+	// the Service itself rather than racing it.
+	svc := waitPromService(t, "p1", "out1")
 	if svc.Spec.Type != corev1.ServiceTypeNodePort {
 		t.Fatalf("type=%s want NodePort", svc.Spec.Type)
 	}
@@ -275,6 +277,12 @@ func TestOut005_EditingOutputNoRestart(t *testing.T) {
 	waitIdle(t)
 	const oldFile = "/tmp/005-old.jsonl"
 	const newFile = "/tmp/005-new.jsonl"
+	// Prior runs leave these files in the pod; clear while no file output is
+	// mounted so "non-empty" cannot pass on stale content.
+	pod := s.K8s.FirstCollectorPod(t, cluster)
+	_ = s.K8s.Exec(t, pod, harness.CollectorContainer, "sh", "-c",
+		fmt.Sprintf("rm -f %q %q", oldFile, newFile))
+
 	applyFileOutput(t, "file1", oldFile)
 	applyPromOutput(t, "out1", map[string]any{"Expiration": "60s"})
 	applyPipeline(t, "p1", []string{"file1", "out1"}, "")
@@ -283,7 +291,6 @@ func TestOut005_EditingOutputNoRestart(t *testing.T) {
 	s.K8s.WaitClusterPrometheusSources(t, cluster, "p1", "out1", allTargets, harness.Medium)
 
 	restartsBefore := s.K8s.RestartCounts(t, cluster)
-	oldLen := len(s.K8s.ReadCollectorFile(t, cluster, oldFile))
 
 	out := &gnmicv1alpha1.Output{}
 	s.K8s.WaitExists(t, "file1", out)
@@ -294,14 +301,22 @@ func TestOut005_EditingOutputNoRestart(t *testing.T) {
 	s.K8s.Patch(t, prom, `{"spec":{"config":{"expiration":"120s"}}}`)
 
 	harness.WaitConfigApplied(t, s.K8s, cluster)
-	s.K8s.WaitCollectorFileNonEmpty(t, cluster, newFile)
+	newBody := s.K8s.WaitCollectorFileNonEmpty(t, cluster, newFile)
 	s.K8s.WaitClusterPrometheusSources(t, cluster, "p1", "out1", allTargets, harness.Medium)
 
-	// Old file should stop growing once the output points elsewhere.
-	time.Sleep(3 * time.Second)
-	if got := len(s.K8s.ReadCollectorFile(t, cluster, oldFile)); got > oldLen+64 {
-		t.Errorf("old file still growing: was %d now %d", oldLen, got)
-	}
+	// Mark after the switch: sampling before the patch counted apply-window
+	// writes as "growth" and flaked. Prove live traffic hits the new file,
+	// then that the old one stays put.
+	newFloor := len(newBody)
+	s.K8s.WaitCollectorFileGrows(t, cluster, newFile, newFloor)
+	oldLen := len(s.K8s.ReadCollectorFile(t, cluster, oldFile))
+	harness.Consistently(t, 5*time.Second, time.Second, "old file stopped growing", func() (bool, string) {
+		got := len(s.K8s.ReadCollectorFile(t, cluster, oldFile))
+		if got > oldLen+64 {
+			return false, fmt.Sprintf("was %d now %d", oldLen, got)
+		}
+		return true, ""
+	})
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 }
 
@@ -323,6 +338,10 @@ func TestOut006_DeletingOutputRemovesService(t *testing.T) {
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
 		OutputsCount: harness.I32(0),
 	})
+	// The delete's config/apply briefly reloads every stream on the pod;
+	// settle to 1-per-target before proving it holds, or the window can start
+	// mid-reconnect and flake on a transient 0.
+	s.GnmiGen.WaitFleetStreams(t, harness.Medium, 1, allTargets)
 	s.GnmiGen.ConsistentlyCollectedOnce(t, 10*time.Second, 1, allTargets...)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 }

@@ -89,6 +89,17 @@ const (
 	// not yet satisfied. Readiness changes already arrive via the Owns(&appsv1.StatefulSet{})
 	// watch, so this only needs to cover a missed event, not to drive the wait.
 	readinessBackstopInterval = 20 * time.Second
+
+	// reconcileBackstopInterval bounds how long a Cluster can go un-reconciled
+	// when every watch fires as expected. Referenced-resource changes (a
+	// Subscription/Output/Target/etc. edit) reach this controller only
+	// through the mapping funcs registered via Watches(...); a watch event
+	// dropped by the API server or missed by an informer during a relist has
+	// nothing else to re-trigger it, and the manager's cache resync period is
+	// far too coarse to be a useful safety net on its own. Re-checking on this
+	// cadence caps the damage from a dropped event to one interval instead of
+	// leaving the cluster's applied config stale indefinitely.
+	reconcileBackstopInterval = 20 * time.Second
 )
 
 // Condition types for Cluster status
@@ -502,6 +513,22 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	r.plans[cluster.Namespace+"/"+cluster.Name] = applyPlan
 	r.m.Unlock()
 
+	// A pipeline's targets and subscriptions are resolved independently
+	// (resolveTargets vs resolveSubscriptions), each with its own List/Get
+	// calls against the informer cache. A Subscription being deleted and
+	// recreated (or a selector momentarily not matching due to cache lag)
+	// can leave a brief window where a pipeline's targets resolve but its
+	// subscriptions come back empty. gNMIc's config/apply rejects any
+	// request with targets but zero subscriptions outright (400), and
+	// applying that would tear down the streams already running on the
+	// pods for no reason. Skip this apply and requeue fast instead of
+	// sending it: the existing config on the pods is left untouched, and
+	// the next pass a moment later almost always sees a consistent read.
+	if len(applyPlan.Targets) > 0 && len(applyPlan.Subscriptions) == 0 {
+		logger.Info("apply plan has targets but no subscriptions, skipping apply (likely a transient cache read) and requeueing")
+		return ctrl.Result{RequeueAfter: 250 * time.Millisecond}, nil
+	}
+
 	// reconcile Prometheus output services
 	if err := r.reconcilePrometheusServices(ctx, &cluster, pipelineDataMap, applyPlan.PrometheusPorts); err != nil {
 		logger.Error(err, "failed to reconcile Prometheus output services")
@@ -720,7 +747,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: reconcileBackstopInterval}, nil
 }
 
 // clusterStatusEqual compares two ClusterStatus structs for equality

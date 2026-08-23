@@ -103,7 +103,6 @@ func waitIdle(t *testing.T) {
 
 func applySubscription(t *testing.T, name string, vars map[string]any) {
 	t.Helper()
-	setPipelineEnabled(t, true)
 	base := map[string]any{
 		"Name":              name,
 		"Mode":              "STREAM/SAMPLE",
@@ -122,9 +121,13 @@ func applySubscription(t *testing.T, name string, vars map[string]any) {
 	if err != nil {
 		t.Fatalf("reading subscription fixture: %v", err)
 	}
+	// Create the Subscription before re-enabling the pipeline. Enabling first
+	// can race an apply with targets but no subscriptions, which gNMIc rejects
+	// and can leave the collector mid-reconnect with paths=[].
 	if _, err := s.K8s.ApplyYAMLNoCleanup(string(b), base); err != nil {
 		t.Fatalf("applying subscription %s: %v", name, err)
 	}
+	setPipelineEnabled(t, true)
 	waitClusterReady(t)
 }
 
@@ -155,9 +158,16 @@ func deleteSubscription(t *testing.T, name string) {
 
 func waitStreams(t *testing.T, want int) {
 	t.Helper()
-	for _, name := range allTargets {
-		s.GnmiGen.WaitStreams(t, name, want)
-	}
+	// One shared Medium budget across the fleet. Sequential per-target waits
+	// burn the full timeout on the first lagging target and hide siblings.
+	harness.Wait(t, harness.Medium, fmt.Sprintf("%d stream(s) on all targets", want), func() (bool, string) {
+		for _, name := range allTargets {
+			if n := s.GnmiGen.StreamCount(name); n != want {
+				return false, fmt.Sprintf("%s streams=%d", name, n)
+			}
+		}
+		return true, ""
+	})
 }
 
 func waitPathOnAll(t *testing.T, path string) {
@@ -165,6 +175,75 @@ func waitPathOnAll(t *testing.T, path string) {
 	for _, name := range allTargets {
 		s.GnmiGen.WaitPathPresent(t, name, path)
 	}
+}
+
+// waitPathsOnAll waits until every target carries all want paths on the same
+// stream snapshot. Split waitPathOnAll calls race stream reconnects: the first
+// path can still be visible on the old stream, then paths go empty before the
+// next assertion.
+func waitPathsOnAll(t *testing.T, want ...string) {
+	t.Helper()
+	harness.Wait(t, harness.Medium, fmt.Sprintf("paths %v on all targets", want), func() (bool, string) {
+		for _, name := range allTargets {
+			paths := s.GnmiGen.Paths(name)
+			for _, w := range want {
+				found := false
+				for _, p := range paths {
+					if p == w {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false, fmt.Sprintf("%s paths=%v", name, paths)
+				}
+			}
+		}
+		return true, ""
+	})
+}
+
+// waitPathReplacedOnAll waits until every target shows have and not gone on the
+// same snapshot. Sequential present-then-absent waits can pass the first check
+// on a transitional stream (or see paths=[] mid-reconnect) and then burn the
+// full Medium timeout on the second.
+func waitPathReplacedOnAll(t *testing.T, have, gone string) {
+	t.Helper()
+	waitExactPathsOnAll(t, []string{have}, []string{gone})
+}
+
+// waitExactPathsOnAll waits until every target has all want paths, none of the
+// gone paths, and exactly one stream — in a single snapshot per poll.
+func waitExactPathsOnAll(t *testing.T, want, gone []string) {
+	t.Helper()
+	harness.Wait(t, harness.Medium, fmt.Sprintf("paths want=%v gone=%v on all targets", want, gone), func() (bool, string) {
+		for _, name := range allTargets {
+			if n := s.GnmiGen.StreamCount(name); n != 1 {
+				return false, fmt.Sprintf("%s streams=%d paths=%v", name, n, s.GnmiGen.Paths(name))
+			}
+			paths := s.GnmiGen.Paths(name)
+			for _, w := range want {
+				found := false
+				for _, p := range paths {
+					if p == w {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false, fmt.Sprintf("%s paths=%v", name, paths)
+				}
+			}
+			for _, g := range gone {
+				for _, p := range paths {
+					if p == g {
+						return false, fmt.Sprintf("%s still has %s: %v", name, g, paths)
+					}
+				}
+			}
+		}
+		return true, ""
+	})
 }
 
 func waitPathAbsentOnAll(t *testing.T, path string) {
@@ -245,6 +324,25 @@ func waitUpdatesOnly(t *testing.T, target string, want bool) {
 	})
 }
 
+func waitUpdatesOnlyOnAll(t *testing.T, want bool) {
+	t.Helper()
+	harness.Wait(t, harness.Medium, fmt.Sprintf("updates_only=%v on all targets", want), func() (bool, string) {
+		for _, name := range allTargets {
+			subs, err := s.GnmiGen.Subscriptions(name)
+			if err != nil {
+				return false, err.Error()
+			}
+			if len(subs) != 1 {
+				return false, fmt.Sprintf("%s streams=%d", name, len(subs))
+			}
+			if subs[0].UpdatesOnly != want {
+				return false, fmt.Sprintf("%s updates_only=%v", name, subs[0].UpdatesOnly)
+			}
+		}
+		return true, ""
+	})
+}
+
 func waitSuppressAndHeartbeat(t *testing.T, target string, suppress bool, heartbeat string) {
 	t.Helper()
 	harness.Wait(t, harness.Medium, fmt.Sprintf("suppress=%v heartbeat=%s on %s", suppress, heartbeat, target), func() (bool, string) {
@@ -305,9 +403,9 @@ func TestSub001_PathChangeReplacesCollectedPaths(t *testing.T) {
 
 	restartsBefore := s.K8s.RestartCounts(t, cluster)
 	patchSubscription(t, "s1", map[string]any{"paths": []string{pathCPU}})
+	harness.WaitConfigApplied(t, s.K8s, cluster)
 
-	waitPathOnAll(t, pathCPU)
-	waitPathAbsentOnAll(t, pathIF)
+	waitPathReplacedOnAll(t, pathCPU, pathIF)
 	waitStreams(t, 1)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 
@@ -325,12 +423,7 @@ func TestSub002_AddingPathExtendsSubscription(t *testing.T) {
 	restartsBefore := s.K8s.RestartCounts(t, cluster)
 	patchSubscription(t, "s1", map[string]any{"paths": []string{pathIF, pathCPU}})
 
-	waitPathOnAll(t, pathIF)
-	waitPathOnAll(t, pathCPU)
-	harness.Wait(t, harness.Medium, "resolved path count is 2", func() (bool, string) {
-		n := len(s.GnmiGen.Paths(leaf1))
-		return n >= 2, fmt.Sprintf("paths=%v", s.GnmiGen.Paths(leaf1))
-	})
+	waitPathsOnAll(t, pathIF, pathCPU)
 	// Path edits re-establish the Subscribe stream, which resets
 	// notifications_sent. Prove data still flows on the new stream rather
 	// than comparing absolute counters across the teardown.
@@ -386,22 +479,17 @@ func TestSub005_UpdatesOnlyReachesWire(t *testing.T) {
 		"UpdatesOnly": false,
 	})
 	waitStreams(t, 1)
-	waitUpdatesOnly(t, leaf1, false)
+	waitUpdatesOnlyOnAll(t, false)
 	syncBefore := firstStream(t, leaf1).SyncMessagesSent
 
 	restartsBefore := s.K8s.RestartCounts(t, cluster)
 	patchSubscription(t, "s1", map[string]any{"updatesOnly": true})
-	waitUpdatesOnly(t, leaf1, true)
+	harness.WaitConfigApplied(t, s.K8s, cluster)
+	// Assert the flag on every target in one snapshot. Waiting only on leaf1
+	// then waitStreams(leaf2) races a mid-reconnect gap where leaf2 has
+	// streams=0 after the apply ACK (ApplyCache verify re-POST recovers it).
+	waitUpdatesOnlyOnAll(t, true)
 
-	// updatesOnly re-establishes the stream; sync pattern should differ from
-	// the initial full sync (typically sync_messages_sent stays 0 or much lower).
-	harness.Wait(t, harness.Medium, "updates_only stream settled", func() (bool, string) {
-		sub := firstStream(t, leaf1)
-		if !sub.UpdatesOnly {
-			return false, "updates_only still false"
-		}
-		return true, ""
-	})
 	syncAfter := firstStream(t, leaf1).SyncMessagesSent
 	if syncBefore == 0 && syncAfter == 0 {
 		t.Log("sync_messages_sent was 0 both before and after; flag still asserted on wire")
@@ -409,7 +497,6 @@ func TestSub005_UpdatesOnlyReachesWire(t *testing.T) {
 		// Soft signal only — gnmi-gen may still emit a sync response.
 		t.Logf("sync_messages_sent before=%d after=%d", syncBefore, syncAfter)
 	}
-	waitStreams(t, 1)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 }
 
@@ -436,10 +523,6 @@ func TestSub006_SuppressRedundantAndHeartbeat(t *testing.T) {
 	waitSuppressAndHeartbeat(t, leaf1, false, "")
 	waitStreams(t, 1)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
-}
-
-func TestSub007_PerTargetSubscriptionScoped(t *testing.T) {
-	t.Skip("spec.target is the gNMI SubscribeRequest target field, not Target-CR scoping; CR-level pin is not implemented")
 }
 
 func TestSub008_PrefixApplied(t *testing.T) {
@@ -474,8 +557,7 @@ func TestSub009_DeletingSubscriptionStopsPaths(t *testing.T) {
 	applySubscription(t, "if", map[string]any{"Paths": []string{pathIF}})
 	applySubscription(t, "cpu", map[string]any{"Paths": []string{pathCPU}})
 	waitStreams(t, 2)
-	waitPathOnAll(t, pathIF)
-	waitPathOnAll(t, pathCPU)
+	waitPathsOnAll(t, pathIF, pathCPU)
 	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
 		SubscriptionsCount: harness.I32(2),
 	})
@@ -518,11 +600,11 @@ func TestSub010_RapidSuccessiveEditsConverge(t *testing.T) {
 	for _, p := range paths {
 		patchSubscription(t, "s1", map[string]any{"paths": p})
 	}
+	harness.WaitConfigApplied(t, s.K8s, cluster)
 
-	waitPathOnAll(t, pathIF)
-	waitPathAbsentOnAll(t, pathCPU)
-	waitPathAbsentOnAll(t, pathSys)
-	waitStreams(t, 1)
+	// Final state in one snapshot: pathIF present, prior paths gone, one stream.
+	// Split present/absent waits race reconnect gaps after the patch burst.
+	waitExactPathsOnAll(t, []string{pathIF}, []string{pathCPU, pathSys})
 	s.GnmiGen.ConsistentlyCollectedOnce(t, 15*time.Second, 1, allTargets...)
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 	harness.AssertNoPanics(t, s.K8s.OperatorLogs(t, time.Since(since)+time.Minute))

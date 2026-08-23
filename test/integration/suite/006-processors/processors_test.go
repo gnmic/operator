@@ -251,8 +251,11 @@ func TestProc005_RemovingProcessorStopsTransform(t *testing.T) {
 	s.K8s.Patch(t, proc, `{"metadata":{"labels":{"chain":null}}}`)
 	harness.WaitConfigApplied(t, s.K8s, cluster)
 
-	// Wait for new events that have env but not zone.
-	harness.Wait(t, harness.Medium, "new events without zone", func() (bool, string) {
+	// Wait for recently written events to have env but not zone.
+	// The whole tail after `mark` is the wrong window: events already in the
+	// collector pipeline were tagged before the unbind applied, so one
+	// in-flight zone event makes "no zone anywhere after mark" fail forever.
+	harness.Wait(t, harness.Medium, "recent events without zone", func() (bool, string) {
 		body := s.K8s.ReadCollectorFile(t, cluster, outFile)
 		if len(body) <= mark {
 			return false, "no new bytes"
@@ -261,10 +264,14 @@ func TestProc005_RemovingProcessorStopsTransform(t *testing.T) {
 		if len(tail) == 0 {
 			return false, "no new events"
 		}
-		if harness.EventsHaveTag(tail, "zone", "z1") {
-			return false, "zone still present in new events"
+		recent := tail
+		if n := len(recent); n > 5 {
+			recent = recent[n-5:]
 		}
-		return harness.EventsHaveTag(tail, "env", "alpha"), "env missing"
+		if harness.EventsHaveTag(recent, "zone", "z1") {
+			return false, "zone still present in recent events"
+		}
+		return harness.EventsHaveTag(recent, "env", "alpha"), "env missing"
 	})
 
 	proc = &gnmicv1alpha1.Processor{}

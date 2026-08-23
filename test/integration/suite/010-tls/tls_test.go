@@ -616,9 +616,9 @@ func TestTLS006_ClientCertRotation(t *testing.T) {
 
 	waitCertReady(t, certName)
 	s.GnmiGen.AssertCollectedOnce(t, 1, leafTLS1, leafTLS2)
-	pod := harness.PodName(cluster, 0)
-	_ = s.K8s.Exec(t, pod, harness.CollectorContainer, "sh", "-c",
-		fmt.Sprintf("test -s %s", clientTLSCertPath))
+	// skip-verify lets streams recover before kubelet has projected the new
+	// Secret into the mount. Wait for the file; a one-shot exec races that.
+	waitPodFile(t, cluster, clientTLSCertPath)
 }
 
 func conditionTrue(c *gnmicv1alpha1.Cluster, typ string) bool {
