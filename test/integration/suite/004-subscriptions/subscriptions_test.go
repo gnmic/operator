@@ -525,10 +525,6 @@ func TestSub006_SuppressRedundantAndHeartbeat(t *testing.T) {
 	harness.AssertNoRestarts(t, restartsBefore, s.K8s.RestartCounts(t, cluster))
 }
 
-func TestSub007_PerTargetSubscriptionScoped(t *testing.T) {
-	t.Skip("spec.target is the gNMI SubscribeRequest target field, not Target-CR scoping; CR-level pin is not implemented")
-}
-
 func TestSub008_PrefixApplied(t *testing.T) {
 	waitIdle(t)
 	applySubscription(t, "absolute", map[string]any{

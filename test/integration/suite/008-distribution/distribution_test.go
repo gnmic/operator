@@ -346,7 +346,10 @@ func TestDist006_ScalingUpMovesFewTargets(t *testing.T) {
 
 	s.K8s.Patch(t, s.K8s.Cluster(t, cluster), `{"spec":{"replicas":3}}`)
 	s.K8s.WaitReadyPods(t, cluster, 3, harness.Long)
-	waitAssigned(t, cluster, allTargets)
+	// waitAssigned is not enough: every target stays assigned to the original
+	// two pods until bounded-hashing overflows them onto the new replica.
+	// Snapshotting at that instant fails assertBalanced with "got 2 pods".
+	waitBalanced(t, cluster, 3, allTargets)
 
 	after := assignments(t, cluster, allTargets)
 	assertBalanced(t, after, 3)
@@ -461,7 +464,12 @@ func TestDist008_NoDoubleCollectionDuringScale(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	const maxDouble = time.Second
+	// config/apply returns before the old Subscribe is gone, so a brief overlap
+	// is expected. The sampler ticks every 250ms, so a 1.0s overlap reports as
+	// 1.25s; rust teardown has been measured just over 1s. 2s still fails a
+	// start-on-new-before-stop-on-old bug (seconds of doubles) without treating
+	// apply-ACK lag as one.
+	const maxDouble = 2 * time.Second
 	const maxZero = 30 * time.Second
 	for _, name := range allTargets {
 		dup := doubleFor[name]
