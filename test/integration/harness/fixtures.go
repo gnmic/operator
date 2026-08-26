@@ -57,5 +57,6 @@ func GnmiGenImage() string {
 }
 
 func GnmicImage() string {
-	return getenv("GNMIC_IMAGE", "ghcr.io/openconfig/gnmic:0.46.0")
+	// Default matches test.mk GNMIC_IMAGE (collector built from openconfig/gnmic#926).
+	return getenv("GNMIC_IMAGE", "gnmic:597750387b51")
 }

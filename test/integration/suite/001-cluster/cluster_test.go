@@ -395,7 +395,7 @@ func altGnmicImage() string {
 	if v := os.Getenv("GNMIC_IMAGE_ALT"); v != "" {
 		return v
 	}
-	return "ghcr.io/openconfig/gnmic:0.44.0-amd64"
+	return "ghcr.io/openconfig/gnmic:0.47.0-amd64"
 }
 
 func keysOf(m map[string]string) []string {
