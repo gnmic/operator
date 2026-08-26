@@ -6,7 +6,7 @@ require (
 	github.com/cert-manager/cert-manager v1.21.1
 	github.com/getkin/kin-openapi v0.146.0
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/go-openapi/testify/v2 v2.6.0
 	github.com/google/cel-go v0.31.0
 	github.com/google/uuid v1.6.0
