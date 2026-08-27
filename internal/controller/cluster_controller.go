@@ -120,6 +120,11 @@ const (
 	PipelineConditionTypeReady = "Ready"
 	// PipelineConditionTypeResourcesResolved indicates all resources were resolved
 	PipelineConditionTypeResourcesResolved = "ResourcesResolved"
+
+	// ReasonUnresolvedReferences is set on both Pipeline conditions when one or more
+	// *Refs entries name a resource that does not exist. The pipeline is left out of
+	// the apply plan entirely while this holds.
+	ReasonUnresolvedReferences = "UnresolvedReferences"
 )
 
 // fetchCredentials fetches credentials from a secret
@@ -352,6 +357,10 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		planBuilder.WithTargetDistributionCapacity(cluster.Spec.TargetDistribution.PodCapacity)
 	}
 	pipelineDataMap := make(map[string]*gnmic.PipelineData)
+	// Pipelines left out of the plan because a ref did not resolve. Used below to tell
+	// "the plan is empty because nothing is configured" apart from "the plan is empty
+	// because everything was skipped", which need opposite handling.
+	skippedPipelines := 0
 
 	for _, pipeline := range pipelines {
 		if !pipeline.Spec.Enabled {
@@ -361,11 +370,17 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		pipelineNN := pipeline.Namespace + gnmic.Delimiter + pipeline.Name
 		pipelineData := gnmic.NewPipelineData()
 
+		// Refs naming a resource that does not exist. Every resolver below appends to
+		// this and it is acted on once, after resolution finishes, so the status lists
+		// all of them rather than whichever happened to be checked first.
+		var unresolvedRefs []string
+
 		// retrieve targets for this pipeline
-		targets, err := r.resolveTargets(ctx, &pipeline)
+		targets, unresolved, err := r.resolveTargets(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		targetProfilesNames := make(map[string]struct{})
 		for _, target := range targets {
 			pipelineData.Targets[target.Namespace+gnmic.Delimiter+target.Name] = target
@@ -373,20 +388,29 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 
 		// retrieve target profiles for targets in this pipeline
+		//
+		// A missing profile used to fail the entire reconcile, which stalled every
+		// other pipeline on the cluster over one bad name. It is now treated as the
+		// dangling ref it is: this pipeline is skipped, the rest keep reconciling.
 		for targetProfileName := range targetProfilesNames {
 			var targetProfile gnmicv1alpha1.TargetProfile
 			if err := r.Get(ctx, types.NamespacedName{Name: targetProfileName, Namespace: pipeline.Namespace}, &targetProfile); err != nil {
-				return ctrl.Result{}, err
+				if !apierrors.IsNotFound(err) {
+					return ctrl.Result{}, err
+				}
+				unresolvedRefs = append(unresolvedRefs, unresolvedRef("targetprofile", targetProfileName))
+				continue
 			}
 			pipelineData.TargetProfiles[targetProfile.Namespace+gnmic.Delimiter+targetProfile.Name] = targetProfile.Spec
 		}
 		logger.Info("cluster pipeline resolved targets", "count", len(targets), "targetProfiles", len(targetProfilesNames))
 
 		// retrieve subscriptions for this pipeline
-		subscriptions, err := r.resolveSubscriptions(ctx, &pipeline)
+		subscriptions, unresolved, err := r.resolveSubscriptions(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		for _, subscription := range subscriptions {
 			// Key by pipeline like outputs so two pipelines sharing one
 			// Subscription CR each get their own output binding. A flat
@@ -397,10 +421,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Info("cluster pipeline resolved subscriptions", "count", len(subscriptions))
 
 		// retrieve outputs for this pipeline
-		outputs, err := r.resolveOutputs(ctx, &pipeline)
+		outputs, unresolved, err := r.resolveOutputs(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		for _, output := range outputs {
 			outputNN := pipelineNN + gnmic.Delimiter + output.Name
 			pipelineData.Outputs[outputNN] = output.Spec
@@ -419,20 +444,22 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Info("cluster pipeline resolved outputs", "count", len(outputs))
 
 		// retrieve inputs for this pipeline
-		inputs, err := r.resolveInputs(ctx, &pipeline)
+		inputs, unresolved, err := r.resolveInputs(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		for _, input := range inputs {
 			pipelineData.Inputs[pipelineNN+gnmic.Delimiter+input.Name] = input.Spec
 		}
 		logger.Info("cluster pipeline resolved inputs", "count", len(inputs))
 
 		// retrieve output processors for this pipeline (order: refs first, then sorted selectors)
-		outputProcessors, err := r.resolveOutputProcessors(ctx, &pipeline)
+		outputProcessors, unresolved, err := r.resolveOutputProcessors(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		for _, processor := range outputProcessors {
 			processorNN := pipelineNN + gnmic.Delimiter + processor.Name
 			pipelineData.OutputProcessors[processorNN] = processor.Spec
@@ -441,10 +468,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Info("cluster pipeline resolved output processors", "count", len(outputProcessors))
 
 		// retrieve input processors for this pipeline (order: refs first, then sorted selectors)
-		inputProcessors, err := r.resolveInputProcessors(ctx, &pipeline)
+		inputProcessors, unresolved, err := r.resolveInputProcessors(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		for _, processor := range inputProcessors {
 			processorNN := pipelineNN + gnmic.Delimiter + processor.Name
 			pipelineData.InputProcessors[processorNN] = processor.Spec
@@ -453,10 +481,11 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		logger.Info("cluster pipeline resolved input processors", "count", len(inputProcessors))
 
 		// retrieve tunnel target policies for this pipeline
-		tunnelTargetPolicies, err := r.resolveTunnelTargetPolicies(ctx, &pipeline)
+		tunnelTargetPolicies, unresolved, err := r.resolveTunnelTargetPolicies(ctx, &pipeline)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		unresolvedRefs = append(unresolvedRefs, unresolved...)
 		// validate: if pipeline has tunnel target policies, cluster must have GRPCTunnel configured
 		if len(tunnelTargetPolicies) > 0 && cluster.Spec.GRPCTunnel == nil {
 			logger.Error(nil, "pipeline has tunnel target policies but cluster has no gRPC tunnel configured",
@@ -487,18 +516,34 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 				if !apierrors.IsNotFound(err) {
 					return ctrl.Result{}, err
 				}
-				logger.Info("target profile not found for tunnel target policy, skipping", "profile", profileName)
+				unresolvedRefs = append(unresolvedRefs, unresolvedRef("targetprofile", profileName))
 				continue
 			}
 			pipelineData.TargetProfiles[targetProfile.Namespace+gnmic.Delimiter+targetProfile.Name] = targetProfile.Spec
 		}
 		logger.Info("cluster pipeline tunnel target policies", "policies", len(tunnelTargetPolicies))
 
+		// A ref that does not resolve means the configuration that would reach the
+		// collectors is not the one that was asked for: an output the data never
+		// arrives at, a processor stage that silently stops filtering. Leave the
+		// pipeline out of the plan rather than apply a partial version of it, and say
+		// which refs on the Pipeline itself. Other pipelines are unaffected.
+		if len(unresolvedRefs) > 0 {
+			sort.Strings(unresolvedRefs)
+			skippedPipelines++
+			logger.Info("skipping pipeline with unresolved references",
+				"pipeline", pipeline.Name, "unresolved", unresolvedRefs)
+			if err := r.updatePipelineStatus(ctx, &pipeline, pipelineData, unresolvedRefs); err != nil {
+				logger.Error(err, "failed to update pipeline status", "pipeline", pipeline.Name)
+			}
+			continue
+		}
+
 		planBuilder.AddPipeline(pipelineNN, pipelineData)
 		pipelineDataMap[pipelineNN] = pipelineData
 
 		// update pipeline status
-		if err := r.updatePipelineStatus(ctx, &pipeline, pipelineData); err != nil {
+		if err := r.updatePipelineStatus(ctx, &pipeline, pipelineData, nil); err != nil {
 			logger.Error(err, "failed to update pipeline status", "pipeline", pipeline.Name)
 			// don't return, continue with other pipelines
 		}
@@ -527,6 +572,17 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if len(applyPlan.Targets) > 0 && len(applyPlan.Subscriptions) == 0 {
 		logger.Info("apply plan has targets but no subscriptions, skipping apply (likely a transient cache read) and requeueing")
 		return ctrl.Result{RequeueAfter: 250 * time.Millisecond}, nil
+	}
+
+	// Every pipeline on this cluster was skipped for unresolved references, so the
+	// plan is empty for a reason that has nothing to do with what the user asked for.
+	// An empty plan is applied deliberately elsewhere -- it is how collectors stop
+	// streaming once the last Pipeline is deleted -- so applying this one would drain
+	// the whole cluster over what is usually a name that resolves a moment later.
+	if skippedPipelines > 0 && len(pipelineDataMap) == 0 {
+		logger.Info("all pipelines skipped for unresolved references, not applying",
+			"pipelines", len(pipelines), "skipped", skippedPipelines)
+		return ctrl.Result{RequeueAfter: reconcileBackstopInterval}, nil
 	}
 
 	// reconcile Prometheus output services
@@ -2336,8 +2392,11 @@ func (r *ClusterReconciler) buildConfigMap(cluster *gnmicv1alpha1.Cluster) (*cor
 	}, nil
 }
 
-// updatePipelineStatus updates the status of a pipeline based on its resolved resources
-func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline, pipelineData *gnmic.PipelineData) error {
+// updatePipelineStatus updates the status of a pipeline based on its resolved
+// resources. A non-empty unresolved list marks the pipeline as not reconciled and
+// names the refs that did not resolve; the counts are still reported so the partial
+// resolution stays visible while diagnosing.
+func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline, pipelineData *gnmic.PipelineData, unresolved []string) error {
 	logger := log.FromContext(ctx)
 
 	now := metav1.Now()
@@ -2358,46 +2417,63 @@ func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *
 		LastTransitionTime: now,
 	}
 
-	hasTargets := len(pipelineData.Targets) > 0
-	hasInputs := len(pipelineData.Inputs) > 0
-	hasOutputs := len(pipelineData.Outputs) > 0
-	hasSubscriptions := len(pipelineData.Subscriptions) > 0
-	hasTunnelPolicies := len(pipelineData.TunnelTargetPolicies) > 0
-
-	// pipeline is ready if it has (targets + subscriptions) OR (tunnel policies + subscriptions) OR inputs, AND has outputs
-	if ((hasTargets && hasSubscriptions) || (hasTunnelPolicies && hasSubscriptions) || hasInputs) && hasOutputs {
-		readyCondition.Status = metav1.ConditionTrue
-		readyCondition.Reason = "PipelineReady"
-		readyCondition.Message = fmt.Sprintf("Pipeline has %d targets, %d tunnel policies, %d subscriptions, %d inputs, %d outputs",
-			len(pipelineData.Targets), len(pipelineData.TunnelTargetPolicies), len(pipelineData.Subscriptions), len(pipelineData.Inputs), len(pipelineData.Outputs))
-	} else {
-		readyCondition.Status = metav1.ConditionFalse
-		readyCondition.Reason = "PipelineIncomplete"
-		var missing []string
-		if !hasOutputs {
-			missing = append(missing, "outputs")
-		}
-		if !hasTargets && !hasInputs {
-			missing = append(missing, "targets or inputs")
-		}
-		if hasTargets && !hasSubscriptions {
-			missing = append(missing, "subscriptions")
-		}
-		readyCondition.Message = fmt.Sprintf("Pipeline missing: %s", strings.Join(missing, ", "))
-		newStatus.Status = "Incomplete"
-	}
-	newStatus.Conditions = append(newStatus.Conditions, readyCondition)
-
-	// resourcesResolved condition
 	resolvedCondition := metav1.Condition{
 		Type:               PipelineConditionTypeResourcesResolved,
-		Status:             metav1.ConditionTrue,
 		ObservedGeneration: pipeline.Generation,
 		LastTransitionTime: now,
-		Reason:             "ResourcesResolved",
-		Message:            "All referenced resources were successfully resolved",
 	}
-	newStatus.Conditions = append(newStatus.Conditions, resolvedCondition)
+
+	if len(unresolved) > 0 {
+		// This condition existed before but was hardcoded to True, so a pipeline whose
+		// refs had silently evaporated still reported that everything resolved.
+		message := "unresolved references: " + strings.Join(unresolved, ", ")
+
+		newStatus.Status = "Error"
+
+		readyCondition.Status = metav1.ConditionFalse
+		readyCondition.Reason = ReasonUnresolvedReferences
+		readyCondition.Message = message
+
+		resolvedCondition.Status = metav1.ConditionFalse
+		resolvedCondition.Reason = ReasonUnresolvedReferences
+		resolvedCondition.Message = message
+	} else {
+		resolvedCondition.Status = metav1.ConditionTrue
+		resolvedCondition.Reason = "ResourcesResolved"
+		resolvedCondition.Message = "All referenced resources were successfully resolved"
+
+		hasTargets := len(pipelineData.Targets) > 0
+		hasInputs := len(pipelineData.Inputs) > 0
+		hasOutputs := len(pipelineData.Outputs) > 0
+		hasSubscriptions := len(pipelineData.Subscriptions) > 0
+		hasTunnelPolicies := len(pipelineData.TunnelTargetPolicies) > 0
+
+		// pipeline is ready if it has (targets + subscriptions) OR (tunnel policies + subscriptions) OR inputs, AND has outputs
+		if ((hasTargets && hasSubscriptions) || (hasTunnelPolicies && hasSubscriptions) || hasInputs) && hasOutputs {
+			readyCondition.Status = metav1.ConditionTrue
+			readyCondition.Reason = "PipelineReady"
+			readyCondition.Message = fmt.Sprintf("Pipeline has %d targets, %d tunnel policies, %d subscriptions, %d inputs, %d outputs",
+				len(pipelineData.Targets), len(pipelineData.TunnelTargetPolicies), len(pipelineData.Subscriptions), len(pipelineData.Inputs), len(pipelineData.Outputs))
+		} else {
+			readyCondition.Status = metav1.ConditionFalse
+			readyCondition.Reason = "PipelineIncomplete"
+			var missing []string
+			if !hasOutputs {
+				missing = append(missing, "outputs")
+			}
+			if !hasTargets && !hasInputs {
+				missing = append(missing, "targets or inputs")
+			}
+			if hasTargets && !hasSubscriptions {
+				missing = append(missing, "subscriptions")
+			}
+			readyCondition.Message = fmt.Sprintf("Pipeline missing: %s", strings.Join(missing, ", "))
+			newStatus.Status = "Incomplete"
+		}
+	}
+
+	// order matters: pipelineStatusEqual compares conditions positionally
+	newStatus.Conditions = append(newStatus.Conditions, readyCondition, resolvedCondition)
 
 	// preserve LastTransitionTime for unchanged conditions
 	for i := range newStatus.Conditions {
@@ -2561,23 +2637,37 @@ func (r *ClusterReconciler) buildConfigContent(cluster *gnmicv1alpha1.Cluster) (
 	return yaml.Marshal(config)
 }
 
+// unresolvedRef formats a dangling reference for a Pipeline's status message.
+//
+// Only explicit *Refs entries produce one. A *Selectors block that matches nothing is
+// a legitimate empty result -- it is a query, and an empty answer is an answer. A ref
+// names a specific resource the user asked for, so failing to find it means the
+// configuration that would be applied is not the configuration that was requested.
+func unresolvedRef(kind, name string) string {
+	return kind + "/" + name
+}
+
 // resolveTargets resolves targets for a pipeline using refs and selectors (union of all selectors)
-func (r *ClusterReconciler) resolveTargets(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Target, error) {
+func (r *ClusterReconciler) resolveTargets(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Target, []string, error) {
 	var result []gnmicv1alpha1.Target
+	var unresolved []string
 	seen := make(map[string]struct{})
 
 	// get targets by direct refs
 	for _, ref := range pipeline.Spec.TargetRefs {
-		var target gnmicv1alpha1.Target
-		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &target); err != nil {
+		var item gnmicv1alpha1.Target
+		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &item); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
+			// A ref naming something that does not exist is a failed intent, not an
+			// empty result. Report it instead of quietly resolving to a shorter list.
+			unresolved = append(unresolved, unresolvedRef("target", ref))
 			continue
 		}
-		if _, ok := seen[target.Name]; !ok {
-			result = append(result, target)
-			seen[target.Name] = struct{}{}
+		if _, ok := seen[item.Name]; !ok {
+			result = append(result, item)
+			seen[item.Name] = struct{}{}
 		}
 	}
 
@@ -2586,42 +2676,46 @@ func (r *ClusterReconciler) resolveTargets(ctx context.Context, pipeline *gnmicv
 		if len(labelSelector.MatchLabels) == 0 && len(labelSelector.MatchExpressions) == 0 {
 			continue
 		}
-		var targetList gnmicv1alpha1.TargetList
+		var list gnmicv1alpha1.TargetList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if err := r.List(ctx, &targetList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+		if err := r.List(ctx, &list, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			return nil, nil, err
 		}
-		for _, target := range targetList.Items {
-			if _, ok := seen[target.Name]; !ok {
-				result = append(result, target)
-				seen[target.Name] = struct{}{}
+		for _, item := range list.Items {
+			if _, ok := seen[item.Name]; !ok {
+				result = append(result, item)
+				seen[item.Name] = struct{}{}
 			}
 		}
 	}
 
-	return result, nil
+	return result, unresolved, nil
 }
 
 // resolveSubscriptions resolves subscriptions for a pipeline using refs and selectors (union of all selectors)
-func (r *ClusterReconciler) resolveSubscriptions(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Subscription, error) {
+func (r *ClusterReconciler) resolveSubscriptions(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Subscription, []string, error) {
 	var result []gnmicv1alpha1.Subscription
+	var unresolved []string
 	seen := make(map[string]struct{})
 
 	// get subscriptions by direct refs
 	for _, ref := range pipeline.Spec.SubscriptionRefs {
-		var sub gnmicv1alpha1.Subscription
-		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &sub); err != nil {
+		var item gnmicv1alpha1.Subscription
+		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &item); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
+			// A ref naming something that does not exist is a failed intent, not an
+			// empty result. Report it instead of quietly resolving to a shorter list.
+			unresolved = append(unresolved, unresolvedRef("subscription", ref))
 			continue
 		}
-		if _, ok := seen[sub.Name]; !ok {
-			result = append(result, sub)
-			seen[sub.Name] = struct{}{}
+		if _, ok := seen[item.Name]; !ok {
+			result = append(result, item)
+			seen[item.Name] = struct{}{}
 		}
 	}
 
@@ -2630,42 +2724,46 @@ func (r *ClusterReconciler) resolveSubscriptions(ctx context.Context, pipeline *
 		if len(labelSelector.MatchLabels) == 0 && len(labelSelector.MatchExpressions) == 0 {
 			continue
 		}
-		var subList gnmicv1alpha1.SubscriptionList
+		var list gnmicv1alpha1.SubscriptionList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if err := r.List(ctx, &subList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+		if err := r.List(ctx, &list, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			return nil, nil, err
 		}
-		for _, sub := range subList.Items {
-			if _, ok := seen[sub.Name]; !ok {
-				result = append(result, sub)
-				seen[sub.Name] = struct{}{}
+		for _, item := range list.Items {
+			if _, ok := seen[item.Name]; !ok {
+				result = append(result, item)
+				seen[item.Name] = struct{}{}
 			}
 		}
 	}
 
-	return result, nil
+	return result, unresolved, nil
 }
 
 // resolveOutputs resolves outputs for a pipeline using refs and selectors (union of all selectors)
-func (r *ClusterReconciler) resolveOutputs(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Output, error) {
+func (r *ClusterReconciler) resolveOutputs(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Output, []string, error) {
 	var result []gnmicv1alpha1.Output
+	var unresolved []string
 	seen := make(map[string]struct{})
 
 	// get outputs by direct refs
 	for _, ref := range pipeline.Spec.Outputs.OutputRefs {
-		var output gnmicv1alpha1.Output
-		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &output); err != nil {
+		var item gnmicv1alpha1.Output
+		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &item); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
+			// A ref naming something that does not exist is a failed intent, not an
+			// empty result. Report it instead of quietly resolving to a shorter list.
+			unresolved = append(unresolved, unresolvedRef("output", ref))
 			continue
 		}
-		if _, ok := seen[output.Name]; !ok {
-			result = append(result, output)
-			seen[output.Name] = struct{}{}
+		if _, ok := seen[item.Name]; !ok {
+			result = append(result, item)
+			seen[item.Name] = struct{}{}
 		}
 	}
 
@@ -2674,23 +2772,23 @@ func (r *ClusterReconciler) resolveOutputs(ctx context.Context, pipeline *gnmicv
 		if len(labelSelector.MatchLabels) == 0 && len(labelSelector.MatchExpressions) == 0 {
 			continue
 		}
-		var outputList gnmicv1alpha1.OutputList
+		var list gnmicv1alpha1.OutputList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if err := r.List(ctx, &outputList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+		if err := r.List(ctx, &list, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			return nil, nil, err
 		}
-		for _, output := range outputList.Items {
-			if _, ok := seen[output.Name]; !ok {
-				result = append(result, output)
-				seen[output.Name] = struct{}{}
+		for _, item := range list.Items {
+			if _, ok := seen[item.Name]; !ok {
+				result = append(result, item)
+				seen[item.Name] = struct{}{}
 			}
 		}
 	}
 
-	return result, nil
+	return result, unresolved, nil
 }
 
 // resolveOutputServiceAddresses resolves service addresses for outputs that support serviceRef or serviceSelector
@@ -2788,22 +2886,26 @@ func (r *ClusterReconciler) resolveOutputServiceAddresses(ctx context.Context, o
 }
 
 // resolveInputs resolves inputs for a pipeline using refs and selectors (union of all selectors)
-func (r *ClusterReconciler) resolveInputs(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Input, error) {
+func (r *ClusterReconciler) resolveInputs(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Input, []string, error) {
 	var result []gnmicv1alpha1.Input
+	var unresolved []string
 	seen := make(map[string]struct{})
 
 	// get inputs by direct refs
 	for _, ref := range pipeline.Spec.Inputs.InputRefs {
-		var input gnmicv1alpha1.Input
-		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &input); err != nil {
+		var item gnmicv1alpha1.Input
+		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &item); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
+			// A ref naming something that does not exist is a failed intent, not an
+			// empty result. Report it instead of quietly resolving to a shorter list.
+			unresolved = append(unresolved, unresolvedRef("input", ref))
 			continue
 		}
-		if _, ok := seen[input.Name]; !ok {
-			result = append(result, input)
-			seen[input.Name] = struct{}{}
+		if _, ok := seen[item.Name]; !ok {
+			result = append(result, item)
+			seen[item.Name] = struct{}{}
 		}
 	}
 
@@ -2812,42 +2914,46 @@ func (r *ClusterReconciler) resolveInputs(ctx context.Context, pipeline *gnmicv1
 		if len(labelSelector.MatchLabels) == 0 && len(labelSelector.MatchExpressions) == 0 {
 			continue
 		}
-		var inputList gnmicv1alpha1.InputList
+		var list gnmicv1alpha1.InputList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if err := r.List(ctx, &inputList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+		if err := r.List(ctx, &list, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			return nil, nil, err
 		}
-		for _, input := range inputList.Items {
-			if _, ok := seen[input.Name]; !ok {
-				result = append(result, input)
-				seen[input.Name] = struct{}{}
+		for _, item := range list.Items {
+			if _, ok := seen[item.Name]; !ok {
+				result = append(result, item)
+				seen[item.Name] = struct{}{}
 			}
 		}
 	}
 
-	return result, nil
+	return result, unresolved, nil
 }
 
 // resolveOutputProcessors resolves processors for outputs in a pipeline using refs and selectors.
 // order is preserved: refs first (in order, may contain duplicates), then selected processors (sorted by name, deduplicated against refs).
-func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Processor, error) {
+func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Processor, []string, error) {
 	var refProcessors []gnmicv1alpha1.Processor
 	var selectorProcessors []gnmicv1alpha1.Processor
+	var unresolved []string
 	// track what's already in refs to avoid duplicating from selectors
 	inRefs := make(map[string]struct{})
 
-	logger := log.FromContext(ctx)
 	// get processors by direct refs (order preserved, duplicates allowed)
 	for _, ref := range pipeline.Spec.Outputs.ProcessorRefs {
 		var processor gnmicv1alpha1.Processor
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &processor); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
-			logger.Info("output processor not found, skipping", "ref", ref)
+			// Falling through here appended the zero-valued Processor, which reached
+			// the plan as a processor with an empty name and an empty type and was
+			// then attached to every output in the pipeline.
+			unresolved = append(unresolved, unresolvedRef("processor", ref))
+			continue
 		}
 		refProcessors = append(refProcessors, processor)
 		inRefs[processor.Name] = struct{}{}
@@ -2862,10 +2968,10 @@ func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipelin
 		var processorList gnmicv1alpha1.ProcessorList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := r.List(ctx, &processorList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, processor := range processorList.Items {
 			// skip if already in refs or already seen from another selector
@@ -2886,27 +2992,31 @@ func (r *ClusterReconciler) resolveOutputProcessors(ctx context.Context, pipelin
 	})
 
 	// combine: refs first, then sorted selectors
-	return append(refProcessors, selectorProcessors...), nil
+	return append(refProcessors, selectorProcessors...), unresolved, nil
 }
 
 // resolveInputProcessors resolves processors for inputs in a pipeline using refs and selectors (union of all selectors)
 // resolveInputProcessors resolves processors for inputs in a pipeline using refs and selectors.
 // order is preserved: refs first (in order, may contain duplicates), then selected processors (sorted by name, deduplicated against refs).
-func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Processor, error) {
+func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.Processor, []string, error) {
 	var refProcessors []gnmicv1alpha1.Processor
 	var selectorProcessors []gnmicv1alpha1.Processor
+	var unresolved []string
 	// track what's already in refs to avoid duplicating from selectors
 	inRefs := make(map[string]struct{})
 
-	logger := log.FromContext(ctx)
 	// get processors by direct refs (order preserved, duplicates allowed)
 	for _, ref := range pipeline.Spec.Inputs.ProcessorRefs {
 		var processor gnmicv1alpha1.Processor
 		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &processor); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
-			logger.Info("input processor not found, skipping", "ref", ref)
+			// Falling through here appended the zero-valued Processor, which reached
+			// the plan as a processor with an empty name and an empty type and was
+			// then attached to every output in the pipeline.
+			unresolved = append(unresolved, unresolvedRef("processor", ref))
+			continue
 		}
 		refProcessors = append(refProcessors, processor)
 		inRefs[processor.Name] = struct{}{}
@@ -2921,10 +3031,10 @@ func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline
 		var processorList gnmicv1alpha1.ProcessorList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := r.List(ctx, &processorList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, processor := range processorList.Items {
 			// skip if already in refs or already seen from another selector
@@ -2945,26 +3055,30 @@ func (r *ClusterReconciler) resolveInputProcessors(ctx context.Context, pipeline
 	})
 
 	// combine: refs first, then sorted selectors
-	return append(refProcessors, selectorProcessors...), nil
+	return append(refProcessors, selectorProcessors...), unresolved, nil
 }
 
 // resolveTunnelTargetPolicies resolves tunnel target policies for a pipeline using refs and selectors (union of all selectors)
-func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.TunnelTargetPolicy, error) {
+func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pipeline *gnmicv1alpha1.Pipeline) ([]gnmicv1alpha1.TunnelTargetPolicy, []string, error) {
 	var result []gnmicv1alpha1.TunnelTargetPolicy
+	var unresolved []string
 	seen := make(map[string]struct{})
 
 	// get policies by direct refs
 	for _, ref := range pipeline.Spec.TunnelTargetPolicyRefs {
-		var policy gnmicv1alpha1.TunnelTargetPolicy
-		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &policy); err != nil {
+		var item gnmicv1alpha1.TunnelTargetPolicy
+		if err := r.Get(ctx, types.NamespacedName{Name: ref, Namespace: pipeline.Namespace}, &item); err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, err
+				return nil, nil, err
 			}
+			// A ref naming something that does not exist is a failed intent, not an
+			// empty result. Report it instead of quietly resolving to a shorter list.
+			unresolved = append(unresolved, unresolvedRef("tunneltargetpolicy", ref))
 			continue
 		}
-		if _, ok := seen[policy.Name]; !ok {
-			result = append(result, policy)
-			seen[policy.Name] = struct{}{}
+		if _, ok := seen[item.Name]; !ok {
+			result = append(result, item)
+			seen[item.Name] = struct{}{}
 		}
 	}
 
@@ -2973,25 +3087,24 @@ func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pip
 		if len(labelSelector.MatchLabels) == 0 && len(labelSelector.MatchExpressions) == 0 {
 			continue
 		}
-		var policyList gnmicv1alpha1.TunnelTargetPolicyList
+		var list gnmicv1alpha1.TunnelTargetPolicyList
 		selector, err := metav1.LabelSelectorAsSelector(&labelSelector)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if err := r.List(ctx, &policyList, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
-			return nil, err
+		if err := r.List(ctx, &list, client.InNamespace(pipeline.Namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+			return nil, nil, err
 		}
-		for _, policy := range policyList.Items {
-			if _, ok := seen[policy.Name]; !ok {
-				result = append(result, policy)
-				seen[policy.Name] = struct{}{}
+		for _, item := range list.Items {
+			if _, ok := seen[item.Name]; !ok {
+				result = append(result, item)
+				seen[item.Name] = struct{}{}
 			}
 		}
 	}
 
-	return result, nil
+	return result, unresolved, nil
 }
-
 func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*appsv1.StatefulSet, *corev1.ConfigMap, error) {
 	// build gNMIc pod base configuration
 	configMap, err := r.buildConfigMap(cluster)

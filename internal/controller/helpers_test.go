@@ -199,12 +199,17 @@ func TestPipelineReconciler(t *testing.T) {
 		t.Fatalf("unexpected requeue: %+v", res)
 	}
 
+	// An enabled pipeline whose cluster exists belongs to the ClusterReconciler: it
+	// writes "Active"/"Incomplete"/"Error" there along with the Ready and
+	// ResourcesResolved conditions. This controller used to write "Ready" as well, so
+	// the two overwrote each other every backstop reconcile and an "Error" raised for
+	// unresolved references was cleared by a controller that never looked at the refs.
 	var updated gnmicv1alpha1.Pipeline
 	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(pipeline), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Status.Status != "Ready" {
-		t.Fatalf("status = %q", updated.Status.Status)
+	if updated.Status.Status != "" {
+		t.Fatalf("pipeline controller wrote status %q; the cluster controller owns this field", updated.Status.Status)
 	}
 
 	// missing cluster
