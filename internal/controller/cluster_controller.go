@@ -577,12 +577,17 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Every pipeline on this cluster was skipped for unresolved references, so the
 	// plan is empty for a reason that has nothing to do with what the user asked for.
 	// An empty plan is applied deliberately elsewhere -- it is how collectors stop
-	// streaming once the last Pipeline is deleted -- so applying this one would drain
-	// the whole cluster over what is usually a name that resolves a moment later.
-	if skippedPipelines > 0 && len(pipelineDataMap) == 0 {
-		logger.Info("all pipelines skipped for unresolved references, not applying",
+	// streaming once the last Pipeline is deleted -- so pushing this one would drain
+	// the whole cluster over a name that usually resolves a moment later.
+	//
+	// Only the apply is suppressed. Returning outright also stopped Prometheus
+	// Service garbage collection and froze the Cluster's status counters, so
+	// deleting an Output before the Pipeline naming it left an orphaned Service
+	// behind and a status that no longer described anything.
+	suppressApply := skippedPipelines > 0 && len(pipelineDataMap) == 0
+	if suppressApply {
+		logger.Info("all pipelines skipped for unresolved references, leaving the collectors' current config in place",
 			"pipelines", len(pipelines), "skipped", skippedPipelines)
-		return ctrl.Result{RequeueAfter: reconcileBackstopInterval}, nil
 	}
 
 	// reconcile Prometheus output services
@@ -617,7 +622,9 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	configApplied := false
 	var configError error
 	var unassignedTargets int32
-	if unassigned, err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
+	if suppressApply {
+		// Nothing is pushed: the pods keep the configuration they already hold.
+	} else if unassigned, err := r.applyConfigToPods(ctx, &cluster, applyPlan, numPods); err != nil {
 		logger.Error(err, "failed to apply config to gNMIc pods")
 		configError = err
 	} else {
@@ -712,11 +719,19 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObservedGeneration: cluster.Generation,
 		LastTransitionTime: now,
 	}
-	if configApplied {
+	switch {
+	case configApplied:
 		configCondition.Status = metav1.ConditionTrue
 		configCondition.Reason = "ConfigurationApplied"
 		configCondition.Message = fmt.Sprintf("Configuration applied to %d pods", numPods)
-	} else {
+	case suppressApply:
+		// Distinct from a failed apply: nothing was sent, and what the pods are
+		// running is the last configuration that did resolve.
+		configCondition.Status = metav1.ConditionFalse
+		configCondition.Reason = ReasonUnresolvedReferences
+		configCondition.Message = fmt.Sprintf(
+			"%d pipeline(s) have unresolved references; the collectors keep their current configuration", skippedPipelines)
+	default:
 		configCondition.Status = metav1.ConditionFalse
 		configCondition.Reason = "ConfigurationFailed"
 		if configError != nil {

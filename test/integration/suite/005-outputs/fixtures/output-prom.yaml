@@ -9,9 +9,14 @@ metadata:
 {{- end }}
 spec:
   type: prometheus
-{{- if .Expiration }}
+{{- if or .Expiration .Listen }}
   config:
+{{- if .Listen }}
+    listen: "{{ .Listen }}"
+{{- end }}
+{{- if .Expiration }}
     expiration: {{ .Expiration }}
+{{- end }}
 {{- else }}
   config: {}
 {{- end }}

@@ -90,6 +90,7 @@ func applyPromOutput(t *testing.T, name string, vars map[string]any) {
 	base := map[string]any{
 		"Name":               name,
 		"Expiration":         "",
+		"Listen":             "",
 		"ServiceType":        "",
 		"ServiceLabels":      map[string]string{},
 		"ServiceAnnotations": map[string]string{},
@@ -211,9 +212,9 @@ func TestOut003_ServiceTypeHonored(t *testing.T) {
 	applyPromOutput(t, "out1", map[string]any{
 		"ServiceType": "NodePort",
 		"ServiceLabels": map[string]string{
-			"team":                          "telemetry",
-			harness.LabelServiceType:        "should-not-win",
-			"app.kubernetes.io/managed-by":  "user",
+			"team":                         "telemetry",
+			harness.LabelServiceType:       "should-not-win",
+			"app.kubernetes.io/managed-by": "user",
 		},
 		"ServiceAnnotations": map[string]string{
 			"custom.annotation":    "yes",
@@ -401,6 +402,73 @@ func TestOut007_SharedOutputTwoServices(t *testing.T) {
 	s.K8s.WaitAbsent(t, harness.PromServiceName(cluster, "p2", "out1"), &corev1.Service{})
 	_ = s.K8s.Service(t, harness.PromServiceName(cluster, "p1", "out1"))
 	s.K8s.WaitClusterPrometheusSources(t, cluster, "p1", "out1", []string{leaf1, leaf2}, harness.Medium)
+}
+
+// An Output that pins its own listen address must keep it. The plan builder used
+// to overwrite it with a port from the hash pool, leaving the collector bound to
+// one port while the Service advertised another, so scraping quietly returned
+// nothing. 9421 sits outside the pool (9804+) so a passing assertion cannot be a
+// coincidence.
+func TestOut009_ExplicitListenPortHonored(t *testing.T) {
+	waitIdle(t)
+	applyPromOutput(t, "pinned", map[string]any{"Listen": ":9421"})
+	applyPipeline(t, "p1", []string{"pinned"}, "")
+	waitClusterReady(t)
+	harness.WaitConfigApplied(t, s.K8s, cluster)
+	svc := waitPromService(t, "p1", "pinned")
+
+	if len(svc.Spec.Ports) == 0 || svc.Spec.Ports[0].Port != 9421 {
+		t.Fatalf("service port = %+v, want the configured 9421", svc.Spec.Ports)
+	}
+	if got := svc.Spec.Ports[0].TargetPort.IntValue(); got != 9421 {
+		t.Errorf("targetPort = %d, want 9421", got)
+	}
+	if got := svc.Annotations["prometheus.io/port"]; got != "9421" {
+		t.Errorf("prometheus.io/port = %q, want \"9421\"", got)
+	}
+
+	// The scrape helper forwards to the collector pod on the port the Service
+	// advertises, so samples coming back is proof the collector actually bound
+	// 9421 -- which is the half of the drift a Service-only assertion misses.
+	s.K8s.WaitClusterPrometheusSources(t, cluster, "p1", "pinned", allTargets, harness.Medium)
+	body := s.K8s.ScrapeClusterPrometheus(t, cluster, "p1", "pinned")
+	if n := harness.SampleCount(body); n == 0 {
+		t.Fatal("no samples on the pinned port; collector and Service disagree")
+	}
+}
+
+// A pinned port and a pool-assigned one have to coexist in the same collector.
+func TestOut010_PinnedAndAssignedPortsCoexist(t *testing.T) {
+	waitIdle(t)
+	applyPromOutput(t, "pinned", map[string]any{"Listen": ":9421"})
+	applyPromOutput(t, "auto", nil)
+	applyPipeline(t, "p1", []string{"pinned", "auto"}, "")
+	waitClusterReady(t)
+	harness.WaitConfigApplied(t, s.K8s, cluster)
+
+	pinned := waitPromService(t, "p1", "pinned")
+	auto := waitPromService(t, "p1", "auto")
+	pinnedPort := pinned.Spec.Ports[0].Port
+	autoPort := auto.Spec.Ports[0].Port
+
+	if pinnedPort != 9421 {
+		t.Errorf("pinned port = %d, want 9421", pinnedPort)
+	}
+	if autoPort == 0 {
+		t.Fatal("no port assigned to the unpinned output")
+	}
+	if autoPort == pinnedPort {
+		t.Fatalf("both outputs landed on port %d", autoPort)
+	}
+
+	// Both have to actually serve, which they cannot do if either bound a port
+	// its Service does not advertise.
+	for _, out := range []string{"pinned", "auto"} {
+		s.K8s.WaitClusterPrometheusSources(t, cluster, "p1", out, allTargets, harness.Medium)
+		if n := harness.SampleCount(s.K8s.ScrapeClusterPrometheus(t, cluster, "p1", out)); n == 0 {
+			t.Errorf("output %s served no samples", out)
+		}
+	}
 }
 
 func TestOut008_ServiceRefResolvesAddress(t *testing.T) {

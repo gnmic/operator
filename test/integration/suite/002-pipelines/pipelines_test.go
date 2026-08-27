@@ -7,9 +7,11 @@ package pipelines
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -381,4 +383,157 @@ func TestPipe009_OverlappingPipelinesCollectOncePerCluster(t *testing.T) {
 		TargetsCount: harness.I32(2),
 	})
 	s.GnmiGen.ConsistentlyCollectedOnce(t, 15*time.Second, 2, leaf1, leaf2)
+}
+
+// assertUnresolved checks that a Pipeline reports the refs that did not resolve.
+func assertUnresolved(t *testing.T, name string, wantRefs ...string) {
+	t.Helper()
+	harness.WaitPipelineCondition(t, s.K8s, name, harness.CondResourcesResolved, metav1.ConditionFalse)
+	harness.WaitPipelineStatusString(t, s.K8s, name, "Error")
+
+	p := s.K8s.Pipeline(t, name)
+	cond := meta.FindStatusCondition(p.Status.Conditions, harness.CondResourcesResolved)
+	if cond == nil {
+		t.Fatalf("pipeline %s has no %s condition", name, harness.CondResourcesResolved)
+	}
+	if cond.Reason != "UnresolvedReferences" {
+		t.Errorf("reason = %q, want UnresolvedReferences", cond.Reason)
+	}
+	for _, ref := range wantRefs {
+		if !strings.Contains(cond.Message, ref) {
+			t.Errorf("message %q does not name %q", cond.Message, ref)
+		}
+	}
+	if ready := meta.FindStatusCondition(p.Status.Conditions, harness.CondReady); ready == nil ||
+		ready.Status != metav1.ConditionFalse {
+		t.Errorf("Ready = %+v, want False", ready)
+	}
+}
+
+// assertNothingCollected holds the wire quiet, because a pipeline that is skipped
+// and then applied a moment later looks identical to one that was never applied
+// if you only sample once.
+func assertNothingCollected(t *testing.T, d time.Duration) {
+	t.Helper()
+	harness.Consistently(t, d, time.Second, "no target is collected", func() (bool, string) {
+		for _, name := range []string{leaf1, leaf2, spine1} {
+			if n := s.GnmiGen.StreamCount(name); n != 0 {
+				return false, fmt.Sprintf("%s has %d streams", name, n)
+			}
+		}
+		return true, ""
+	})
+}
+
+// A ref that names something which does not exist leaves the whole Pipeline out
+// of the plan. spine1 resolves perfectly well here and still must not be
+// collected: applying the pipeline without what it asked for would silently
+// collect a different configuration than the one that was written.
+func TestPipe010_UnresolvedRefSkipsWholePipeline(t *testing.T) {
+	waitClusterReady(t)
+	waitIdle(t)
+
+	applyPipeline(t, "dangling", map[string]any{
+		"TargetRefs": []string{spine1, "no-such-target"},
+		"SubGroup":   "interface_metrics",
+	})
+
+	assertUnresolved(t, "dangling", "target/no-such-target")
+	assertNothingCollected(t, 10*time.Second)
+
+	// The counts stay populated even though the pipeline was skipped: spine1 did
+	// resolve, and keeping that visible is what makes a partial resolution
+	// diagnosable from the CR alone.
+	harness.WaitPipelineCounts(t, s.K8s, "dangling", harness.PipelineCounts{
+		TargetsCount: harness.I32(1),
+	})
+
+	// Dropping the bad ref resolves it, with no other nudge.
+	s.K8s.Patch(t, s.K8s.Pipeline(t, "dangling"), `{"spec":{"targetRefs":["`+spine1+`"]}}`)
+	harness.WaitPipelineCondition(t, s.K8s, "dangling", harness.CondResourcesResolved, metav1.ConditionTrue)
+	s.GnmiGen.WaitStreams(t, spine1, 1)
+}
+
+// Breaking the only Pipeline on a cluster must not tear down what the collectors
+// are already running. The plan goes empty when every pipeline is skipped, and an
+// empty plan is applied deliberately elsewhere -- it is how collection stops after
+// the last Pipeline is deleted -- so without a guard this drains the cluster over
+// a name that usually resolves a moment later.
+func TestPipe011_UnresolvedRefDoesNotDrainRunningCollectors(t *testing.T) {
+	waitClusterReady(t)
+	waitIdle(t)
+
+	applyPipeline(t, "drainguard", map[string]any{
+		"TargetRefs": []string{leaf1},
+		"SubGroup":   "interface_metrics",
+	})
+	s.GnmiGen.WaitStreams(t, leaf1, 1)
+	established := s.GnmiGen.EstablishedAt(leaf1)
+
+	s.K8s.Patch(t, s.K8s.Pipeline(t, "drainguard"),
+		`{"spec":{"targetRefs":["`+leaf1+`","no-such-target"]}}`)
+	assertUnresolved(t, "drainguard", "target/no-such-target")
+
+	harness.Consistently(t, 15*time.Second, time.Second, "collection survives the broken pipeline", func() (bool, string) {
+		if n := s.GnmiGen.StreamCount(leaf1); n != 1 {
+			return false, fmt.Sprintf("leaf1 has %d streams, want 1", n)
+		}
+		return true, ""
+	})
+	if got := s.GnmiGen.EstablishedAt(leaf1); !got.Equal(established) {
+		t.Errorf("stream was re-established at %v (was %v); the collector was reconfigured", got, established)
+	}
+
+	// Restore, so the Cluster is not left reporting ConfigApplied=False for the next
+	// test, and so recovery from the suppressed state is covered too.
+	s.K8s.Patch(t, s.K8s.Pipeline(t, "drainguard"), `{"spec":{"targetRefs":["`+leaf1+`"]}}`)
+	harness.WaitPipelineCondition(t, s.K8s, "drainguard", harness.CondResourcesResolved, metav1.ConditionTrue)
+	harness.WaitClusterCondition(t, s.K8s, cluster, harness.CondConfigApplied, metav1.ConditionTrue, harness.Medium)
+}
+
+// One bad ref must cost exactly one pipeline.
+func TestPipe012_BrokenPipelineLeavesHealthyOneAlone(t *testing.T) {
+	waitClusterReady(t)
+	waitIdle(t)
+
+	applyPipeline(t, "healthy", map[string]any{
+		"TargetRole": "leaf",
+		"SubGroup":   "interface_metrics",
+	})
+	applyPipeline(t, "broken", map[string]any{
+		"TargetRefs": []string{spine1, "no-such-target"},
+		"SubGroup":   "system_state",
+	})
+
+	s.GnmiGen.AssertCollectedOnce(t, 1, leaf1, leaf2)
+	s.GnmiGen.WaitStreams(t, spine1, 0)
+
+	assertUnresolved(t, "broken", "target/no-such-target")
+	harness.WaitPipelineCondition(t, s.K8s, "healthy", harness.CondResourcesResolved, metav1.ConditionTrue)
+	harness.WaitPipelineCondition(t, s.K8s, "healthy", harness.CondReady, metav1.ConditionTrue)
+
+	// Only the healthy pipeline's targets reached the plan.
+	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
+		TargetsCount: harness.I32(2),
+	})
+
+	// And the healthy one keeps collecting while the broken one stays broken.
+	harness.Consistently(t, 10*time.Second, time.Second, "healthy pipeline keeps collecting", func() (bool, string) {
+		if n := s.GnmiGen.StreamCount(leaf1); n != 1 {
+			return false, fmt.Sprintf("leaf1 has %d streams", n)
+		}
+		if n := s.GnmiGen.StreamCount(spine1); n != 0 {
+			return false, fmt.Sprintf("spine1 has %d streams", n)
+		}
+		return true, ""
+	})
+
+	// Deleting the broken pipeline is enough to clear the condition; the healthy one
+	// is undisturbed throughout.
+	s.K8s.Delete(t, s.K8s.Pipeline(t, "broken"))
+	harness.WaitClusterCounts(t, s.K8s, cluster, harness.ClusterCounts{
+		PipelinesCount: harness.I32(1),
+		TargetsCount:   harness.I32(2),
+	})
+	s.GnmiGen.AssertCollectedOnce(t, 1, leaf1, leaf2)
 }
