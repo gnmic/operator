@@ -129,24 +129,27 @@ func TestBuildSubscriptionConfig_Full(t *testing.T) {
 			Start:    now,
 			End:      now,
 		},
-		StreamSubscriptions: []string{"default/child"},
+		// bare names, as they appear in the CR
+		StreamSubscriptions: []string{"child"},
 	}
 	child := gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/child"}, Mode: "ONCE"}
-	cfg := buildSubscriptionConfig("default/parent", spec, []string{"out"}, map[string]gnmicv1alpha1.SubscriptionSpec{
-		"default/child": child,
+	// allSubs is keyed the way the plan builder keys it: namespace/pipeline/name.
+	cfg := buildSubscriptionConfig("default/p1/parent", spec, []string{"out"}, map[string]gnmicv1alpha1.SubscriptionSpec{
+		"default/p1/child": child,
 	})
 	if cfg.Encoding == nil || cfg.Qos == nil || cfg.History == nil {
 		t.Fatal("expected optional fields")
 	}
 	if len(cfg.StreamSubscriptions) != 1 || cfg.StreamSubscriptions[0] == nil {
-		t.Fatal("expected child subscription")
+		t.Fatalf("expected child subscription, got %+v", cfg.StreamSubscriptions)
 	}
 
-	// missing child in map is skipped
-	spec.StreamSubscriptions = []string{"default/missing"}
-	cfg = buildSubscriptionConfig("default/p", spec, nil, map[string]gnmicv1alpha1.SubscriptionSpec{})
-	if cfg.StreamSubscriptions[0] != nil {
-		t.Fatal("expected nil slot for missing child")
+	// a name that is not in the pipeline is left out entirely rather than leaving a
+	// nil in the slice, which marshalled as a literal null on the wire
+	spec.StreamSubscriptions = []string{"missing"}
+	cfg = buildSubscriptionConfig("default/p1/parent", spec, nil, map[string]gnmicv1alpha1.SubscriptionSpec{})
+	if len(cfg.StreamSubscriptions) != 0 {
+		t.Fatalf("expected no entries, got %+v", cfg.StreamSubscriptions)
 	}
 }
 
