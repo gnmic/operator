@@ -25,10 +25,6 @@ func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.Subscript
 		Outputs:           outputs,
 	}
 
-	if len(outputs) > 0 {
-		config.Outputs = outputs
-	}
-
 	if subscription.Encoding != "" {
 		config.Encoding = &subscription.Encoding
 	}
@@ -49,17 +45,35 @@ func buildSubscriptionConfig(subNN string, subscription *gnmicv1alpha1.Subscript
 		}
 	}
 	// handle streamSubscriptions
-	if len(subscription.StreamSubscriptions) > 0 {
-		config.StreamSubscriptions = make([]*gapi.SubscriptionConfig, len(subscription.StreamSubscriptions))
-		for i, streamSubscription := range subscription.StreamSubscriptions {
-			streamSubSpec, ok := allSubs[streamSubscription]
-			if !ok {
-				continue
-			}
-			config.StreamSubscriptions[i] = buildSubscriptionConfig(streamSubscription, &streamSubSpec, nil, nil)
+	//
+	// spec.streamSubscriptions holds bare Subscription names, while allSubs is keyed
+	// "<namespace>/<pipeline>/<name>" so two pipelines sharing one Subscription CR
+	// keep separate output bindings. Looking up the bare name therefore never matched,
+	// and because the slice was pre-sized to the number of names, every entry stayed
+	// nil and marshalled as a literal null in the payload sent to the collectors.
+	for _, name := range subscription.StreamSubscriptions {
+		key := siblingSubscriptionKey(subNN, name)
+		streamSubSpec, ok := allSubs[key]
+		if !ok {
+			// A referenced stream subscription has to be selected into the same
+			// pipeline, or there is nothing to point at.
+			logger.Warn("stream subscription not found in the pipeline, skipping",
+				"subscription", subNN, "streamSubscription", name, "lookup", key)
+			continue
 		}
+		config.StreamSubscriptions = append(config.StreamSubscriptions,
+			buildSubscriptionConfig(key, &streamSubSpec, nil, nil))
 	}
 	return config
+}
+
+// siblingSubscriptionKey resolves a bare Subscription name against the
+// pipeline-scoped key of the Subscription that referenced it.
+func siblingSubscriptionKey(subNN, name string) string {
+	if i := strings.LastIndex(subNN, Delimiter); i >= 0 {
+		return subNN[:i+1] + name
+	}
+	return name
 }
 
 // specModeToConfig splits a mode string like "STREAM/SAMPLE" into mode and stream mode
