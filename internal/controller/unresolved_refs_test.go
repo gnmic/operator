@@ -407,9 +407,26 @@ func TestReconcileSkipsPipelineWithUnresolvedRef(t *testing.T) {
 
 	// Every pipeline was skipped, so the empty plan must not be applied: doing so
 	// would drain the collectors over a name that usually resolves a moment later.
+	// The StatefulSet is ready here, so without the guard the reconcile would try a
+	// real POST to a pod that does not exist and come back asking for 10s.
 	if res.RequeueAfter != reconcileBackstopInterval {
-		t.Fatalf("requeue = %v, want %v (drain guard should have returned before apply)",
+		t.Fatalf("requeue = %v, want %v (the apply should have been suppressed)",
 			res.RequeueAfter, reconcileBackstopInterval)
+	}
+
+	// Suppressing the apply must not suppress the rest of the reconcile: the Cluster
+	// still reports why nothing was pushed, distinctly from a failed apply.
+	var gotCluster gnmicv1alpha1.Cluster
+	if err := cl.Get(context.Background(),
+		types.NamespacedName{Name: "c1", Namespace: "default"}, &gotCluster); err != nil {
+		t.Fatal(err)
+	}
+	applied := findCondition(gotCluster.Status.Conditions, ConditionTypeConfigApplied)
+	if applied == nil {
+		t.Fatal("cluster has no ConfigApplied condition; the status update was skipped")
+	}
+	if applied.Status != metav1.ConditionFalse || applied.Reason != ReasonUnresolvedReferences {
+		t.Errorf("ConfigApplied = %s/%s, want False/%s", applied.Status, applied.Reason, ReasonUnresolvedReferences)
 	}
 
 	var got gnmicv1alpha1.Pipeline
