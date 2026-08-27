@@ -372,7 +372,7 @@ func TestAssignPorts_Exhausted(t *testing.T) {
 	for i := range names {
 		names[i] = string(rune('a' + i))
 	}
-	_, err := assignPorts(names, 9000, 2)
+	_, err := assignPorts(names, 9000, 2, nil)
 	if err == nil {
 		t.Fatal("expected no free ports error")
 	}

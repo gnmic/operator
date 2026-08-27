@@ -159,7 +159,7 @@ func TestSortedKeys(t *testing.T) {
 }
 
 func TestAssignPorts(t *testing.T) {
-	ports, err := assignPorts([]string{"a", "b", "c"}, PrometheusDefaultPort, PrmetheusPortPoolSize)
+	ports, err := assignPorts([]string{"a", "b", "c"}, PrometheusDefaultPort, PrmetheusPortPoolSize, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestAssignPorts(t *testing.T) {
 		seen[p] = struct{}{}
 	}
 
-	if _, err := assignPorts(nil, 1, 0); err == nil {
+	if _, err := assignPorts(nil, 1, 0, nil); err == nil {
 		t.Fatal("expected rangeSize error")
 	}
 }

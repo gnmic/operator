@@ -468,35 +468,105 @@ func (b *PlanBuilder) buildTunnelTargetMatches(plan *ApplyPlan, pipelineData *Pi
 	return nil
 }
 
+// assignPrometheusOutputPorts decides which port each Prometheus output binds and
+// records it in plan.PrometheusPorts, which is the single source of truth for anything
+// downstream that needs to know -- in particular the Service built by
+// reconcilePrometheusServices.
+//
+// An output whose config already carries a "listen" address keeps it. Overwriting it
+// left the collector bound to a hash-derived port while the Service was built from the
+// CR's listen value, so the Service pointed at a port nothing was listening on and
+// scraping silently returned nothing. Outputs with no listen address are assigned from
+// the hash pool, which now also skips every pinned port so two Prometheus outputs in
+// one collector process cannot be handed the same one.
 func (b *PlanBuilder) assignPrometheusOutputPorts(plan *ApplyPlan) error {
-	promoutputs := make([]string, 0)
+	pinned := make(map[string]int32)
+	unpinned := make([]string, 0)
+
 	for outputNN, cfg := range plan.Outputs {
-		if t, _ := cfg["type"].(string); t == PrometheusOutputType {
-			promoutputs = append(promoutputs, outputNN)
+		if t, _ := cfg["type"].(string); t != PrometheusOutputType {
+			continue
 		}
+		raw, ok := cfg["listen"]
+		if !ok || raw == nil {
+			unpinned = append(unpinned, outputNN)
+			continue
+		}
+		listen, ok := raw.(string)
+		if !ok {
+			return fmt.Errorf("output %q: listen must be a string, got %T", outputNN, raw)
+		}
+		port, err := ParseListenPort(listen)
+		if err != nil {
+			return fmt.Errorf("output %q: %w", outputNN, err)
+		}
+		if port == 0 {
+			// listen present but empty -- treat as unset rather than binding :0
+			unpinned = append(unpinned, outputNN)
+			continue
+		}
+		pinned[outputNN] = port
 	}
-	if len(promoutputs) == 0 {
+
+	if len(pinned) == 0 && len(unpinned) == 0 {
 		return nil
 	}
-	portMap, err := assignPorts(promoutputs, PrometheusDefaultPort, PrmetheusPortPoolSize)
+
+	pinnedNames := make([]string, 0, len(pinned))
+	for outputNN := range pinned {
+		pinnedNames = append(pinnedNames, outputNN)
+	}
+	sort.Strings(pinnedNames)
+
+	reserved := make(map[int32]struct{}, len(pinned))
+	byPort := make(map[int32]string, len(pinned))
+	for _, outputNN := range pinnedNames {
+		port := pinned[outputNN]
+		if other, clash := byPort[port]; clash {
+			// Both keep the port they asked for; the collector will fail to bind the
+			// second. Say so here rather than let it surface only in gNMIc's logs.
+			logger.Warn("prometheus outputs pin the same listen port",
+				"port", port, "outputs", []string{other, outputNN})
+		}
+		byPort[port] = outputNN
+		reserved[port] = struct{}{}
+	}
+
+	assigned, err := assignPorts(unpinned, PrometheusDefaultPort, PrmetheusPortPoolSize, reserved)
 	if err != nil {
 		return err
 	}
-	plan.PrometheusPorts = portMap
-	for outputPNN, port := range portMap {
-		plan.Outputs[outputPNN]["listen"] = fmt.Sprintf(":%d", port)
+
+	plan.PrometheusPorts = make(map[string]int32, len(pinned)+len(assigned))
+	for outputNN, port := range pinned {
+		plan.PrometheusPorts[outputNN] = port
+	}
+	for outputNN, port := range assigned {
+		plan.PrometheusPorts[outputNN] = port
+		plan.Outputs[outputNN]["listen"] = fmt.Sprintf(":%d", port)
 	}
 	return nil
 }
 
-func assignPorts(names []string, base int32, rangeSize int32) (map[string]int32, error) {
-	if rangeSize <= 0 {
-		return nil, fmt.Errorf("rangeSize must be > 0")
+// assignPorts gives each name a distinct port in [base, base+rangeSize), chosen by
+// double hashing so the assignment is stable across reconciles. Ports in reserved are
+// treated as already taken: they belong to outputs that pinned their own listen
+// address and are not ours to hand out.
+func assignPorts(names []string, base int32, rangeSize int32, reserved map[int32]struct{}) (map[string]int32, error) {
+	// rangeSize must exceed 1: the probe step is taken modulo rangeSize-1, which is a
+	// division by zero at 1.
+	if rangeSize <= 1 {
+		return nil, fmt.Errorf("rangeSize must be > 1")
 	}
 
 	sort.Strings(names)
 
-	used := make(map[int32]struct{}, len(names))
+	used := make(map[int32]struct{}, len(names)+len(reserved))
+	for port := range reserved {
+		if slot := port - base; slot >= 0 && slot < rangeSize {
+			used[slot] = struct{}{}
+		}
+	}
 	result := make(map[string]int32, len(names))
 
 	for _, name := range names {
