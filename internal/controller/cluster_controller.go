@@ -3644,8 +3644,6 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 	desiredServiceNames := make(map[string]struct{})
 
 	for outputNN, pipelineOutputSpecs := range prometheusOutputs {
-		// number of pipelines sharing the same Prometheus output
-		pipelinePrometheusOutputCount := len(pipelineOutputSpecs)
 		pipelines := make([]string, 0, len(pipelineOutputSpecs))
 		for pipelineName := range pipelineOutputSpecs {
 			pipelines = append(pipelines, pipelineName)
@@ -3654,19 +3652,20 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 
 		for _, pipelineName := range pipelines {
 			outputSpec := pipelineOutputSpecs[pipelineName]
-			port, urlPath, err := parseListenPortAndPath(outputSpec.Config.Raw)
+			// Only the path is read from the CR. The port comes from the plan, which
+			// records the user's own listen value when they set one and the assigned
+			// port when they did not -- so the Service and the collector cannot
+			// disagree. Reading the port from the CR here is what let them drift: the
+			// plan builder had already replaced an explicit listen with a pool port.
+			_, urlPath, err := parseListenPortAndPath(outputSpec.Config.Raw)
 			if err != nil {
-				logger.Error(err, "failed to parse listen port and path for Prometheus output", "output", outputNN)
+				logger.Error(err, "failed to parse config for Prometheus output", "output", outputNN)
 				continue
 			}
-			if port > 0 && pipelinePrometheusOutputCount > 1 {
-				logger.Error(err, "prometheus output with port (listen field) specified is not supported when multiple pipelines share the same output", "output", outputNN)
+			port, ok := prometheusPorts[outputNN]
+			if !ok || port == 0 {
+				logger.Error(nil, "no port recorded for Prometheus output, skipping its service", "output", outputNN)
 				continue
-			}
-			if port == 0 { // port is not explicitly set, use the port from the plan
-				port = prometheusPorts[outputNN]
-			} else { // port is explicitly set, update the plan
-				prometheusPorts[outputNN] = port
 			}
 
 			if urlPath == "" {
@@ -3875,16 +3874,9 @@ func parseListenPortAndPath(configRaw []byte) (int32, string, error) {
 		return 0, config.Path, nil
 	}
 
-	idx := strings.LastIndex(config.Listen, ":")
-	if idx == -1 {
-		return 0, "", fmt.Errorf("invalid listen format: %s", config.Listen)
-	}
-
-	portStr := config.Listen[idx+1:]
-	port, err := strconv.ParseInt(portStr, 10, 32)
+	port, err := gnmic.ParseListenPort(config.Listen)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to parse port from listen: %s", config.Listen)
+		return 0, "", err
 	}
-
-	return int32(port), config.Path, nil
+	return port, config.Path, nil
 }

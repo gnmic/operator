@@ -145,6 +145,25 @@ func FormatServiceAddress(spec *gnmicv1alpha1.OutputSpec, host string, port int3
 	}
 }
 
+// ParseListenPort extracts the port from a gNMIc listen address.
+// Supports ":9804", "0.0.0.0:9804", "localhost:9804", "[::1]:9804".
+// An empty address yields port 0 and no error, meaning "not set".
+func ParseListenPort(listen string) (int32, error) {
+	listen = strings.TrimSpace(listen)
+	if listen == "" {
+		return 0, nil
+	}
+	idx := strings.LastIndex(listen, ":")
+	if idx == -1 {
+		return 0, fmt.Errorf("invalid listen format: %s", listen)
+	}
+	port, err := strconv.ParseInt(listen[idx+1:], 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse port from listen: %s", listen)
+	}
+	return int32(port), nil
+}
+
 // ParseServicePort parses a port string (name or number) and returns the port number
 // from the provided port list
 func ParseServicePort(portStr string, ports []ServicePort) (int32, error) {
