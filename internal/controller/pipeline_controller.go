@@ -24,8 +24,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
@@ -72,13 +74,20 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// update pipeline status
-	newStatus := "Ready"
-	if !pipeline.Spec.Enabled {
-		newStatus = "Disabled"
-	}
-	if pipeline.Status.Status != newStatus {
-		pipeline.Status.Status = newStatus
+	// Status ownership.
+	//
+	// The ClusterReconciler writes .status for every enabled Pipeline whose cluster
+	// exists -- "Active", "Incomplete" or "Error", plus the Ready and
+	// ResourcesResolved conditions. Writing "Ready" here as well meant the two
+	// controllers overwrote each other's value on every backstop reconcile, so the
+	// printed STATUS column flapped and an "Error" raised for unresolved references
+	// was cleared a moment later by a controller that had not looked at the refs.
+	//
+	// This controller now writes only the states the ClusterReconciler cannot reach:
+	// a missing cluster (handled above) and a disabled pipeline, which
+	// listPipelinesForCluster filters out before the ClusterReconciler ever sees it.
+	if !pipeline.Spec.Enabled && pipeline.Status.Status != "Disabled" {
+		pipeline.Status.Status = "Disabled"
 		if err := r.Status().Update(ctx, &pipeline); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -90,7 +99,12 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PipelineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Without a predicate this controller woke on its own status writes and on every
+	// status write by the ClusterReconciler, which is what turned the overlapping
+	// ownership above into a write loop.
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&gnmicv1alpha1.Pipeline{}).
+		For(&gnmicv1alpha1.Pipeline{},
+			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
 		Complete(r)
 }
