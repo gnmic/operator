@@ -314,7 +314,7 @@ func (r *TargetStateReconciler) pollAndSync(
 	podKey := podStateKey(namespace, clusterName, podName)
 	for _, name := range r.swapReported(podKey, reportedTargets) {
 		logger.Info("poll: releasing stale cluster state", "target", name, "cluster", clusterName, "pod", podName)
-		r.removeClusterState(ctx, types.NamespacedName{Name: name, Namespace: namespace}, clusterName, logger)
+		r.removeClusterState(ctx, types.NamespacedName{Name: name, Namespace: namespace}, clusterName, podName, logger)
 	}
 
 	if !r.dueForSweep(podKey) {
@@ -336,7 +336,7 @@ func (r *TargetStateReconciler) pollAndSync(
 			continue
 		}
 		logger.Info("sweep: removing stale cluster state", "target", target.Name, "cluster", clusterName, "pod", podName)
-		r.removeClusterState(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, clusterName, logger)
+		r.removeClusterState(ctx, types.NamespacedName{Name: target.Name, Namespace: target.Namespace}, clusterName, podName, logger)
 	}
 }
 
@@ -361,7 +361,7 @@ func (r *TargetStateReconciler) handleEvent(ctx context.Context, event gnmic.SSE
 	targetNN := types.NamespacedName{Name: targetName, Namespace: targetNamespace}
 
 	if event.EventType == gnmic.SSEEventDelete {
-		r.removeClusterState(ctx, targetNN, clusterName, logger)
+		r.removeClusterState(ctx, targetNN, clusterName, podName, logger)
 		return
 	}
 

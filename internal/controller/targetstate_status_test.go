@@ -162,7 +162,7 @@ func TestRemoveClusterState(t *testing.T) {
 	r := &TargetStateReconciler{Client: cl, Scheme: scheme}
 	nn := types.NamespacedName{Name: "leaf1", Namespace: "default"}
 
-	r.removeClusterState(context.Background(), nn, "c1", logf.Log)
+	r.removeClusterState(context.Background(), nn, "c1", "gnmic-c1-0", logf.Log)
 
 	var got gnmicv1alpha1.Target
 	if err := cl.Get(context.Background(), nn, &got); err != nil {
@@ -180,7 +180,7 @@ func TestRemoveClusterState(t *testing.T) {
 
 	// Removing what is not there must not write.
 	before := readVersion(t, cl, nn)
-	r.removeClusterState(context.Background(), nn, "c1", logf.Log)
+	r.removeClusterState(context.Background(), nn, "c1", "gnmic-c1-0", logf.Log)
 	if after := readVersion(t, cl, nn); after != before {
 		t.Fatalf("removing an absent entry wrote: %s -> %s", before, after)
 	}
