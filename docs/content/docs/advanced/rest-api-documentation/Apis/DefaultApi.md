@@ -1,0 +1,57 @@
+# DefaultApi
+
+All URIs are relative to *http://localhost*
+
+| Method | HTTP request | Description |
+|------------- | ------------- | -------------|
+| [**applyTargets**](DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+| [**getClusterPlan**](DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+
+
+<a name="applyTargets"></a>
+# **applyTargets**
+> List applyTargets(Target)
+
+Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator.
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **Target** | [**List**](../Models/Target.md)| Target must be passed as a list, multiple targets possible. | |
+
+### Return type
+
+[**List**](../Models/Target.md)
+
+### Authorization
+
+[signature](../README.md#signature), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json
+
+<a name="getClusterPlan"></a>
+# **getClusterPlan**
+> getClusterPlan()
+
+Get cluster plan.
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+null (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
