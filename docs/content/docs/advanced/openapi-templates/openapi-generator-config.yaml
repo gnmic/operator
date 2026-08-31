@@ -1,6 +1,6 @@
 # docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate  -c /local/docs/content/docs/advanced/openapi-generator-config.yaml
 
-## docker run --rm --user "$(id -u):$(id -g)" -v ${PWD}:/local openapitools/openapi-generator-cli generate -c /local/docs/content/docs/advanced/openapi-generator-config.yaml
+## docker run --rm --user "$(id -u):$(id -g)" -v ${PWD}:/local openapitools/openapi-generator-cli generate -c /local/docs/content/docs/advanced/openapi-templates/openapi-generator-config.yaml
 
 generatorName: markdown
 inputSpec: /local/internal/apiserver/openapi.yaml
@@ -8,6 +8,8 @@ outputDir: /local/docs/content/docs/advanced
 templateDir: /local/docs/content/docs/advanced/openapi-templates
 apiPackage: rest-api-interface
 modelPackage: rest-api-interface
+openapiGeneratorIgnoreList:
+  - README.md
 files:
   rest-api-interface.mustache:
     destinationFilename: rest-api-interface.md
