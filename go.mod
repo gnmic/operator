@@ -12,7 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
-	github.com/openconfig/gnmic/pkg/api v0.1.10
+	github.com/openconfig/gnmic/pkg/api v0.1.11
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver v0.36.4
