@@ -3,7 +3,7 @@ title: "REST API interface"
 linkTitle: "REST API interface"
 weight: 3
 description: >
-  This document describes the REST API exposed by the gNMIc Operator, including the available endpoints, request formats, and usage examples.
+  REST API documentation of the gNMIc Operator with available endpoints and required request formats.
 ---
 
 <a name="documentation-for-api-endpoints"></a>
