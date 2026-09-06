@@ -1,11 +1,19 @@
-# DefaultApi
+---
+title: "Routes"
+linkTitle: "Routes"
+weight: 4
+description: >
+  Available HTTP routes on the gNMIc Operator API interface.
+---
 
-All URIs are relative to *http://localhost*
+# defaultapi
+
+All URIs are relative to *http://localhost:8082*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| [**applyTargets**](DefaultApi.md#applyTargets) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-| [**getClusterPlan**](DefaultApi.md#getClusterPlan) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| **applyTargets** | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
+| **getClusterPlan** | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
 
 
 <a name="applyTargets"></a>
@@ -18,15 +26,15 @@ Interface for real-time target updates, usually using a webhook. Targets are app
 
 |Name | Type | Description  | Notes |
 |------------- | ------------- | ------------- | -------------|
-| **Target** | [**List**](../Models/Target.md)| Target must be passed as a list, multiple targets possible. | |
+| **Target** | **List** | Target must be passed as a list, multiple targets possible. | |
 
 ### Return type
 
-[**List**](../Models/Target.md)
+**List**
 
 ### Authorization
 
-[signature](../README.md#signature), [bearerAuth](../README.md#bearerAuth)
+For authorization details refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
 
 ### HTTP request headers
 
@@ -48,7 +56,7 @@ null (empty response body)
 
 ### Authorization
 
-No authorization required
+For authorization details refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
 
 ### HTTP request headers
 

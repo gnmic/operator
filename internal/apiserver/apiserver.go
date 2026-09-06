@@ -3,8 +3,6 @@ package apiserver
 //go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
 // To generate code, install openapi-codegen from https://github.com/oapi-codegen/oapi-codegen)
 // Then use: go generate ./internal/apiserver
-// To generate documentation
-// docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli generate -i /local/internal/apiserver/openapi.yaml -g markdown -o /local/docs/content/docs/user-guide/rest-api
 
 import (
 	"context"

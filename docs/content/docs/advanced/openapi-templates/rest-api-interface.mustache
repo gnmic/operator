@@ -1,9 +1,9 @@
 ---
-title: "REST API interface"
-linkTitle: "REST API interface"
+title: "REST API Interface"
+linkTitle: "REST API Interface"
 weight: 3
 description: >
-  This document describes the REST API exposed by the gNMIc Operator, including the available endpoints, request formats, and usage examples.
+  REST API documentation of the gNMIc Operator with available endpoints and required request formats.
 ---
 
 {{#generateApiDocs}}
@@ -14,7 +14,7 @@ All URIs are relative to *{{{basePath}}}:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-{{#apiInfo}}{{#apis}}{{#operations}}| {{#operation}}*{{#lambda.lowercase}}{{classname}}{{/lambda.lowercase}}* | [**{{operationId}}**](/docs/advanced/rest-api-documentation/apis/{{#lambda.lowercase}}{{classname}}{{/lambda.lowercase}}) | **{{httpMethod}}** {{path}} | {{{summary}}}{{^summary}}{{{notes}}}{{/summary}} |
+{{#apiInfo}}{{#apis}}{{#operations}}| {{#operation}}*{{#lambda.lowercase}}{{classname}}{{/lambda.lowercase}}* | [**{{operationId}}**](/docs/advanced/rest-api-interface/{{#lambda.lowercase}}{{classname}}{{/lambda.lowercase}}/) | **{{httpMethod}}** {{path}} | {{{summary}}}{{^summary}}{{{notes}}}{{/summary}} |
 {{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 {{/generateApiDocs}}
 
@@ -23,7 +23,7 @@ All URIs are relative to *{{{basePath}}}:8082*
 ## Documentation for Models
 
 {{#modelPackage}}
-{{#models}}{{#model}} - [{{#lambda.lowercase}}{{{classname}}}{{/lambda.lowercase}}](/docs/advanced/rest-api-documentation/models/{{#lambda.lowercase}}{{{classFilename}}}{{/lambda.lowercase}}/)
+{{#models}}{{#model}} - [{{#lambda.lowercase}}{{{classname}}}{{/lambda.lowercase}}](/docs/advanced/rest-api-interface/{{#lambda.lowercase}}{{{classFilename}}}{{/lambda.lowercase}}/)
 {{/model}}{{/models}}
 {{/modelPackage}}
 {{^modelPackage}}
