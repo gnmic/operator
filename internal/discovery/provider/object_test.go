@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -28,8 +29,9 @@ func TestConfigMapProviderReadsOneKeyOrAll(t *testing.T) {
 
 	_, err = p.Fetch(context.Background(), Request{Namespace: "default", Objects: resolver,
 		Source: gnmicv1alpha1.SourceSpec{Type: gnmicv1alpha1.SourceTypeConfigMap, ConfigMap: &gnmicv1alpha1.ObjectSource{Name: "inv", Key: "nope"}}})
-	if !IsSpecError(err) {
-		t.Fatalf("missing key should be a spec error, got %v", err)
+	var nf *NotFoundError
+	if !IsSpecError(err) || !errors.As(err, &nf) || nf.Kind != "ConfigMap" || nf.Key != "nope" {
+		t.Fatalf("missing key should be a typed ConfigMap not-found spec error, got %v", err)
 	}
 	_, err = p.Fetch(context.Background(), Request{Namespace: "default", Objects: resolver,
 		Source: gnmicv1alpha1.SourceSpec{Type: gnmicv1alpha1.SourceTypeConfigMap, ConfigMap: &gnmicv1alpha1.ObjectSource{Name: "absent"}}})

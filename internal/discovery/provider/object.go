@@ -49,7 +49,9 @@ func (p objectProvider) Fetch(ctx context.Context, req Request) (Result, error) 
 	var keys []string
 	if src.Key != "" {
 		if _, ok := data[src.Key]; !ok {
-			return Result{}, Specf("%s %s/%s has no key %q", p.kind, req.Namespace, src.Name, src.Key)
+			// Typed so the controller reports ConfigMapNotFound / SecretNotFound
+			// rather than a generic InvalidSpec.
+			return Result{}, Spec(&NotFoundError{Kind: string(p.kind), Namespace: req.Namespace, Name: src.Name, Key: src.Key})
 		}
 		keys = []string{src.Key}
 	} else {

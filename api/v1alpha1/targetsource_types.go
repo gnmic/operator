@@ -526,29 +526,31 @@ type TargetSourceStatus struct {
 	SourceDigest string `json:"sourceDigest,omitempty"`
 
 	// Discovered is how many devices the source returned on the last run.
+	// The counters are not omitempty so a zero shows as 0 in kubectl output
+	// rather than as an absent field.
 	// +optional
-	Discovered int32 `json:"discovered,omitempty"`
+	Discovered int32 `json:"discovered"`
 
 	// Managed is how many Targets this TargetSource owns right now.
 	// +optional
-	Managed int32 `json:"managed,omitempty"`
+	Managed int32 `json:"managed"`
 
 	// Invalid counts devices the last run could not turn into a Target.
 	// +optional
-	Invalid int32 `json:"invalid,omitempty"`
+	Invalid int32 `json:"invalid"`
 
 	// Sanitized counts devices whose labels had to be rewritten to be valid.
 	// The originals are kept as annotations on the Target.
 	// +optional
-	Sanitized int32 `json:"sanitized,omitempty"`
+	Sanitized int32 `json:"sanitized"`
 
 	// Conflicted counts wanted names owned by something else.
 	// +optional
-	Conflicted int32 `json:"conflicted,omitempty"`
+	Conflicted int32 `json:"conflicted"`
 
 	// Pruned counts Targets removed by the last run.
 	// +optional
-	Pruned int32 `json:"pruned,omitempty"`
+	Pruned int32 `json:"pruned"`
 
 	// FailedDevices samples devices the last run could not turn into a
 	// Target, with the reason. Capped at 10 entries.
@@ -558,7 +560,7 @@ type TargetSourceStatus struct {
 
 	// ConsecutiveFailures drives the retry backoff.
 	// +optional
-	ConsecutiveFailures int32 `json:"consecutiveFailures,omitempty"`
+	ConsecutiveFailures int32 `json:"consecutiveFailures"`
 
 	// LastError is the error from the last failed run, cleared on success.
 	// +optional

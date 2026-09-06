@@ -722,8 +722,10 @@ spec:
                 format: int32
                 type: integer
               discovered:
-                description: Discovered is how many devices the source returned on
-                  the last run.
+                description: |-
+                  Discovered is how many devices the source returned on the last run.
+                  The counters are not omitempty so a zero shows as 0 in kubectl output
+                  rather than as an absent field.
                 format: int32
                 type: integer
               failedDevices:
