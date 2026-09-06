@@ -30,8 +30,11 @@ import (
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
@@ -327,4 +330,69 @@ func (r *ClusterReconciler) sendApplyBody(ctx context.Context, url string, jsonD
 	}
 
 	return nil
+}
+
+// applyOutcome records what the apply phase did, for the status and requeue decisions.
+type applyOutcome struct {
+	// applied is true when the plan reached every pod.
+	applied bool
+	// err is the apply failure, when there was one.
+	err error
+	// unassignedTargets is how many targets found no pod with capacity.
+	unassignedTargets int32
+	// suppressed is true when nothing was sent because every pipeline was skipped
+	// for unresolved references; the pods keep the configuration they already hold.
+	suppressed bool
+	// skippedPipelines is the number of pipelines left out for unresolved references.
+	skippedPipelines int
+	// numPods is how many pods the plan was distributed over.
+	numPods int
+}
+
+// applyPlan pushes the plan to the collector pods once they are all ready. wait is
+// true when the apply has to be postponed, with the result to return: pods still
+// rolling out, or Pipeline membership changed while the plan was being built.
+func (r *ClusterReconciler) applyPlan(ctx context.Context, cluster *gnmicv1alpha1.Cluster, statefulSet *appsv1.StatefulSet, pipelines []gnmicv1alpha1.Pipeline, resolved *resolvedPipelines) (applyOutcome, ctrl.Result, bool, error) {
+	logger := log.FromContext(ctx)
+	outcome := applyOutcome{
+		suppressed:       resolved.suppressApply(),
+		skippedPipelines: resolved.skipped,
+	}
+
+	// only apply new config when all desired replicas are ready
+	desiredReplicas := ptr.Deref(statefulSet.Spec.Replicas, 0)
+	if statefulSet.Status.ReadyReplicas < desiredReplicas {
+		logger.Info("waiting for gNMIc pods to be ready before applying config",
+			"readyReplicas", statefulSet.Status.ReadyReplicas, "desiredReplicas", desiredReplicas)
+		// The StatefulSet is watched via Owns() with no predicate, so ReadyReplicas
+		// transitions already wake this controller. This requeue is only a backstop for a
+		// missed event; at 1s it re-ran the entire plan build once per second for the whole
+		// duration of a rollout.
+		return outcome, ctrl.Result{RequeueAfter: readinessBackstopInterval}, true, nil
+	}
+	// A reconcile queued while Pipelines were empty can run after a newer
+	// reconcile already applied a non-empty plan. Re-list immediately before
+	// apply and bail out if membership moved under us.
+	if fresh, err := r.listPipelinesForCluster(ctx, cluster); err != nil {
+		return outcome, ctrl.Result{}, true, err
+	} else if !pipelineSetEqual(pipelines, fresh) {
+		logger.Info("pipelines changed during reconcile, requeueing before apply")
+		return outcome, ctrl.Result{Requeue: true}, true, nil
+	}
+
+	// distribute to desired replicas only, this makes redistribution fast in case of scaling down.
+	outcome.numPods = int(desiredReplicas)
+	if outcome.suppressed {
+		return outcome, ctrl.Result{}, false, nil
+	}
+	unassigned, err := r.applyConfigToPods(ctx, cluster, resolved.plan, outcome.numPods)
+	if err != nil {
+		logger.Error(err, "failed to apply config to gNMIc pods")
+		outcome.err = err
+		return outcome, ctrl.Result{}, false, nil
+	}
+	outcome.applied = true
+	outcome.unassignedTargets = unassigned
+	logger.Info("successfully applied config to gNMIc cluster", "pods", outcome.numPods)
+	return outcome, ctrl.Result{}, false, nil
 }

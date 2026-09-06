@@ -21,18 +21,21 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/gnmic"
+	"github.com/go-logr/logr"
 )
 
 // reconcileTunnelService creates/updates the gRPC tunnel service for the cluster
@@ -275,4 +278,89 @@ func (r *ClusterReconciler) buildHeadlessService(cluster *gnmicv1alpha1.Cluster)
 			Ports: ports,
 		},
 	}
+}
+
+// certificateReadyRequeue is how soon to look again while a cert-manager
+// Certificate the pods need has not been issued yet.
+const certificateReadyRequeue = 2 * time.Second
+
+// apiTLS returns the REST API TLS settings, or nil when the API block or its TLS
+// section is absent.
+func apiTLS(cluster *gnmicv1alpha1.Cluster) *gnmicv1alpha1.ClusterTLSConfig {
+	if cluster.Spec.API == nil {
+		return nil
+	}
+	return cluster.Spec.API.TLS
+}
+
+// tunnelTLS returns the gRPC tunnel TLS settings, or nil when the tunnel is not
+// configured or has no TLS section.
+func tunnelTLS(cluster *gnmicv1alpha1.Cluster) *gnmicv1alpha1.ClusterTLSConfig {
+	if cluster.Spec.GRPCTunnel == nil {
+		return nil
+	}
+	return cluster.Spec.GRPCTunnel.TLS
+}
+
+// certManagerIssued reports whether the operator itself must create cert-manager
+// Certificates for this TLS block. With the CSI driver the driver mints them.
+func certManagerIssued(tls *gnmicv1alpha1.ClusterTLSConfig) bool {
+	return tls != nil && tls.IssuerRef != "" && !tls.UseCSIDriver
+}
+
+// certificateGate turns a (ready, err) pair from one of the certificate reconcilers
+// into the caller's return: stop is true on error or while the certificates are not
+// ready yet, in which case the result asks for a short requeue.
+func certificateGate(logger logr.Logger, what string, ready bool, err error) (ctrl.Result, bool, error) {
+	if err != nil {
+		return ctrl.Result{}, true, err
+	}
+	if !ready {
+		logger.Info("waiting for " + what + " certificates to be ready")
+		return ctrl.Result{RequeueAfter: certificateReadyRequeue}, true, nil
+	}
+	return ctrl.Result{}, false, nil
+}
+
+// reconcileInfrastructure creates what the collector pods depend on before the
+// StatefulSet is touched: the headless Service, cert-manager Certificates for the
+// API, tunnel and client sides when cert-manager issues them, the controller CA copy
+// used for mTLS client verification, and the gRPC tunnel Service. wait is true when a
+// certificate is not ready yet; the caller returns the result unchanged.
+func (r *ClusterReconciler) reconcileInfrastructure(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (ctrl.Result, bool, error) {
+	logger := log.FromContext(ctx)
+
+	if err := r.reconcileHeadlessService(ctx, cluster); err != nil {
+		return ctrl.Result{}, false, err
+	}
+	if certManagerIssued(apiTLS(cluster)) {
+		ready, err := r.reconcileCertificates(ctx, cluster)
+		if res, stop, err := certificateGate(logger, "TLS", ready, err); stop {
+			return res, true, err
+		}
+	}
+	if tls := apiTLS(cluster); tls != nil && tls.IssuerRef != "" {
+		if err := r.reconcileControllerCA(ctx, cluster); err != nil {
+			return ctrl.Result{}, false, err
+		}
+	}
+	if certManagerIssued(tunnelTLS(cluster)) {
+		ready, err := r.reconcileTunnelCertificates(ctx, cluster)
+		if res, stop, err := certificateGate(logger, "tunnel TLS", ready, err); stop {
+			return res, true, err
+		}
+	}
+	// client certificates are what gNMIc presents to targets that require mTLS
+	if certManagerIssued(cluster.Spec.ClientTLS) {
+		ready, err := r.reconcileClientTLSCertificates(ctx, cluster)
+		if res, stop, err := certificateGate(logger, "client TLS", ready, err); stop {
+			return res, true, err
+		}
+	}
+	if cluster.Spec.GRPCTunnel != nil {
+		if err := r.reconcileTunnelService(ctx, cluster); err != nil {
+			return ctrl.Result{}, false, err
+		}
+	}
+	return ctrl.Result{}, false, nil
 }

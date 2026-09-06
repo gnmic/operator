@@ -732,3 +732,275 @@ func (r *ClusterReconciler) resolveTunnelTargetPolicies(ctx context.Context, pip
 
 	return result, unresolved, nil
 }
+
+// resolvedPipelines is what the pipeline resolution pass hands to the apply and
+// status phases.
+type resolvedPipelines struct {
+	// plan is the cluster-wide apply plan built from every pipeline that resolved.
+	plan *gnmic.ApplyPlan
+	// data holds the resolved PipelineData, keyed by namespace/name, for the
+	// pipelines that made it into the plan.
+	data map[string]*gnmic.PipelineData
+	// skipped counts pipelines left out of the plan because a ref did not resolve.
+	// It tells "the plan is empty because nothing is configured" apart from "the
+	// plan is empty because everything was skipped", which need opposite handling.
+	skipped int
+}
+
+// targetsWithoutSubscriptions reports the one plan shape that must not be applied.
+//
+// A pipeline's targets and subscriptions are resolved independently
+// (resolveTargets vs resolveSubscriptions), each with its own List/Get calls
+// against the informer cache. A Subscription being deleted and recreated (or a
+// selector momentarily not matching due to cache lag) can leave a brief window
+// where a pipeline's targets resolve but its subscriptions come back empty.
+// gNMIc's config/apply rejects any request with targets but zero subscriptions
+// outright (400), and applying that would tear down the streams already running
+// on the pods for no reason. The caller skips this apply and requeues fast
+// instead of sending it: the existing config on the pods is left untouched, and
+// the next pass a moment later almost always sees a consistent read.
+func (p *resolvedPipelines) targetsWithoutSubscriptions() bool {
+	return len(p.plan.Targets) > 0 && len(p.plan.Subscriptions) == 0
+}
+
+// suppressApply reports whether every pipeline on the cluster was skipped for
+// unresolved references, so the plan is empty for a reason that has nothing to do
+// with what the user asked for. An empty plan is applied deliberately elsewhere,
+// it is how collectors stop streaming once the last Pipeline is deleted, so pushing
+// this one would drain the whole cluster over a name that usually resolves a moment
+// later.
+//
+// Only the apply is suppressed. Returning outright also stopped Prometheus Service
+// garbage collection and froze the Cluster's status counters, so deleting an Output
+// before the Pipeline naming it left an orphaned Service behind and a status that no
+// longer described anything.
+func (p *resolvedPipelines) suppressApply() bool {
+	return p.skipped > 0 && len(p.data) == 0
+}
+
+// resolvePipelines resolves every enabled pipeline bound to the cluster and builds
+// the apply plan from the ones whose references all exist. Pipeline status is
+// written as a side effect: a resolved pipeline is marked ready, one with dangling
+// refs is reported on the Pipeline itself and left out of the plan so the rest keep
+// reconciling.
+func (r *ClusterReconciler) resolvePipelines(ctx context.Context, cluster *gnmicv1alpha1.Cluster, pipelines []gnmicv1alpha1.Pipeline) (*resolvedPipelines, error) {
+	logger := log.FromContext(ctx)
+
+	planBuilder := gnmic.NewPlanBuilder(cluster.Name, r)
+	planBuilder = planBuilder.WithClientTLS(
+		gnmic.ClientTLSConfigForCluster(cluster),
+	)
+	if cluster.Spec.TargetDistribution != nil && cluster.Spec.TargetDistribution.PodCapacity > 0 {
+		planBuilder.WithTargetDistributionCapacity(cluster.Spec.TargetDistribution.PodCapacity)
+	}
+	resolved := &resolvedPipelines{data: make(map[string]*gnmic.PipelineData)}
+
+	for i := range pipelines {
+		pipeline := &pipelines[i]
+		if !pipeline.Spec.Enabled {
+			continue
+		}
+		logger.Info("cluster pipeline", "pipeline", pipeline.Name, "enabled", pipeline.Spec.Enabled)
+		pipelineNN := pipeline.Namespace + gnmic.Delimiter + pipeline.Name
+
+		pipelineData, unresolvedRefs, err := r.resolvePipeline(ctx, cluster, pipeline)
+		if err != nil {
+			return nil, err
+		}
+		if pipelineData == nil {
+			continue // rejected and reported by resolvePipeline
+		}
+
+		// A ref that does not resolve means the configuration that would reach the
+		// collectors is not the one that was asked for: an output the data never
+		// arrives at, a processor stage that silently stops filtering. Leave the
+		// pipeline out of the plan rather than apply a partial version of it, and say
+		// which refs on the Pipeline itself. Other pipelines are unaffected.
+		if len(unresolvedRefs) > 0 {
+			sort.Strings(unresolvedRefs)
+			resolved.skipped++
+			logger.Info("skipping pipeline with unresolved references",
+				"pipeline", pipeline.Name, "unresolved", unresolvedRefs)
+			if err := r.updatePipelineStatus(ctx, pipeline, pipelineData, unresolvedRefs); err != nil {
+				logger.Error(err, "failed to update pipeline status", "pipeline", pipeline.Name)
+			}
+			continue
+		}
+
+		planBuilder.AddPipeline(pipelineNN, pipelineData)
+		resolved.data[pipelineNN] = pipelineData
+
+		if err := r.updatePipelineStatus(ctx, pipeline, pipelineData, nil); err != nil {
+			logger.Error(err, "failed to update pipeline status", "pipeline", pipeline.Name)
+			// don't return, continue with other pipelines
+		}
+	}
+
+	plan, err := planBuilder.Build()
+	if err != nil {
+		return nil, err
+	}
+	resolved.plan = plan
+	return resolved, nil
+}
+
+// resolvePipeline gathers everything one pipeline references into a PipelineData.
+// Refs naming a resource that does not exist are collected and returned rather than
+// acted on one at a time, so the status lists all of them instead of whichever
+// happened to be checked first. A nil PipelineData means the pipeline was rejected
+// outright and its status already written; the caller moves on.
+func (r *ClusterReconciler) resolvePipeline(ctx context.Context, cluster *gnmicv1alpha1.Cluster, pipeline *gnmicv1alpha1.Pipeline) (*gnmic.PipelineData, []string, error) {
+	logger := log.FromContext(ctx)
+	pipelineNN := pipeline.Namespace + gnmic.Delimiter + pipeline.Name
+	pipelineData := gnmic.NewPipelineData()
+	var unresolvedRefs []string
+
+	// targets, and the profiles they name
+	targets, unresolved, err := r.resolveTargets(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	targetProfileNames := make(map[string]struct{})
+	for _, target := range targets {
+		pipelineData.Targets[target.Namespace+gnmic.Delimiter+target.Name] = target
+		targetProfileNames[target.Spec.Profile] = struct{}{}
+	}
+	// A missing profile used to fail the entire reconcile, which stalled every
+	// other pipeline on the cluster over one bad name. It is now treated as the
+	// dangling ref it is: this pipeline is skipped, the rest keep reconciling.
+	unresolved, err = r.resolveTargetProfiles(ctx, pipeline.Namespace, targetProfileNames, pipelineData)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	logger.Info("cluster pipeline resolved targets", "count", len(targets), "targetProfiles", len(targetProfileNames))
+
+	// subscriptions
+	subscriptions, unresolved, err := r.resolveSubscriptions(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	for _, subscription := range subscriptions {
+		// Key by pipeline like outputs so two pipelines sharing one
+		// Subscription CR each get their own output binding. A flat
+		// namespace/name key merges both pipelines' outputs onto every
+		// target that uses the subscription.
+		pipelineData.Subscriptions[pipelineNN+gnmic.Delimiter+subscription.Name] = subscription.Spec
+	}
+	logger.Info("cluster pipeline resolved subscriptions", "count", len(subscriptions))
+
+	// outputs, with Service addresses resolved for the types that support it (nats, kafka, jetstream)
+	outputs, unresolved, err := r.resolveOutputs(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	for _, output := range outputs {
+		outputNN := pipelineNN + gnmic.Delimiter + output.Name
+		pipelineData.Outputs[outputNN] = output.Spec
+		if gnmic.OutputTypesWithServiceRef[output.Spec.Type] {
+			resolvedAddrs, err := r.resolveOutputServiceAddresses(ctx, &output)
+			if err != nil {
+				logger.Error(err, "failed to resolve service addresses for output", "output", output.Name)
+				// continue without resolved addresses - the output config may have static address
+			} else if len(resolvedAddrs) > 0 {
+				pipelineData.ResolvedOutputAddresses[outputNN] = resolvedAddrs
+			}
+		}
+	}
+	logger.Info("cluster pipeline resolved outputs", "count", len(outputs))
+
+	// inputs
+	inputs, unresolved, err := r.resolveInputs(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	for _, input := range inputs {
+		pipelineData.Inputs[pipelineNN+gnmic.Delimiter+input.Name] = input.Spec
+	}
+	logger.Info("cluster pipeline resolved inputs", "count", len(inputs))
+
+	// output processors (order: refs first, then sorted selectors)
+	outputProcessors, unresolved, err := r.resolveOutputProcessors(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	for _, processor := range outputProcessors {
+		processorNN := pipelineNN + gnmic.Delimiter + processor.Name
+		pipelineData.OutputProcessors[processorNN] = processor.Spec
+		pipelineData.OutputProcessorOrder = append(pipelineData.OutputProcessorOrder, processorNN)
+	}
+	logger.Info("cluster pipeline resolved output processors", "count", len(outputProcessors))
+
+	// input processors (order: refs first, then sorted selectors)
+	inputProcessors, unresolved, err := r.resolveInputProcessors(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	for _, processor := range inputProcessors {
+		processorNN := pipelineNN + gnmic.Delimiter + processor.Name
+		pipelineData.InputProcessors[processorNN] = processor.Spec
+		pipelineData.InputProcessorOrder = append(pipelineData.InputProcessorOrder, processorNN)
+	}
+	logger.Info("cluster pipeline resolved input processors", "count", len(inputProcessors))
+
+	// tunnel target policies, and the profiles they share with targets
+	tunnelTargetPolicies, unresolved, err := r.resolveTunnelTargetPolicies(ctx, pipeline)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	if len(tunnelTargetPolicies) > 0 && cluster.Spec.GRPCTunnel == nil {
+		logger.Error(nil, "pipeline has tunnel target policies but cluster has no gRPC tunnel configured",
+			"pipeline", pipeline.Name, "cluster", cluster.Name)
+		if err := r.updatePipelineStatusWithError(ctx, pipeline,
+			"ClusterMissingTunnel",
+			fmt.Sprintf("Cluster %s does not have gRPC tunnel configured, but pipeline references tunnel target policies", cluster.Name),
+		); err != nil {
+			logger.Error(err, "failed to update pipeline status with error")
+		}
+		return nil, nil, nil
+	}
+	tunnelProfileNames := make(map[string]struct{})
+	for _, policy := range tunnelTargetPolicies {
+		pipelineData.TunnelTargetPolicies[policy.Namespace+gnmic.Delimiter+policy.Name] = policy.Spec
+		if policy.Spec.Profile != "" {
+			tunnelProfileNames[policy.Spec.Profile] = struct{}{}
+		}
+	}
+	unresolved, err = r.resolveTargetProfiles(ctx, pipeline.Namespace, tunnelProfileNames, pipelineData)
+	if err != nil {
+		return nil, nil, err
+	}
+	unresolvedRefs = append(unresolvedRefs, unresolved...)
+	logger.Info("cluster pipeline tunnel target policies", "policies", len(tunnelTargetPolicies))
+
+	return pipelineData, unresolvedRefs, nil
+}
+
+// resolveTargetProfiles fetches the named TargetProfiles from namespace into
+// data.TargetProfiles, skipping any already present, and returns the names that do
+// not exist as unresolved refs.
+func (r *ClusterReconciler) resolveTargetProfiles(ctx context.Context, namespace string, names map[string]struct{}, data *gnmic.PipelineData) ([]string, error) {
+	var unresolved []string
+	for name := range names {
+		if _, exists := data.TargetProfiles[namespace+gnmic.Delimiter+name]; exists {
+			continue
+		}
+		var profile gnmicv1alpha1.TargetProfile
+		if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &profile); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return nil, err
+			}
+			unresolved = append(unresolved, unresolvedRef("targetprofile", name))
+			continue
+		}
+		data.TargetProfiles[profile.Namespace+gnmic.Delimiter+profile.Name] = profile.Spec
+	}
+	return unresolved, nil
+}

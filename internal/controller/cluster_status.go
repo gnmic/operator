@@ -17,7 +17,19 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/gnmic"
+	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // clusterStatusEqual compares two ClusterStatus structs for equality
@@ -43,4 +55,229 @@ func clusterStatusEqual(a, b gnmicv1alpha1.ClusterStatus) bool {
 		}
 	}
 	return true
+}
+
+const (
+	// statusUpdateAttempts bounds the retries on a conflicting status write.
+	statusUpdateAttempts = 5
+	// applyFailureRequeue is how soon to retry after the collectors rejected a plan.
+	applyFailureRequeue = 10 * time.Second
+	// transientReadRequeue is how soon to re-run after a plan shape that points at a
+	// stale informer read rather than at user intent.
+	transientReadRequeue = 250 * time.Millisecond
+)
+
+// buildClusterStatus derives the Cluster status for this pass: resource counters from
+// the pipelines that made it into the plan, and the Ready, CertificatesReady,
+// ConfigApplied and CapacityExhausted conditions from the StatefulSet and the apply
+// outcome. LastTransitionTime is carried over from prior for conditions whose status
+// did not change. It reads nothing from the API and is safe to unit test directly.
+func buildClusterStatus(cluster *gnmicv1alpha1.Cluster, statefulSet *appsv1.StatefulSet, pipelineCount int, data map[string]*gnmic.PipelineData, outcome applyOutcome) gnmicv1alpha1.ClusterStatus {
+	targets, subscriptions, inputs, outputs := uniqueResourceCounts(data)
+	status := gnmicv1alpha1.ClusterStatus{
+		ReadyReplicas:      statefulSet.Status.ReadyReplicas,
+		Selector:           metav1.FormatLabelSelector(statefulSet.Spec.Selector),
+		PipelinesCount:     int32(pipelineCount),
+		TargetsCount:       targets,
+		UnassignedTargets:  outcome.unassignedTargets,
+		SubscriptionsCount: subscriptions,
+		InputsCount:        inputs,
+		OutputsCount:       outputs,
+	}
+
+	now := metav1.Now()
+	status.Conditions = append(status.Conditions, readyCondition(cluster, statefulSet, outcome, now))
+	if tls := apiTLS(cluster); tls != nil && tls.IssuerRef != "" {
+		status.Conditions = append(status.Conditions, metav1.Condition{
+			Type:               ConditionTypeCertificatesReady,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "CertificatesIssued",
+			Message:            "TLS certificates are ready",
+		})
+	}
+	status.Conditions = append(status.Conditions, configAppliedCondition(cluster, outcome, now))
+	if cond, ok := capacityCondition(cluster, outcome, now); ok {
+		status.Conditions = append(status.Conditions, cond)
+	}
+
+	// preserve LastTransitionTime for unchanged conditions
+	for i := range status.Conditions {
+		for _, oldCond := range cluster.Status.Conditions {
+			if oldCond.Type == status.Conditions[i].Type &&
+				oldCond.Status == status.Conditions[i].Status {
+				status.Conditions[i].LastTransitionTime = oldCond.LastTransitionTime
+				break
+			}
+		}
+	}
+	return status
+}
+
+// uniqueResourceCounts counts the distinct targets, subscriptions, inputs and outputs
+// across the pipelines in the plan. A resource bound to several pipelines counts once.
+func uniqueResourceCounts(data map[string]*gnmic.PipelineData) (targets, subscriptions, inputs, outputs int32) {
+	uniqueTargets := make(map[string]struct{})
+	uniqueSubscriptions := make(map[string]struct{})
+	uniqueInputs := make(map[string]struct{})
+	uniqueOutputs := make(map[string]struct{})
+	for _, pipelineData := range data {
+		for k := range pipelineData.Targets {
+			uniqueTargets[k] = struct{}{}
+		}
+		for k := range pipelineData.Subscriptions {
+			uniqueSubscriptions[k] = struct{}{}
+		}
+		for k := range pipelineData.Inputs {
+			uniqueInputs[k] = struct{}{}
+		}
+		for k := range pipelineData.Outputs {
+			uniqueOutputs[k] = struct{}{}
+		}
+	}
+	return int32(len(uniqueTargets)), int32(len(uniqueSubscriptions)), int32(len(uniqueInputs)), int32(len(uniqueOutputs))
+}
+
+// readyCondition is true once the pods are up and hold the current configuration.
+func readyCondition(cluster *gnmicv1alpha1.Cluster, statefulSet *appsv1.StatefulSet, outcome applyOutcome, now metav1.Time) metav1.Condition {
+	cond := metav1.Condition{
+		Type:               ConditionTypeReady,
+		ObservedGeneration: cluster.Generation,
+		LastTransitionTime: now,
+	}
+	desired := ptr.Deref(cluster.Spec.Replicas, 0)
+	switch {
+	case statefulSet.Status.ReadyReplicas >= desired && outcome.applied:
+		cond.Status = metav1.ConditionTrue
+		cond.Reason = "ClusterReady"
+		cond.Message = fmt.Sprintf("All %d replicas are ready and configured", statefulSet.Status.ReadyReplicas)
+	case statefulSet.Status.ReadyReplicas > 0 && outcome.applied:
+		cond.Status = metav1.ConditionTrue
+		cond.Reason = "ClusterPartiallyReady"
+		cond.Message = fmt.Sprintf("%d of %d replicas are ready and configured", statefulSet.Status.ReadyReplicas, cluster.Spec.Replicas)
+	default:
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = "ClusterNotReady"
+		if statefulSet.Status.ReadyReplicas == 0 {
+			cond.Message = "Waiting for pods to be ready"
+		} else {
+			cond.Message = "Configuration not yet applied"
+		}
+	}
+	return cond
+}
+
+// configAppliedCondition distinguishes a plan that reached the pods, one that was
+// deliberately withheld over unresolved references, and one that failed.
+func configAppliedCondition(cluster *gnmicv1alpha1.Cluster, outcome applyOutcome, now metav1.Time) metav1.Condition {
+	cond := metav1.Condition{
+		Type:               ConditionTypeConfigApplied,
+		ObservedGeneration: cluster.Generation,
+		LastTransitionTime: now,
+	}
+	switch {
+	case outcome.applied:
+		cond.Status = metav1.ConditionTrue
+		cond.Reason = "ConfigurationApplied"
+		cond.Message = fmt.Sprintf("Configuration applied to %d pods", outcome.numPods)
+	case outcome.suppressed:
+		// Distinct from a failed apply: nothing was sent, and what the pods are
+		// running is the last configuration that did resolve.
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = ReasonUnresolvedReferences
+		cond.Message = fmt.Sprintf(
+			"%d pipeline(s) have unresolved references; the collectors keep their current configuration", outcome.skippedPipelines)
+	default:
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = "ConfigurationFailed"
+		if outcome.err != nil {
+			cond.Message = fmt.Sprintf("Failed to apply configuration: %v", outcome.err)
+		} else {
+			cond.Message = "Waiting for pods to be ready"
+		}
+	}
+	return cond
+}
+
+// capacityCondition reports targets that found no pod with room. It is only set once
+// a plan has been applied, or when targets were actually left unassigned.
+func capacityCondition(cluster *gnmicv1alpha1.Cluster, outcome applyOutcome, now metav1.Time) (metav1.Condition, bool) {
+	switch {
+	case outcome.unassignedTargets > 0:
+		return metav1.Condition{
+			Type:               ConditionTypeCapacityExhausted,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "InsufficientCapacity",
+			Message:            fmt.Sprintf("%d target(s) could not be assigned, all pods at capacity", outcome.unassignedTargets),
+		}, true
+	case outcome.applied:
+		return metav1.Condition{
+			Type:               ConditionTypeCapacityExhausted,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: cluster.Generation,
+			LastTransitionTime: now,
+			Reason:             "SufficientCapacity",
+			Message:            "All targets assigned",
+		}, true
+	}
+	return metav1.Condition{}, false
+}
+
+// writeClusterStatus persists status when it differs from what is live. The object is
+// re-fetched into cluster first: a concurrent reconcile may have already written a
+// newer status, and comparing against the start-of-reconcile copy can skip a needed
+// update (e.g. a stale empty reconcile sees pipelinesCount=0 in-memory while the live
+// status is still 1). Conflicts on the write itself are retried a bounded number of
+// times.
+func (r *ClusterReconciler) writeClusterStatus(ctx context.Context, cluster *gnmicv1alpha1.Cluster, status gnmicv1alpha1.ClusterStatus) error {
+	logger := log.FromContext(ctx)
+	clusterNN := types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}
+	if err := r.Get(ctx, clusterNN, cluster); err != nil {
+		return err
+	}
+	if clusterStatusEqual(cluster.Status, status) {
+		return nil
+	}
+	var statusErr error
+	for attempt := 0; attempt < statusUpdateAttempts; attempt++ {
+		if attempt > 0 {
+			if err := r.Get(ctx, clusterNN, cluster); err != nil {
+				statusErr = err
+				break
+			}
+		}
+		cluster.Status = status
+		if err := r.Status().Update(ctx, cluster); err != nil {
+			if apierrors.IsConflict(err) {
+				statusErr = err
+				continue
+			}
+			statusErr = err
+			break
+		}
+		statusErr = nil
+		break
+	}
+	if statusErr != nil {
+		logger.Error(statusErr, "failed to update cluster status")
+		return statusErr
+	}
+	return nil
+}
+
+// requeueFor picks the interval for the next pass from how this one ended.
+func requeueFor(outcome applyOutcome, pipelineCount int) ctrl.Result {
+	if outcome.err != nil {
+		return ctrl.Result{RequeueAfter: applyFailureRequeue}
+	}
+	// An empty apply from a briefly stale cache can race a Pipeline create.
+	// Requeue once so the next pass sees the live membership and restores
+	// config if needed; non-empty applies are left alone.
+	if outcome.applied && pipelineCount == 0 {
+		return ctrl.Result{RequeueAfter: time.Second}
+	}
+	return ctrl.Result{RequeueAfter: reconcileBackstopInterval}
 }
