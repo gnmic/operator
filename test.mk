@@ -102,20 +102,23 @@ undeploy-test-http-server: ## Undeploy the http pod for testing
 	kubectl delete -f test/integration/http/resources/
 
 .PHONY: create-secrets-for-apiserver
-create-secrets-for-apiserver: ## Create the secret used to authenticate push-API requests (HMAC signature)
+create-secrets-for-apiserver: ## Create the secret the TargetSource webhook verifies HMAC signatures against
 	kubectl create secret generic gnmic-signature --from-literal=signature=1879
 
-.PHONY: send-target-to-apiserver
-send-target-to-apiserver: ## POST a target to the push API, authenticated with an HMAC-SHA512 signature over the body
+.PHONY: refresh-targetsource
+refresh-targetsource: ## Ask the http-ts TargetSource for an immediate run through the webhook, signed with HMAC-SHA512, and require a 202
 	@SIG_SECRET=$$(kubectl get secret gnmic-signature -o jsonpath='{.data.signature}' | base64 --decode); \
-	BODY='[{"address":"clab-t1-leaf2","port":57400,"name":"leaf2","operation":"created","targetProfile":"default","labels":[{"vendor":"nokia_srlinux"},{"role":"leaf"}]}]'; \
+	BODY='{"event":"integration-test"}'; \
 	SIGNATURE=$$(printf '%s' "$$BODY" | openssl dgst -sha512 -hmac "$$SIG_SECRET" | awk '{print $$NF}'); \
 	kubectl port-forward -n gnmic-system svc/gnmic-controller-manager-api 8082:8082 --address=0.0.0.0 >/dev/null 2>&1 & \
 	sleep 3; \
-	curl --retry 3 --retry-delay 1 --retry-connrefused -X POST "http://localhost:8082/api/v1/default/target-source/http-ts/applyTargets" \
+	CODE=$$(curl -s -o /dev/stderr -w '%{http_code}' --retry 3 --retry-delay 1 --retry-connrefused -X POST \
+		"http://localhost:8082/api/v1/namespaces/default/targetsources/http-ts/refresh" \
 		-H "Content-Type: application/json" \
 		-H "x-hook-signature: $$SIGNATURE" \
-		-d "$$BODY"
+		-d "$$BODY"); \
+	echo; echo "refresh returned HTTP $$CODE"; \
+	test "$$CODE" = "202"
 
 .PHONY: deploy-test-netbox-instance
 deploy-test-netbox-instance: NETBOX_CLUSTER_NAME=$(TEST_CLUSTER_NAME) ## Deploy the test netbox instance for testing

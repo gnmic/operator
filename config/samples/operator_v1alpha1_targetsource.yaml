@@ -9,4 +9,21 @@ metadata:
     app.kubernetes.io/created-by: kb
   name: targetsource-sample
 spec:
-  # TODO(user): Add fields here
+  # How often to read the source. Defaults to 5m.
+  interval: 5m
+  source:
+    # One of HTTP, Static, ConfigMap, Secret. Exactly one matching block must be set.
+    type: Static
+    static:
+      devices:
+        - name: leaf1
+          address: 10.0.0.1
+        - name: leaf2
+          address: 10.0.0.2
+          port: 57401
+          labels:
+            role: leaf
+  target:
+    # Used when the source does not supply a port or profile.
+    port: 57400
+    profile: default

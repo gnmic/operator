@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gin-gonic/gin"
@@ -21,65 +22,20 @@ const (
 	SignatureScopes  = "signature.Scopes"
 )
 
-// Defines values for TargetOperation.
-const (
-	Created TargetOperation = "created"
-	Deleted TargetOperation = "deleted"
-	Updated TargetOperation = "updated"
-)
+// RefreshResponse defines model for RefreshResponse.
+type RefreshResponse struct {
+	// Debounced True when this call did not schedule a new run because one was requested within the debounce window.
+	Debounced bool `json:"debounced"`
 
-// Valid indicates whether the value is a known member of the TargetOperation enum.
-func (e TargetOperation) Valid() bool {
-	switch e {
-	case Created:
-		return true
-	case Deleted:
-		return true
-	case Updated:
-		return true
-	default:
-		return false
-	}
+	// RequestedAt When a run was last requested through this endpoint.
+	RequestedAt time.Time `json:"requestedAt"`
 }
-
-// Label defines model for Label.
-type Label map[string]string
-
-// Target Network device to be monitored. Properties not marked as optional must be in JSON body.
-type Target struct {
-	// Address IPv4/IPv6 address or hostname.
-	Address string `json:"address"`
-
-	// Labels Labels must be map[string]string. For example vendor:nokia.
-	Labels *[]Label `json:"labels,omitempty"`
-
-	// Name Name of device to be monitored.
-	Name string `json:"name"`
-
-	// Operation Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target.
-	Operation TargetOperation `json:"operation"`
-
-	// Port gNMIc port.
-	Port *int `json:"port,omitempty"`
-
-	// TargetProfile TargetProfile applied to apply to this router.
-	TargetProfile *string `json:"targetProfile,omitempty"`
-}
-
-// TargetOperation Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target.
-type TargetOperation string
-
-// Targets defines model for Targets.
-type Targets = []Target
-
-// ApplyTargetsJSONRequestBody defines body for ApplyTargets for application/json ContentType.
-type ApplyTargetsJSONRequestBody = Targets
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator.
-	// (POST /api/v1/:namespace/target-source/:name/applyTargets)
-	ApplyTargets(c *gin.Context)
+	// Request an immediate discovery run for a TargetSource.
+	// (POST /api/v1/namespaces/:namespace/targetsources/:name/refresh)
+	RefreshTargetSource(c *gin.Context)
 	// Get cluster plan.
 	// (GET /clusters/:namespace/:name/plan)
 	GetClusterPlan(c *gin.Context)
@@ -94,8 +50,8 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(c *gin.Context)
 
-// ApplyTargets operation middleware
-func (siw *ServerInterfaceWrapper) ApplyTargets(c *gin.Context) {
+// RefreshTargetSource operation middleware
+func (siw *ServerInterfaceWrapper) RefreshTargetSource(c *gin.Context) {
 
 	c.Set(BearerAuthScopes, []string{})
 
@@ -108,7 +64,7 @@ func (siw *ServerInterfaceWrapper) ApplyTargets(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ApplyTargets(c)
+	siw.Handler.RefreshTargetSource(c)
 }
 
 // GetClusterPlan operation middleware
@@ -151,28 +107,30 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.POST(options.BaseURL+"/api/v1/:namespace/target-source/:name/applyTargets", wrapper.ApplyTargets)
+	router.POST(options.BaseURL+"/api/v1/namespaces/:namespace/targetsources/:name/refresh", wrapper.RefreshTargetSource)
 	router.GET(options.BaseURL+"/clusters/:namespace/:name/plan", wrapper.GetClusterPlan)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/7xVTW8bNxD9KwO2QIFA3lWUpAcVOahumwRFPhAbaAHbh9FyVst4xWGGs1YWgf57Qa60",
+	"kiWj6Km3/SA5772Z9/jdVLwO7MlrNPPvJlYNrTE/fqZaKDafKQb2kdKnIBxI1FFeYGnJna/IDi+xEhfU",
+	"sTdzcy0dwaYhD9q4CBW2LVhnwbNCKmG7lgDB0wak87CkCrtIwJ5ggxGEvnYUlSxsnDYunUKwLwcb5y1v",
+	"CjMx2gcyc7Nkbgm92U7MuHOh56j+SoAwV0xVWox6VEob4W7VDIjJ28DOa6pSs6xRzdxYVLpQt6ZD6aji",
+	"/Mpsd6WdJDVuHsGYHAl1N27k5ReqNG+MVHXitL9K2g/SLgmFZNFpc87iktcBhSw4DxX7qOgVEirAFTof",
+	"Nat1RZWQgsc1WVj2EANVxYaWDfN9gZ02xVAjEcxNz0LmTwd2jWpIqka38qid0Dmat/QN3r5fXALXue6O",
+	"OSzZ9hPgvAzbtocgVLtvu5bCrYkNzl79/PrWAMvw+ur57PWtmcA99QPm/8ZjBJeouISpIbSZRtpl5ubv",
+	"i7fM9xdXI4uRIAb3J/Vmm9rgfM2Jnzpt07/Vh/fvKvgYSFBZ4PPvV9ew+PTOTMwDSRzYT4tpMUsKcSCP",
+	"wZm5eVFMixdmYgJqk3tZYnDlw/MygYkBK4rlfHwuFWVFGrmT8Ucpg/Oy4zg+McgfWF3dX7Bv+wKuG8pq",
+	"Q4UijiJ4huFUsKj4CzgFFyEtBvTgfOgUlGHUDR5IXO0qTKcXsIDYVRXFWHft4Fz0nhWVYu7IdT77KiMG",
+	"9DZ/rNircNuSQCBJjompGIt1HqWHumvbZLwCLrFt47Gvj8/7KcK+tyd2389XEHpw3MWcFSgEWN173rRk",
+	"V7vZ4m7MGOdXgJ61IcnFb73JrZJM9Z01833KHYMwY4z8yrZP6id25HMjnpXPDjmZnsZ0WGamT0TDdnLS",
+	"vo8Bv3ZUwB8sGxSbsocHEx13YsjPQ5fSsKdGVuxrt+qEbDEk3pDPedZm0+kJXgyh3R1Yfomp/DH4H4Vq",
+	"Mzc/lIdboNxdAeVp/j9B5Ld9sM2PYvWQqC3FNDLoz5uKK07gZ9PZ/4l3cQ4yoXg5fX7usRS+5HXfjBpd",
+	"u1/98okL79QYlrMTFeibi5oyrsFszZ0UQB6X+cSjG8DMbx5n/83ddvL9OH5v7rZ3ExO79TrNWhrfIW6T",
+	"sddrsg6VwLpY8QNJn+nWLICPwBW5aFm1XVSSR3E0BFBoMQu/otyTx455Q3o57PyUlj09gSdX1mE9CGkn",
+	"/l+k/MCQ6udRx+TjzCDfyrtzBs1GDd6Qwo5L3pnobbf/BAAA//+iRWvV2ggAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

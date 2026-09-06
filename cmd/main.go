@@ -17,13 +17,9 @@ limitations under the License.
 package main
 
 import (
-	"context"
-	"errors"
 	"flag"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -31,22 +27,18 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	operatorv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 	"github.com/gnmic/operator/internal/apiserver"
 	"github.com/gnmic/operator/internal/controller"
-	"github.com/gnmic/operator/internal/controller/discovery"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
 	webhookv1alpha1 "github.com/gnmic/operator/internal/webhook/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
@@ -71,8 +63,7 @@ func main() {
 	var probeAddr string
 	var devMode bool
 	var apiAddr string
-	var discoveryChunkSize int
-	var discoveryBufferSize int
+	var targetSourceConcurrency int
 	var kubeAPIQPS float64
 	var kubeAPIBurst int
 	var watchNamespaces string
@@ -83,8 +74,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.IntVar(&discoveryChunkSize, "discovery-chunk-size", 100, "Maximum number of targets/events sent in a single discovery message.")
-	flag.IntVar(&discoveryBufferSize, "discovery-buffer-size", 10, "Amount of discovery messages that can be queued in the channel buffer.")
+	flag.IntVar(&targetSourceConcurrency, "targetsource-concurrency", controller.DefaultTargetSourceConcurrency,
+		"How many TargetSources may run discovery at once. A run holds a worker for up to its spec.timeout, so this bounds how long a slow source can delay the others.")
 	flag.Float64Var(&kubeAPIQPS, "kube-api-qps", 50, "Maximum sustained queries per second to the Kubernetes API server. The client-go default (20) is too low for large target populations.")
 	flag.IntVar(&kubeAPIBurst, "kube-api-burst", 100, "Maximum burst of queries to the Kubernetes API server.")
 	flag.StringVar(&watchNamespaces, "watch-namespaces", "", "Comma-separated list of namespaces to watch. Empty (the default) watches all namespaces, which caches every Secret, ConfigMap, Service, StatefulSet and Certificate in the cluster.")
@@ -95,8 +86,6 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
-	discoveryRegistry := discovery.NewRegistry[types.NamespacedName, core.DiscoveryRegistryValue]()
 
 	// The rest-client defaults (20 QPS / 30 burst) throttle every controller in the
 	// process behind whichever one is busiest. With a few thousand Targets that shows up
@@ -178,21 +167,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The API server runs on every replica, leader or not. Its refresh endpoint
+	// only needs a client, and a Service in front of several replicas must not
+	// refuse requests that land on a follower.
 	var api *apiserver.APIServer
 	if apiAddr != "" {
-		api, err = apiserver.New(apiAddr, clusterReconciler, discoveryRegistry, discoveryChunkSize, os.Getenv("API_BEARER_TOKEN"))
-		if err != nil {
-			setupLog.Error(err, "unable to initialize API server")
-			os.Exit(1)
-		}
+		api = apiserver.New(apiAddr, clusterReconciler, mgr.GetClient())
 	}
 	if err := (&controller.TargetSourceReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
-		BufferSize:        discoveryBufferSize,
-		ChunkSize:         discoveryChunkSize,
-		DiscoveryRegistry: discoveryRegistry,
-		APIRouter:         api.Router(),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("targetsource-controller"),
+		Concurrency: targetSourceConcurrency,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetSource")
 		os.Exit(1)
@@ -294,29 +280,7 @@ func main() {
 	}
 
 	if api != nil {
-		err = mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-			errCh := make(chan error)
-			go func() {
-				err := api.Server.ListenAndServe()
-				if err != nil && !errors.Is(err, http.ErrServerClosed) {
-					errCh <- err
-				}
-				close(errCh)
-			}()
-
-			select {
-			case err, ok := <-errCh:
-				if !ok {
-					return nil
-				}
-				return err
-			case <-ctx.Done():
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				return api.Server.Shutdown(ctx)
-			}
-		}))
-		if err != nil {
+		if err := mgr.Add(api); err != nil {
 			setupLog.Error(err, "unable to add api server")
 			os.Exit(1)
 		}

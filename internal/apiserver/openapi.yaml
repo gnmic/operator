@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: "gNMIc Operator REST API"
-  version: "0.0.1"
+  version: "0.0.2"
 paths:
   /clusters/:namespace/:name/plan:
     get:
@@ -10,83 +10,70 @@ paths:
       responses:
         '200':
           description: "ClusterPlan returned"
-  /api/v1/:namespace/target-source/:name/applyTargets:
+        '404':
+          description: "No plan is cached for this Cluster"
+  /api/v1/namespaces/:namespace/targetsources/:name/refresh:
     post:
-      summary: "Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator."
-      operationId: "applyTargets"
+      summary: "Request an immediate discovery run for a TargetSource."
+      description: >
+        Notify-only. The body carries no target data; it is only an input to
+        signature verification. A successful call annotates the TargetSource
+        and the controller performs an ordinary full run. Calls within the
+        TargetSource's webhook.debounce window of the previous one are
+        acknowledged without scheduling another run.
+      operationId: "refreshTargetSource"
       security:
         - bearerAuth: []
-          signature: []
+        - signature: []
       requestBody:
-        required: true
-        description: Target must be passed as a list, multiple targets possible.
+        required: false
+        description: Opaque. Forwarded to HMAC verification when signature auth is configured.
         content:
-          application/json:
+          '*/*':
             schema:
-              $ref: '#/components/schemas/Targets'
+              type: string
+              format: binary
       responses:
-        '201':
-          description: "Targets applied successfully"
+        '202':
+          description: "A run was requested"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Targets'
+                $ref: '#/components/schemas/RefreshResponse'
+        '200':
+          description: "Debounced: a run was requested less than webhook.debounce ago"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
         '401':
-          description: Access token is missing or invalid
+          description: "Authentication failed"
+        '404':
+          description: "The TargetSource does not exist or has no webhook enabled"
 
 components:
   schemas:
-    Targets:
-      type: array
-      items:
-        $ref: '#/components/schemas/Target'
-
-    Target:
-      description: Network device to be monitored. Properties not marked as optional must be in JSON body.
+    RefreshResponse:
       type: object
       required:
-        - name
-        - address
-        - operation
+        - requestedAt
+        - debounced
       properties:
-        name:
+        requestedAt:
           type: string
-          description: Name of device to be monitored.
-        address:
-          type: string
-          description: IPv4/IPv6 address or hostname.
-        port:
-          type: integer
-          description: gNMIc port.
-        targetProfile:
-          type: string
-          description: TargetProfile applied to apply to this router.
-        labels:
-          type: array
-          description: Labels must be map[string]string. For example vendor:nokia.
-          items:
-            $ref: '#/components/schemas/Label'
-        operation:
-          type: string
-          enum:
-            - created
-            - updated
-            - deleted
-          description: "Either `created`, `updated` or `deleted`. `created` and `updated` are identical and both apply the target."
-
-    Label:
-      type: object
-      additionalProperties:
-        type: string
+          format: date-time
+          description: When a run was last requested through this endpoint.
+        debounced:
+          type: boolean
+          description: True when this call did not schedule a new run because one was requested within the debounce window.
 
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: HTTP authentication using Bearer token
+      description: Compared in constant time against the Secret named by spec.webhook.auth.bearer.
     signature:
       name: X-Hook-Signature
       type: apiKey
       in: header
-      description: HMAC signature of the request payload
-      
+      description: Hex HMAC of the request body, optionally prefixed with "sha256=" or "sha512=", keyed by the Secret named by spec.webhook.auth.signature.

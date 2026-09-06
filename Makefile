@@ -308,10 +308,11 @@ delete-targetsources-dev-lab: ## Delete the target sources for the development l
 ##@ Testing Lab
 
 .PHONY: run-integration-tests
-run-integration-tests: docker-build undeploy-test-cluster deploy-test-cluster install-test-cluster-dependencies load-test-image deploy wait-test-operator deploy-test-http-server create-secrets-for-apiserver install-kubectl install-gnmic install-containerlab deploy-test-topology apply-test-resources send-target-to-apiserver
+run-integration-tests: docker-build undeploy-test-cluster deploy-test-cluster install-test-cluster-dependencies load-test-image deploy wait-test-operator deploy-test-http-server create-secrets-for-apiserver install-kubectl install-gnmic install-containerlab deploy-test-topology apply-test-resources refresh-targetsource
 	kubectl wait --for=condition=Ready cluster --all --timeout=180s
 	kubectl wait --for=condition=Ready pipeline --all --timeout=180s
-	kubectl wait --for=jsonpath='{.status.targetsCount}'=3 targetsource --all --timeout=180s
+	kubectl wait --for=jsonpath='{.status.managed}'=3 targetsource --all --timeout=180s
+	kubectl wait --for=condition=Ready targetsource --all --timeout=180s
 	kubectl wait --for=jsonpath='{.status.connectionState}'=READY target --all --timeout=180s
 	kubectl get subscriptions -o yaml
 	kubectl get outputs -o yaml

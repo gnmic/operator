@@ -1,133 +1,107 @@
 package apiserver
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/sha512"
+	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"hash"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
-// verifyAuthentication checks for Bearer Token and/or Signature
-func (a *APIServer) verifyAuthentication(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) (bool, error) {
-	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Auth == nil {
-		return true, nil
+// authenticate checks every method the TargetSource configures. When both
+// bearer and signature are set, both must pass. No auth configured is a
+// rejection: the schema requires auth when the webhook is enabled, and this
+// is the backstop if that rule is ever bypassed.
+func (a *APIServer) authenticate(ctx context.Context, req *http.Request, ts *gnmicv1alpha1.TargetSource, body []byte) error {
+	auth := ts.Spec.Webhook.Auth
+	if auth == nil || (auth.Bearer == nil && auth.Signature == nil) {
+		return errors.New("webhook has no authentication configured")
 	}
-	auth := registry.CommonLoaderConfig.PushConfig.Auth
 	if auth.Bearer != nil {
-		if authenticated, err := a.verifyBearerToken(ctx, registry, logger); !authenticated {
-			return false, err
+		if err := a.verifyBearer(ctx, req, ts.Namespace, auth.Bearer); err != nil {
+			return err
 		}
 	}
 	if auth.Signature != nil {
-		if signatureMatch, err := a.verifySignature(ctx, registry, logger); !signatureMatch {
-			return false, err
+		if err := a.verifySignature(ctx, req, ts.Namespace, auth.Signature, body); err != nil {
+			return err
 		}
 	}
-	return true, nil
+	return nil
 }
 
-// verifySignature verifies the configured signature header from a POST request
-// against an hmac computed from the body and a kubernetes secret.
-func (a *APIServer) verifySignature(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) (bool, error) {
-	clc := registry.CommonLoaderConfig
-	headerName := clc.PushConfig.Auth.Signature.Header
+func (a *APIServer) verifyBearer(ctx context.Context, req *http.Request, namespace string, spec *gnmicv1alpha1.WebhookBearerAuth) error {
+	const prefix = "Bearer "
+	header := strings.TrimSpace(req.Header.Get("Authorization"))
+	if !strings.HasPrefix(header, prefix) {
+		return errors.New("missing bearer token")
+	}
+	expected, err := a.secretValue(ctx, namespace, spec.SecretRef)
+	if err != nil {
+		return err
+	}
+	presented := strings.TrimSpace(strings.TrimPrefix(header, prefix))
+	if subtle.ConstantTimeCompare([]byte(presented), []byte(strings.TrimSpace(expected))) != 1 {
+		return errors.New("bearer token mismatch")
+	}
+	return nil
+}
+
+func (a *APIServer) verifySignature(ctx context.Context, req *http.Request, namespace string, spec *gnmicv1alpha1.WebhookSignatureAuth, body []byte) error {
+	headerName := spec.Header
 	if headerName == "" {
-		headerName = "x-hook-signature"
+		headerName = "X-Hook-Signature"
 	}
-	signatureHeader := ctx.GetHeader(headerName)
-	secret, err := getSecret(clc, clc.PushConfig.Auth.Signature.SecretRef.Key, clc.PushConfig.Auth.Signature.SecretRef.Name)
-
+	presented := strings.TrimSpace(req.Header.Get(headerName))
+	if presented == "" {
+		return fmt.Errorf("missing %s header", headerName)
+	}
+	secret, err := a.secretValue(ctx, namespace, spec.SecretRef)
 	if err != nil {
-		logger.Error(err, "error calling getSecret")
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
-		return false, err
+		return err
 	}
-	body, err := io.ReadAll(ctx.Request.Body)
-	if err != nil {
-		logger.Error(err, "failed to read request body")
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid request body"})
-		return false, err
-	}
-	ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
-
 	var mac hash.Hash
-	if registry.CommonLoaderConfig.PushConfig.Auth.Signature.Algorithm == "sha256" {
+	switch spec.Algorithm {
+	case "", "sha256":
 		mac = hmac.New(sha256.New, []byte(secret))
-		signatureHeader = strings.TrimSpace(strings.TrimPrefix(signatureHeader, "sha256="))
-	} else {
+		presented = strings.TrimPrefix(presented, "sha256=")
+	case "sha512":
 		mac = hmac.New(sha512.New, []byte(secret))
-		signatureHeader = strings.TrimSpace(strings.TrimPrefix(signatureHeader, "sha512="))
+		presented = strings.TrimPrefix(presented, "sha512=")
+	default:
+		return fmt.Errorf("unsupported signature algorithm %q", spec.Algorithm)
 	}
 	mac.Write(body)
-	signatureCalculated := mac.Sum(nil)
-	signatureProvided, err := hex.DecodeString(signatureHeader)
+	want := mac.Sum(nil)
+	got, err := hex.DecodeString(presented)
 	if err != nil {
-		logger.Error(err, "error decoding signatureHeader")
+		return errors.New("signature is not hex")
 	}
-
-	if hmac.Equal(signatureCalculated, signatureProvided) {
-		return true, nil
+	if !hmac.Equal(want, got) {
+		return errors.New("signature mismatch")
 	}
-	err = fmt.Errorf("POST request signature does not align with signature calulcated from body and Kubernetes secret")
-	logger.Error(err, "verifySignature failed")
-	ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
-	return false, err
+	return nil
 }
 
-// verifyBearerToken verifies bearer token from authorization header with value stored in kubernetes secret.
-func (a *APIServer) verifyBearerToken(ctx *gin.Context, registry core.DiscoveryRegistryValue, logger logr.Logger) (bool, error) {
-	const bearerPrefix = "Bearer "
-	authHeader := strings.TrimSpace(ctx.GetHeader("Authorization"))
-	if !strings.HasPrefix(authHeader, bearerPrefix) {
-		err := fmt.Errorf("POST request has missing or invalid authorization header")
-		logger.Error(err, "verifyBearerToken failed")
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
-		return false, err
+func (a *APIServer) secretValue(ctx context.Context, namespace string, ref gnmicv1alpha1.SecretKeyReference) (string, error) {
+	var s corev1.Secret
+	if err := a.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, &s); err != nil {
+		return "", fmt.Errorf("reading Secret %s/%s: %w", namespace, ref.Name, err)
 	}
-
-	clc := registry.CommonLoaderConfig
-	bearerSecret, err := getSecret(clc, clc.PushConfig.Auth.Bearer.TokenSecretRef.Key, clc.PushConfig.Auth.Bearer.TokenSecretRef.Name)
-	if err != nil {
-		logger.Error(err, "error calling getSecret")
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
-		return false, err
+	v, ok := s.Data[ref.Key]
+	if !ok {
+		return "", fmt.Errorf("Secret %s/%s has no key %q", namespace, ref.Name, ref.Key)
 	}
-
-	bearerHeader := strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
-	if bearerHeader != bearerSecret {
-		err := fmt.Errorf("POST request bearer is not equal to bearer stored in Kubernetes secret")
-		logger.Error(err, "bearer token mismatch")
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
-		return false, err
-	}
-	return true, nil
-}
-
-// getSecret returns Kubernetes Opaque secret as string
-func getSecret(clc *core.CommonLoaderConfig, key string, name string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-
-	selector := &corev1.SecretKeySelector{
-		LocalObjectReference: corev1.LocalObjectReference{Name: name},
-		Key:                  key,
-	}
-	secret, err := clc.ResourceFetcher.GetSecretKey(ctx, clc.TargetsourceNN.Namespace, selector)
-	if err != nil {
-		return "", fmt.Errorf("failed to get secret %s/%s key %q: %w", clc.TargetsourceNN.Namespace, name, key, err)
-	}
-	return secret, nil
+	return string(v), nil
 }

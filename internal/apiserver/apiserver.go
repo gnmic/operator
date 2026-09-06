@@ -1,35 +1,44 @@
 package apiserver
 
-//go:generate go tool oapi-codegen -config cfg.yaml openapi.yaml
-// To generate code, install openapi-codegen from https://github.com/oapi-codegen/oapi-codegen)
-// Then use: go generate ./internal/apiserver
+//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0 -config cfg.yaml openapi.yaml
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gnmic/operator/internal/controller"
-	"github.com/gnmic/operator/internal/controller/discovery"
-	"github.com/gnmic/operator/internal/controller/discovery/core"
-	"github.com/gnmic/operator/internal/controller/discovery/loaders/utils"
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
+	"github.com/gnmic/operator/internal/controller"
+	"github.com/gnmic/operator/internal/discovery"
 )
 
+const (
+	// maxWebhookBody bounds what a refresh call may send; the body is only a
+	// signature input.
+	maxWebhookBody  = 1 << 20
+	defaultDebounce = 5 * time.Second
+)
+
+// APIServer serves the operator's REST endpoints. It runs on every replica,
+// leader or not: nothing it does needs the controllers, only a client.
 type APIServer struct {
 	Server            *http.Server
 	router            *gin.Engine
 	clusterReconciler *controller.ClusterReconciler
-	DiscoveryRegistry *discovery.Registry[
-		types.NamespacedName,
-		core.DiscoveryRegistryValue,
-	]
-	chunzSize   int
-	logger      logr.Logger
-	bearerToken bool
+	client            client.Client
+	logger            logr.Logger
+
+	// now is overridable for tests.
+	now func() time.Time
 }
 
 type urlStruct struct {
@@ -37,106 +46,144 @@ type urlStruct struct {
 	Name      string `uri:"name" binding:"required"`
 }
 
-func New(
-	addr string,
-	clusterReconciler *controller.ClusterReconciler,
-	discoveryRegistry *discovery.Registry[
-		types.NamespacedName,
-		core.DiscoveryRegistryValue,
-	],
-	discoveryChunksize int,
-	bearerToken string,
-) (*APIServer, error) {
+// New builds the server. clusterReconciler serves the plan endpoint; c is
+// used by the refresh endpoint to read TargetSources and Secrets and to
+// annotate.
+func New(addr string, clusterReconciler *controller.ClusterReconciler, c client.Client) *APIServer {
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
-	gin.SetMode(gin.ReleaseMode)
 	logger := log.Log.WithValues("component", "api-server")
 
 	a := &APIServer{
-		Server: &http.Server{
-			Addr:    addr,
-			Handler: router,
-		},
+		Server:            &http.Server{Addr: addr, Handler: router, ReadHeaderTimeout: 10 * time.Second},
 		router:            router,
 		clusterReconciler: clusterReconciler,
-		DiscoveryRegistry: discoveryRegistry,
-		chunzSize:         discoveryChunksize,
+		client:            c,
 		logger:            logger,
+		now:               time.Now,
 	}
 	RegisterHandlers(router, a)
-	logger.Info("API server initialized", "addr", addr, "chunkSize", discoveryChunksize)
-	return a, nil
+	logger.Info("API server initialized", "addr", addr)
+	return a
 }
 
-func (a *APIServer) Router() *gin.Engine {
-	return a.router
+// Router exposes the gin engine, for tests.
+func (a *APIServer) Router() *gin.Engine { return a.router }
+
+// Start runs the server until ctx is cancelled. It satisfies manager.Runnable.
+func (a *APIServer) Start(ctx context.Context) error {
+	errCh := make(chan error, 1)
+	go func() {
+		err := a.Server.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return a.Server.Shutdown(shutdownCtx)
+	}
 }
 
-// GetClusterPlan returns cluster plan
+// NeedLeaderElection opts out of leader election so followers serve too. A
+// Service in front of several replicas would otherwise refuse requests that
+// land on a follower.
+func (a *APIServer) NeedLeaderElection() bool { return false }
+
+// GetClusterPlan returns the cached apply plan for a Cluster.
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
-	uri := parseURI(c)
-	logger := log.FromContext(c.Request.Context()).WithValues(
-		"component", "apiserver",
-		"namespace", uri.Namespace,
-		"cluster", uri.Name,
-	)
-	logger.Info("Received GET request for GetClusterPlan")
-
+	uri, ok := parseURI(c)
+	if !ok {
+		return
+	}
+	logger := a.logger.WithValues("namespace", uri.Namespace, "cluster", uri.Name)
 	plan, err := a.clusterReconciler.GetClusterPlan(uri.Namespace, uri.Name)
 	if err != nil {
-		logger.Error(err, "Failed to get cluster plan")
-		c.String(404, err.Error())
+		logger.Info("no plan for cluster")
+		c.String(http.StatusNotFound, err.Error())
 		return
 	}
-	c.JSON(200, plan)
+	c.JSON(http.StatusOK, plan)
 }
 
-// CreateTargets binds payload to payloadTargets struct defined in openapi contract. Creates a []core.DiscoveryEvent sends it to the core package.
-func (a *APIServer) ApplyTargets(c *gin.Context) {
-	uri := parseURI(c)
-	logger := log.FromContext(c.Request.Context()).WithValues(
-		"component", "apiserver",
-		"namespace", uri.Namespace,
-		"targetsource", uri.Name,
-	)
-	logger.Info("Received POST request for CreateTargets")
-
-	key := getKey(uri)
-	registry, ok := a.DiscoveryRegistry.Get(key)
+// RefreshTargetSource asks for an immediate discovery run. It authenticates,
+// checks the debounce window, and annotates the TargetSource; the annotation
+// change is what the controller reacts to. No target data is read from the
+// body, so there is one desired set and it always comes from the source.
+func (a *APIServer) RefreshTargetSource(c *gin.Context) {
+	uri, ok := parseURI(c)
 	if !ok {
-		err := fmt.Errorf("targetSource %s/%s does not exist", uri.Namespace, uri.Name)
-		logger.Error(err, "TargetSource lookup failed")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
+	ctx := c.Request.Context()
+	logger := a.logger.WithValues("namespace", uri.Namespace, "targetsource", uri.Name)
+
+	var ts gnmicv1alpha1.TargetSource
+	if err := a.client.Get(ctx, types.NamespacedName{Namespace: uri.Namespace, Name: uri.Name}, &ts); err != nil {
+		if apierrors.IsNotFound(err) {
+			c.String(http.StatusNotFound, "not found")
+			return
+		}
+		logger.Error(err, "failed to read TargetSource")
+		c.String(http.StatusInternalServerError, "failed to read TargetSource")
+		return
+	}
+	// Unknown and disabled look the same from outside, on purpose.
+	if ts.Spec.Webhook == nil || !ts.Spec.Webhook.Enabled {
+		c.String(http.StatusNotFound, "not found")
 		return
 	}
 
-	if registry.CommonLoaderConfig.PushConfig == nil || registry.CommonLoaderConfig.PushConfig.Enabled == false {
-		err := fmt.Errorf("targetSource %s/%s has the push interface turned off", uri.Namespace, uri.Name)
-		logger.Error(err, "POST request rejected")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBody+1))
+	if err != nil || len(body) > maxWebhookBody {
+		c.String(http.StatusRequestEntityTooLarge, "body too large")
+		return
+	}
+	if err := a.authenticate(ctx, c.Request, &ts, body); err != nil {
+		logger.Info("refresh rejected", "reason", err.Error())
+		c.String(http.StatusUnauthorized, "authentication failed")
 		return
 	}
 
-	if authenticated, err := a.verifyAuthentication(c, registry, logger); authenticated == false {
-		logger.Info("Unauthorized request for CreateTargets", "error", err.Error())
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		return
+	now := a.now()
+	debounce := defaultDebounce
+	if d := ts.Spec.Webhook.Debounce; d != nil && d.Duration > 0 {
+		debounce = d.Duration
+	}
+	if last, ok := ts.Annotations[discovery.AnnotationRequestedAt]; ok {
+		if t, err := time.Parse(time.RFC3339Nano, last); err == nil && now.Sub(t) < debounce {
+			c.JSON(http.StatusOK, RefreshResponse{RequestedAt: t, Debounced: true})
+			return
+		}
 	}
 
-	var payloadTargets Targets
-	if err := c.ShouldBind(&payloadTargets); err != nil {
-		logger.Error(err, "Failed to bind request payload")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+	base := ts.DeepCopy()
+	if ts.Annotations == nil {
+		ts.Annotations = map[string]string{}
+	}
+	ts.Annotations[discovery.AnnotationRequestedAt] = now.UTC().Format(time.RFC3339Nano)
+	if err := a.client.Patch(ctx, &ts, client.MergeFrom(base)); err != nil {
+		logger.Error(err, "failed to annotate TargetSource")
+		c.String(http.StatusInternalServerError, "failed to request a run")
 		return
 	}
+	logger.Info("refresh requested")
+	c.JSON(http.StatusAccepted, RefreshResponse{RequestedAt: now.UTC(), Debounced: false})
+}
 
-	targets, err := createDiscoveryEvent(payloadTargets)
-	if err != nil {
-		logger.Error(err, "failed creating discoveryEvent")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
-		return
+// parseURI binds namespace and name from the path. It writes the 400 itself
+// and reports false so the handler returns without a second response.
+func parseURI(c *gin.Context) (urlStruct, bool) {
+	var u urlStruct
+	if err := c.ShouldBindUri(&u); err != nil {
+		c.String(http.StatusBadRequest, "namespace and name are required")
+		return u, false
 	}
-
-	utils.SendEvents(context.Background(), registry.Channel, targets, a.chunzSize)
-	c.JSON(http.StatusOK, payloadTargets)
+	return u, true
 }
