@@ -12,9 +12,10 @@ import (
 // record of what a pod holds.
 //
 // The cache is invalidated by evidence — an apply failure, or the pod's SSE
-// stream dropping — but a pod can also lose its configuration without either:
-// a gNMIc bug, or somebody calling DELETE on its REST API. Nothing tells the
-// operator that happened, and gNMIc exposes no cheap way to ask (GET
+// stream dropping or (re)connecting — but a pod can also lose its
+// configuration without any of those: a gNMIc bug, or somebody calling DELETE
+// on its REST API. Nothing tells the operator that happened, and gNMIc exposes
+// no cheap way to ask (GET
 // /api/v1/config returns the entire configuration, so verifying costs as much
 // as re-applying). Re-applying unconditionally past this interval bounds that
 // blind spot without giving up the reduction: a reconcile storm still collapses

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -86,5 +87,58 @@ func TestPollTargetState(t *testing.T) {
 	defer badSrv.Close()
 	if _, err := PollTargetState(context.Background(), badSrv.Client(), badSrv.URL); err == nil {
 		t.Fatal("expected poll error on bad status")
+	}
+}
+
+// The connect hook must fire exactly when the pod has accepted the stream, and
+// never for an attempt that did not reach a serving pod: a failed connect is
+// not evidence of which process is on the other end.
+func TestStreamTargetStateWithConnect_HookFiresOnlyOnAcceptedStream(t *testing.T) {
+	var connected atomic.Int32
+
+	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer refused.Close()
+	ch := make(chan SSEEvent, 1)
+	if err := StreamTargetStateWithConnect(context.Background(), refused.Client(), refused.URL, ch, func() { connected.Add(1) }); err == nil {
+		t.Fatal("expected error for non-200 status")
+	}
+	if got := connected.Load(); got != 0 {
+		t.Fatalf("hook fired %d times on a rejected connect", got)
+	}
+
+	if err := StreamTargetStateWithConnect(context.Background(), &http.Client{}, "http://127.0.0.1:1/sse", ch, func() { connected.Add(1) }); err == nil {
+		t.Fatal("expected error for connection refused")
+	}
+	if got := connected.Load(); got != 0 {
+		t.Fatalf("hook fired %d times on a refused connect", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	accepted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer accepted.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- StreamTargetStateWithConnect(ctx, accepted.Client(), accepted.URL, ch, func() { connected.Add(1) })
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for connected.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("hook did not fire on an accepted stream")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if got := connected.Load(); got != 1 {
+		t.Fatalf("hook fired %d times for one connect", got)
 	}
 }
