@@ -155,7 +155,7 @@ func readyCondition(cluster *gnmicv1alpha1.Cluster, statefulSet *appsv1.Stateful
 	case statefulSet.Status.ReadyReplicas > 0 && outcome.applied:
 		cond.Status = metav1.ConditionTrue
 		cond.Reason = "ClusterPartiallyReady"
-		cond.Message = fmt.Sprintf("%d of %d replicas are ready and configured", statefulSet.Status.ReadyReplicas, cluster.Spec.Replicas)
+		cond.Message = fmt.Sprintf("%d of %d replicas are ready and configured", statefulSet.Status.ReadyReplicas, desired)
 	default:
 		cond.Status = metav1.ConditionFalse
 		cond.Reason = "ClusterNotReady"
