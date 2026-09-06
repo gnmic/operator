@@ -65,15 +65,32 @@ func (r *TargetStateReconciler) applyClusterState(
 	})
 }
 
-// removeClusterState drops one cluster's entry from a Target's status.
+// removeClusterState drops one cluster's entry from a Target's status, but only when
+// the entry still names the pod releasing it.
+//
+// Releasing unconditionally meant a pod that had lost a target deleted the entry the
+// target's *new* owner had just written. During redistribution the old pod only
+// notices the target missing from its own poll up to a poll interval later, so the
+// delete lands after the new owner has already reported itself. That is not cosmetic:
+// PlanBuilder reads this field back to build CurrentTargetAssignment, so wiping it
+// makes the target look unassigned, re-hashes it on the next reconcile, and empties
+// the assignment that the two-phase shrink depends on.
+//
+// An empty podName releases whoever holds it, for callers cleaning up a cluster
+// wholesale rather than a single pod's view.
 func (r *TargetStateReconciler) removeClusterState(
 	ctx context.Context,
 	targetNN types.NamespacedName,
-	clusterName string,
+	clusterName, podName string,
 	logger logr.Logger,
 ) {
 	r.mutateStatus(ctx, targetNN, logger, func(target *gnmicv1alpha1.Target) bool {
-		if _, ok := target.Status.ClusterStates[clusterName]; !ok {
+		current, ok := target.Status.ClusterStates[clusterName]
+		if !ok {
+			return false
+		}
+		if podName != "" && current.Pod != podName {
+			// Someone else owns it now; their entry is the current one.
 			return false
 		}
 		delete(target.Status.ClusterStates, clusterName)
