@@ -127,12 +127,11 @@ certManager:
   duration: 8760h  # 1 year
   renewBefore: 720h  # 30 days
 
-# Discovery configuration
-discovery:
-  # Maximum number of targets/events sent in a single discovery message
-  chunkSize: 100
-  # Amount of discovery messages that can be queued in the channel buffer
-  bufferSize: 10
+# TargetSource discovery
+targetSource:
+  # How many TargetSources may run discovery at once. A run holds a worker for up to
+  # its spec.timeout, so this bounds how long one slow source can delay the others.
+  concurrency: 4
 
 # Install CRDs with the chart
 crds:

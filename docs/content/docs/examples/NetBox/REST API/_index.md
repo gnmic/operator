@@ -105,27 +105,22 @@ metadata:
   name: netbox-rest-source
   namespace: gnmic-system
 spec:
-  targetPort: 57400
-  targetProfile: netbox-device
-  targetLabels:
-    inventory: netbox
-    sync-source: rest-api
-  provider:
+  interval: 5m
+  timeout: 30s
+  source:
+    type: HTTP
     http:
       url: "http://netbox.example.com:8000/api/dcim/devices/?limit=1000"
-      method: GET
-      interval: 5m
-      timeout: 30s
-      authentication:
+      auth:
         token:
-          scheme: Bearer
-          tokenSecretRef:
+          scheme: Token
+          secretRef:
             name: netbox-api-token
             key: token
       pagination:
-        nextField: "next"
+        nextField: "self.next"
       mapping:
-        targetsField: "self.results"
+        items: "self.results"
         address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
         labels: |
           {
@@ -134,11 +129,17 @@ spec:
             "model": item.device_type.model,
             "status": item.status.value
           }
+  target:
+    port: 57400
+    profile: netbox-device
+    labels:
+      inventory: netbox
+      sync-source: rest-api
 ```
 
 > This mapping only works for devices that have a primary IPv4 address set in NetBox. If primary_ip4 is missing, the expression returns '', so those devices will not yield a valid target address. For NetBox API details, see the [NetBox REST API](https://netboxlabs.com/docs/netbox/integrations/rest-api/) documentation.
 
-The HTTP loader supports `targetsField` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `targetProfile`. See the HTTP Provider docs "Response Mapping via CEL" section for more details: [HTTP provider docs](../../user-guide/targetsource/providers/http.md)
+The HTTP provider supports `items` and individual CEL expressions for `name`, `address`, `port`, `labels`, and `profile`. See the [HTTP provider docs](/docs/user-guide/targetsource/providers/http/#mapping) for details.
 
 Use `self` for the full response and `item` for each candidate object.
 
@@ -161,7 +162,7 @@ kubectl describe targetsource netbox-rest-source -n gnmic-system
 
 Look for:
 - `status.status`: "success" (or similar) <!-- todo: to be verivied -->
-- `status.targetsCount`: number of discovered devices
+- `status.managed`: number of discovered devices
 - `status.lastSync`: recent timestamp
 
 ---
@@ -214,27 +215,22 @@ metadata:
   name: netbox-rest-source
   namespace: gnmic-system
 spec:
-  targetPort: 57400
-  targetProfile: netbox-device
-  targetLabels:
-    inventory: netbox
-    sync-source: rest-api
-  provider:
+  interval: 5m
+  timeout: 30s
+  source:
+    type: HTTP
     http:
       url: "http://netbox.example.com:8000/api/dcim/devices/?limit=1000"
-      method: GET
-      interval: 5m
-      timeout: 30s
-      authentication:
+      auth:
         token:
-          scheme: Bearer
-          tokenSecretRef:
+          scheme: Token
+          secretRef:
             name: netbox-api-token
             key: token
       pagination:
-        nextField: "next"
+        nextField: "self.next"
       mapping:
-        targetsField: "self.results"
+        items: "self.results"
         address: "item.primary_ip4 != null ? item.primary_ip4.address.split('/')[0] : ''"
         labels: |
           {
@@ -243,6 +239,12 @@ spec:
             "model": item.device_type.model,
             "status": item.status.value
           }
+  target:
+    port: 57400
+    profile: netbox-device
+    labels:
+      inventory: netbox
+      sync-source: rest-api
 ```
 
 ---

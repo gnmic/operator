@@ -20,6 +20,13 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - get
@@ -78,7 +85,6 @@ rules:
   resources:
   - clusters/finalizers
   - pipelines/finalizers
-  - targetsources/finalizers
   - tunneltargetpolicies/finalizers
   verbs:
   - update

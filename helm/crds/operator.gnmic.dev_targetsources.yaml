@@ -14,7 +14,31 @@ spec:
     singular: targetsource
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.source.type
+      name: Type
+      type: string
+    - jsonPath: .status.managed
+      name: Targets
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].reason
+      name: Reason
+      priority: 1
+      type: string
+    - jsonPath: .status.lastSuccessfulSyncTime
+      name: Last Sync
+      type: date
+    - jsonPath: .spec.suspend
+      name: Suspended
+      priority: 1
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: TargetSource is the Schema for the targetsources API
@@ -37,426 +61,600 @@ spec:
           metadata:
             type: object
           spec:
-            description: TargetSourceSpec defines the desired state of TargetSource
+            description: |-
+              TargetSourceSpec describes where to load targets from and what to do with them.
+
+              A TargetSource reads devices from an external system on every run, turns them
+              into Target resources, and removes Targets whose device is gone. Everything
+              that is not specific to one kind of source lives outside Source, because it
+              means the same thing for every provider.
             properties:
-              provider:
+              interval:
+                default: 5m
                 description: |-
-                  Provider defines the source of targets for this TargetSource
-                  Only one provider can be specified per TargetSource
+                  Interval between two discovery runs, after a successful run.
+                  A random jitter of up to 10% is added so that many TargetSources
+                  created at the same time do not poll at the same time.
+                  After a failure the next run is scheduled with a backoff that starts at
+                  Interval, doubles on each consecutive failure, and is capped at ten
+                  times Interval.
+                type: string
+                x-kubernetes-validations:
+                - message: interval must be at least 10s
+                  rule: duration(self) >= duration('10s')
+              maxTargets:
+                default: 10000
+                description: |-
+                  MaxTargets caps how many Targets this source may manage. A run that
+                  discovers more is rejected as a whole, so a broken query cannot create
+                  tens of thousands of resources. 0 means no limit.
+                format: int32
+                minimum: 0
+                type: integer
+              prune:
+                description: |-
+                  Prune controls when Targets whose device is no longer returned by the
+                  source may be deleted.
                 properties:
-                  http:
-                    description: HTTP defines the configuration for a HTTP provider
+                  allowEmptySource:
+                    default: false
+                    description: |-
+                      AllowEmptySource decides whether a source that returns zero devices is
+                      a valid answer. When false (the default), an empty result prunes
+                      nothing and the run reports Ready=False with reason EmptySource.
+                    type: boolean
+                  maxDeleteRatio:
+                    default: 50
+                    description: |-
+                      MaxDeleteRatio is the largest share of currently managed Targets that
+                      one run may remove, as a percentage. A run that wants to remove more
+                      applies its creates and updates, skips all deletions, and reports why.
+                      This stops a truncated or misconfigured response from wiping an
+                      inventory. Set to 100 to disable the guard, or 0 to hold every deletion.
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                type: object
+              source:
+                description: Source describes the external system to read devices
+                  from.
+                properties:
+                  configMap:
+                    description: ConfigMap reads devices from a ConfigMap in the TargetSource
+                      namespace.
                     properties:
-                      authentication:
-                        description: Optional authentication configuration for accessing
-                          the HTTP endpoint
+                      key:
+                        description: |-
+                          Key to read. When empty, every key is read and the results are
+                          concatenated, so an inventory can be split across keys.
+                        type: string
+                      mapping:
+                        description: |-
+                          Mapping says how to read the document. Omit it when the document is
+                          the native list.
+                        properties:
+                          address:
+                            description: |-
+                              Address must return a non-empty string, an IP or a hostname without a
+                              port. Defaults to item.address.
+                            type: string
+                          items:
+                            description: |-
+                              Items selects the list of device objects. It runs once against self
+                              and must return a list. When empty, the document itself must be a list.
+                              Example: "self.results"
+                            type: string
+                          labels:
+                            description: Labels must return a map. Defaults to item.labels.
+                            type: string
+                          name:
+                            description: Name must return a non-empty string. Defaults
+                              to item.name.
+                            type: string
+                          onError:
+                            default: Skip
+                            description: |-
+                              OnError decides what happens when an expression fails for one device.
+                              Skip drops that device and counts it in status.invalid; Fail fails the
+                              whole run. Either way the failure is reported, never silent.
+                            enum:
+                            - Skip
+                            - Fail
+                            type: string
+                          port:
+                            description: |-
+                              Port must return an int or a numeric string. Defaults to item.port,
+                              then to spec.target.port.
+                            type: string
+                          profile:
+                            description: |-
+                              Profile must return a string. Defaults to item.profile, then to
+                              spec.target.profile.
+                            type: string
+                        type: object
+                      name:
+                        description: Name of the ConfigMap or Secret.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  http:
+                    description: HTTP reads devices from a remote HTTP API.
+                    properties:
+                      auth:
+                        description: Auth authenticates the request.
                         properties:
                           basic:
-                            description: Basic authentication configuration
+                            description: Basic sends HTTP Basic credentials.
                             properties:
-                              credentialSecretRef:
+                              passwordKey:
+                                default: password
+                                type: string
+                              secretRef:
                                 description: |-
-                                  Reference to a Secret containing "username" and "password" keys to use for
-                                  basic authentication when connecting to the Provider.
+                                  SecretRef names a Secret holding "username" and "password" keys. The
+                                  key names can be overridden with UsernameKey and PasswordKey.
                                 properties:
-                                  key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
-                                    type: string
                                   name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    minLength: 1
                                     type: string
-                                  optional:
-                                    description: Specify whether the Secret or its
-                                      key must be defined
-                                    type: boolean
                                 required:
-                                - key
+                                - name
                                 type: object
-                                x-kubernetes-map-type: atomic
+                              usernameKey:
+                                default: username
+                                type: string
                             required:
-                            - credentialSecretRef
+                            - secretRef
                             type: object
-                          token:
-                            description: Token-based authentication configuration
+                          header:
+                            description: |-
+                              Header sends a secret value in an arbitrary header, for APIs that use
+                              neither Basic nor a bearer scheme.
                             properties:
-                              scheme:
-                                description: Scheme for the token, e.g. "Bearer"
+                              name:
+                                description: Name of the header.
                                 minLength: 1
                                 type: string
-                              tokenSecretRef:
-                                description: |-
-                                  Reference to a Secret containing a key with the token value to use for
-                                  authentication when connecting to the Provider.
-                                  Mutually exclusive with Token.
+                              secretRef:
+                                description: SecretRef names the Secret key holding
+                                  the header value.
                                 properties:
                                   key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
+                                    minLength: 1
                                     type: string
                                   name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    minLength: 1
                                     type: string
-                                  optional:
-                                    description: Specify whether the Secret or its
-                                      key must be defined
-                                    type: boolean
                                 required:
                                 - key
+                                - name
                                 type: object
-                                x-kubernetes-map-type: atomic
                             required:
-                            - scheme
-                            - tokenSecretRef
+                            - name
+                            - secretRef
+                            type: object
+                          token:
+                            description: Token sends "<scheme> <token>" in the Authorization
+                              header.
+                            properties:
+                              scheme:
+                                default: Bearer
+                                description: |-
+                                  Scheme prefixed to the token in the Authorization header.
+                                  NetBox uses "Token", most others use "Bearer".
+                                minLength: 1
+                                type: string
+                              secretRef:
+                                description: SecretRef names the Secret key holding
+                                  the token.
+                                properties:
+                                  key:
+                                    minLength: 1
+                                    type: string
+                                  name:
+                                    minLength: 1
+                                    type: string
+                                required:
+                                - key
+                                - name
+                                type: object
+                            required:
+                            - secretRef
                             type: object
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [basic token] must
-                            be set
-                          rule: '[has(self.basic),has(self.token)].filter(x,x==true).size()
+                        - message: exactly one of the fields in [basic token header]
+                            must be set
+                          rule: '[has(self.basic),has(self.token),has(self.header)].filter(x,x==true).size()
                             == 1'
                       body:
-                        description: |-
-                          Optional raw request body.
-
-                          Typically used with POST requests and contains JSON payload.
-
-                          Example:
-                            body: |
-                              {
-                                "limit": 100,
-                                "status": "active"
-                              }
-
-                          Notes:
-                          - Ignored for GET requests
-                          - User must set appropriate Content-Type header if needed
+                        description: Body is sent for POST only.
                         type: string
                       headers:
                         additionalProperties:
                           type: string
-                        description: |-
-                          Optional HTTP headers to include in the request.
-
-                          These map directly to HTTP headers (key-value pairs).
-
-                          Example:
-                            headers:
-                              Content-Type: application/json
-                              X-Custom-Header: value
-
-                          Precedence:
-                          - Authentication configuration overrides any conflicting headers e.g. Authorization
+                        description: Headers added to every request. Authentication
+                          headers set by Auth win.
                         type: object
-                      interval:
-                        default: 30m
-                        description: Optional interval for polling the HTTP endpoint
-                          for targets
-                        type: string
                       mapping:
-                        description: Optional mapping configuration for parsing responses
-                          from the HTTP endpoint
+                        description: |-
+                          Mapping says how to read the response. Omit it when the endpoint
+                          returns the native list: a JSON or YAML array of objects with name,
+                          address, port, profile and labels.
                         properties:
                           address:
                             description: |-
-                              CEL expression for the target address.
-
-                              If not set, defaults to:
-                                item["address"]
-
-                              Example:
-                                "item.ip"
+                              Address must return a non-empty string, an IP or a hostname without a
+                              port. Defaults to item.address.
+                            type: string
+                          items:
+                            description: |-
+                              Items selects the list of device objects. It runs once against self
+                              and must return a list. When empty, the document itself must be a list.
+                              Example: "self.results"
                             type: string
                           labels:
-                            description: |-
-                              CEL expression that returns a map of labels.
-                              The expression must evaluate to an object (map).
-
-                              Example:
-
-                                labels: |
-                                  {
-                                    "env": item.environment,
-                                    "region": self.meta.region,
-                                    item.dynamicKey: "value"
-                                  }
-
-                              If not set, defaults to:
-                                item["labels"]
-
-                              The resulting map will be converted into labels.
-                              The extracted labels will be merged with the static TargetLabels defined in the TargetSourceSpec,
-                              with values from the response taking precedence in case of conflicts.
+                            description: Labels must return a map. Defaults to item.labels.
                             type: string
                           name:
+                            description: Name must return a non-empty string. Defaults
+                              to item.name.
+                            type: string
+                          onError:
+                            default: Skip
                             description: |-
-                              CEL expression for the target name.
-
-                              If not set, defaults to:
-                                item["name"]
-
-                              Example:
-                                "item.hostname"
+                              OnError decides what happens when an expression fails for one device.
+                              Skip drops that device and counts it in status.invalid; Fail fails the
+                              whole run. Either way the failure is reported, never silent.
+                            enum:
+                            - Skip
+                            - Fail
                             type: string
                           port:
                             description: |-
-                              CEL expression for the target port.
-
-                              If not set, defaults to:
-                                item["port"]
-
-                              Example:
-                                "item.port"
+                              Port must return an int or a numeric string. Defaults to item.port,
+                              then to spec.target.port.
                             type: string
-                          targetProfile:
+                          profile:
                             description: |-
-                              CEL expression for the target profile.
-
-                              If not set, defaults to:
-                                item["targetProfile"]
-
-                              Example:
-                                "item.type == 'edge' ? 'edge-profile' : 'default'"
-                            type: string
-                          targetsField:
-                            description: |-
-                              CEL expression that selects the list of target objects from the response.
-
-                              This is evaluated once using:
-                                self -> full JSON response
-
-                              Example:
-                                targetsField: "self.results"
-
-                              If not set, the response itself must be a JSON array with the targets.
+                              Profile must return a string. Defaults to item.profile, then to
+                              spec.target.profile.
                             type: string
                         type: object
                       method:
                         default: GET
-                        description: |-
-                          HTTP method used for the request.
-
-                          Defaults to GET if not specified.
-
-                          Supported values:
-                          - GET  (default, no request body)
-                          - POST (supports request body)
+                        description: Method is the HTTP method.
                         enum:
                         - GET
                         - POST
                         type: string
                       pagination:
-                        description: Optional pagination configuration for parsing
-                          responses from the HTTP endpoint
+                        description: Pagination follows a multi-page response.
                         properties:
+                          maxPages:
+                            default: 100
+                            description: |-
+                              MaxPages bounds one run. Reaching it marks the result truncated, so
+                              nothing is pruned from an incomplete read, and the run reports it.
+                            format: int32
+                            minimum: 1
+                            type: integer
                           nextField:
                             description: |-
-                              CEL expression used to extract the next page reference from the response.
-
-                              The expression is evaluated with:
-                                self -> full JSON response
-
-                              It must evaluate to either:
-                                - string (full URL OR token), or
-                                - null (indicates end of pagination)
-
-                              Examples:
-                                "self.next"
-                                "self.next_page_token"
-                                "self['@odata.nextLink']"
+                              NextField is a CEL expression over self returning the next page as a
+                              full URL, or an opaque token, or null to stop.
                             type: string
                           requestParam:
                             description: |-
-                              Query parameter name used when the extracted value is a token.
-
-                              Required for token-based pagination.
-                              Ignored when NextField resolves to a full URL.
-
-                              Example:
-                                requestParam: "page_token"
+                              RequestParam is the query parameter used when NextField returns a
+                              token rather than a URL.
                             type: string
                         type: object
-                      push:
-                        description: Optional configuration to enable push
-                        properties:
-                          auth:
-                            properties:
-                              bearer:
-                                properties:
-                                  tokenSecretRef:
-                                    description: SecretKeySelector selects a key of
-                                      a Secret.
-                                    properties:
-                                      key:
-                                        description: The key of the secret to select
-                                          from.  Must be a valid secret key.
-                                        type: string
-                                      name:
-                                        default: ""
-                                        description: |-
-                                          Name of the referent.
-                                          This field is effectively required, but due to backwards compatibility is
-                                          allowed to be empty. Instances of this type with an empty value here are
-                                          almost certainly wrong.
-                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                        type: string
-                                      optional:
-                                        description: Specify whether the Secret or
-                                          its key must be defined
-                                        type: boolean
-                                    required:
-                                    - key
-                                    type: object
-                                    x-kubernetes-map-type: atomic
-                                type: object
-                              signature:
-                                properties:
-                                  algorithm:
-                                    default: sha512
-                                    enum:
-                                    - sha1
-                                    - sha256
-                                    - sha512
-                                    type: string
-                                  header:
-                                    description: Header containing the signature
-                                    minLength: 1
-                                    type: string
-                                  secretRef:
-                                    description: SecretKeySelector selects a key of
-                                      a Secret.
-                                    properties:
-                                      key:
-                                        description: The key of the secret to select
-                                          from.  Must be a valid secret key.
-                                        type: string
-                                      name:
-                                        default: ""
-                                        description: |-
-                                          Name of the referent.
-                                          This field is effectively required, but due to backwards compatibility is
-                                          allowed to be empty. Instances of this type with an empty value here are
-                                          almost certainly wrong.
-                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                        type: string
-                                      optional:
-                                        description: Specify whether the Secret or
-                                          its key must be defined
-                                        type: boolean
-                                    required:
-                                    - key
-                                    type: object
-                                    x-kubernetes-map-type: atomic
-                                required:
-                                - algorithm
-                                - header
-                                - secretRef
-                                type: object
-                            type: object
-                            x-kubernetes-validations:
-                            - message: exactly one of the fields in [bearer signature]
-                                must be set
-                              rule: '[has(self.bearer),has(self.signature)].filter(x,x==true).size()
-                                == 1'
-                          enabled:
-                            default: false
-                            type: boolean
-                        required:
-                        - enabled
-                        type: object
-                      timeout:
-                        default: 30s
-                        description: Optional timeout for HTTP requests to the endpoint
-                        type: string
                       tls:
-                        description: |-
-                          Optional TLS configuration for connecting to the HTTP endpoint
-                          If it is an HTTP endpoint, this will be ignored
+                        description: TLS applies to https URLs only.
                         properties:
                           caBundleRef:
-                            description: |-
-                              Reference to a ConfigMap containing a bundle of PEM-encoded CAs to use when
-                              verifying the certificate chain presented by the Provider when using HTTPS.
-                              Mutually exclusive with CABundle.
+                            description: CABundleRef points at a ConfigMap key holding
+                              PEM-encoded CAs.
                             properties:
                               key:
-                                description: |-
-                                  The key to select from the ConfigMap's Data field.
-                                  Keys in the BinaryData field are not currently propagated to container env vars.
+                                minLength: 1
                                 type: string
                               name:
-                                default: ""
-                                description: |-
-                                  Name of the referent.
-                                  This field is effectively required, but due to backwards compatibility is
-                                  allowed to be empty. Instances of this type with an empty value here are
-                                  almost certainly wrong.
-                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                minLength: 1
                                 type: string
-                              optional:
-                                description: Specify whether the ConfigMap or its
-                                  key must be defined
-                                type: boolean
                             required:
                             - key
+                            - name
                             type: object
-                            x-kubernetes-map-type: atomic
+                          clientCertRef:
+                            description: ClientCertRef points at a kubernetes.io/tls
+                              Secret for mutual TLS.
+                            properties:
+                              name:
+                                minLength: 1
+                                type: string
+                            required:
+                            - name
+                            type: object
                           insecureSkipVerify:
                             default: false
-                            description: Skip TLS verification of the Provider's certificate.
+                            description: InsecureSkipVerify disables server certificate
+                              verification.
                             type: boolean
                         type: object
                       url:
-                        description: |-
-                          URL of the HTTP endpoint to pull targets from
-                          If defined, the loader will periodically poll this endpoint for targets
+                        description: URL of the remote API. Must be http or https.
                         type: string
+                        x-kubernetes-validations:
+                        - message: url must start with http:// or https://
+                          rule: self.startsWith('http://') || self.startsWith('https://')
+                    required:
+                    - url
                     type: object
-                    x-kubernetes-validations:
-                    - message: at least one of the fields in [url push] must be set
-                      rule: '[has(self.url),has(self.push)].filter(x,x==true).size()
-                        >= 1'
+                  secret:
+                    description: Secret reads devices from a Secret in the TargetSource
+                      namespace.
+                    properties:
+                      key:
+                        description: |-
+                          Key to read. When empty, every key is read and the results are
+                          concatenated, so an inventory can be split across keys.
+                        type: string
+                      mapping:
+                        description: |-
+                          Mapping says how to read the document. Omit it when the document is
+                          the native list.
+                        properties:
+                          address:
+                            description: |-
+                              Address must return a non-empty string, an IP or a hostname without a
+                              port. Defaults to item.address.
+                            type: string
+                          items:
+                            description: |-
+                              Items selects the list of device objects. It runs once against self
+                              and must return a list. When empty, the document itself must be a list.
+                              Example: "self.results"
+                            type: string
+                          labels:
+                            description: Labels must return a map. Defaults to item.labels.
+                            type: string
+                          name:
+                            description: Name must return a non-empty string. Defaults
+                              to item.name.
+                            type: string
+                          onError:
+                            default: Skip
+                            description: |-
+                              OnError decides what happens when an expression fails for one device.
+                              Skip drops that device and counts it in status.invalid; Fail fails the
+                              whole run. Either way the failure is reported, never silent.
+                            enum:
+                            - Skip
+                            - Fail
+                            type: string
+                          port:
+                            description: |-
+                              Port must return an int or a numeric string. Defaults to item.port,
+                              then to spec.target.port.
+                            type: string
+                          profile:
+                            description: |-
+                              Profile must return a string. Defaults to item.profile, then to
+                              spec.target.profile.
+                            type: string
+                        type: object
+                      name:
+                        description: Name of the ConfigMap or Secret.
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  static:
+                    description: Static lists the devices inline.
+                    properties:
+                      devices:
+                        description: Devices is the inventory.
+                        items:
+                          description: StaticDevice is one inline device.
+                          properties:
+                            address:
+                              description: Address is an IP or hostname without a
+                                port.
+                              minLength: 1
+                              type: string
+                            labels:
+                              additionalProperties:
+                                type: string
+                              description: Labels are added to the Target.
+                              type: object
+                            name:
+                              description: Name of the device as the source knows
+                                it.
+                              minLength: 1
+                              type: string
+                            port:
+                              description: Port overrides spec.target.port for this
+                                device.
+                              format: int32
+                              maximum: 65535
+                              minimum: 1
+                              type: integer
+                            profile:
+                              description: Profile overrides spec.target.profile for
+                                this device.
+                              type: string
+                          required:
+                          - address
+                          - name
+                          type: object
+                        minItems: 1
+                        type: array
+                    required:
+                    - devices
+                    type: object
+                  type:
+                    description: Type names the provider.
+                    enum:
+                    - HTTP
+                    - Static
+                    - ConfigMap
+                    - Secret
+                    type: string
+                required:
+                - type
                 type: object
                 x-kubernetes-validations:
-                - message: exactly one of the fields in [http] must be set
-                  rule: '[has(self.http)].filter(x,x==true).size() == 1'
-              targetLabels:
-                additionalProperties:
-                  type: string
-                description: Optional labels to apply to all targets discovered by
-                  this TargetSource
+                - message: http must be set if and only if type is HTTP
+                  rule: has(self.http) == (self.type == 'HTTP')
+                - message: static must be set if and only if type is Static
+                  rule: has(self.static) == (self.type == 'Static')
+                - message: configMap must be set if and only if type is ConfigMap
+                  rule: has(self.configMap) == (self.type == 'ConfigMap')
+                - message: secret must be set if and only if type is Secret
+                  rule: has(self.secret) == (self.type == 'Secret')
+              suspend:
+                default: false
+                description: |-
+                  Suspend stops discovery. Targets already created are left alone.
+                  Use it to freeze a source without deleting anything.
+                type: boolean
+              target:
+                description: Target controls how a discovered device becomes a Target
+                  resource.
+                properties:
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels added to every Target. Labels from the source win on conflict,
+                      except for the reserved operator labels.
+                    type: object
+                  port:
+                    default: 57400
+                    description: Port used when the source does not supply one.
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                  profile:
+                    description: |-
+                      Profile is the TargetProfile name used when the source does not supply
+                      one. It must exist in the same namespace.
+                    type: string
                 type: object
-              targetPort:
-                description: Optional port to use for discovered targets if not specified
-                  by the provider
-                format: int32
-                type: integer
-              targetProfile:
-                description: Optional TargetProfile to use for targets discovered
-                  by this TargetSource if not specified by the provider
+              timeout:
+                default: 1m
+                description: |-
+                  Timeout for a single discovery run, including all pages. A timeout
+                  longer than Interval is capped at Interval, so a short interval needs no
+                  matching timeout.
                 type: string
+                x-kubernetes-validations:
+                - message: timeout must be at least 1s
+                  rule: duration(self) >= duration('1s')
+              webhook:
+                description: |-
+                  Webhook enables an endpoint the source can call to request an
+                  immediate run.
+                properties:
+                  auth:
+                    description: |-
+                      Auth is required when Enabled is true. An unauthenticated endpoint
+                      would let anyone who can reach the API port drive fetches against the
+                      source at the debounce rate.
+                    properties:
+                      bearer:
+                        description: Bearer compares the Authorization header against
+                          a Secret value.
+                        properties:
+                          secretRef:
+                            description: SecretRef names the Secret key holding the
+                              expected token.
+                            properties:
+                              key:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      signature:
+                        description: Signature verifies an HMAC over the raw request
+                          body.
+                        properties:
+                          algorithm:
+                            default: sha256
+                            description: Algorithm is the HMAC hash.
+                            enum:
+                            - sha256
+                            - sha512
+                            type: string
+                          header:
+                            default: X-Hook-Signature
+                            description: |-
+                              Header carries the hex-encoded signature, optionally prefixed with
+                              "<algorithm>=".
+                            minLength: 1
+                            type: string
+                          secretRef:
+                            description: SecretRef names the Secret key holding the
+                              HMAC secret.
+                            properties:
+                              key:
+                                minLength: 1
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                            required:
+                            - key
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                    type: object
+                    x-kubernetes-validations:
+                    - message: at least one of the fields in [bearer signature] must
+                        be set
+                      rule: '[has(self.bearer),has(self.signature)].filter(x,x==true).size()
+                        >= 1'
+                  debounce:
+                    default: 5s
+                    description: |-
+                      Debounce collapses a burst of calls into a single run. A call within
+                      this window of the previous one does not schedule another run.
+                    type: string
+                  enabled:
+                    default: false
+                    description: Enabled turns the endpoint on.
+                    type: boolean
+                required:
+                - enabled
+                type: object
+                x-kubernetes-validations:
+                - message: webhook.auth is required when the webhook is enabled
+                  rule: '!self.enabled || has(self.auth)'
             required:
-            - provider
+            - source
             type: object
           status:
-            description: TargetSourceStatus defines the observed state of TargetSource
+            description: TargetSourceStatus is written once per run, at the end.
             properties:
               conditions:
-                description: |-
-                  Conditions represent the latest available observations of the
-                  TargetSource's state.
+                description: 'Conditions: Ready, Reconciling, Stalled, Conflicted.'
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -515,19 +713,88 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              lastSync:
+              conflicted:
+                description: Conflicted counts wanted names owned by something else.
+                format: int32
+                type: integer
+              consecutiveFailures:
+                description: ConsecutiveFailures drives the retry backoff.
+                format: int32
+                type: integer
+              discovered:
+                description: |-
+                  Discovered is how many devices the source returned on the last run.
+                  The counters are not omitempty so a zero shows as 0 in kubectl output
+                  rather than as an absent field.
+                format: int32
+                type: integer
+              failedDevices:
+                description: |-
+                  FailedDevices samples devices the last run could not turn into a
+                  Target, with the reason. Capped at 10 entries.
+                items:
+                  description: FailedDevice is one device the last run could not turn
+                    into a Target.
+                  properties:
+                    name:
+                      description: Name as the source reported it.
+                      type: string
+                    reason:
+                      description: Reason is a short machine-readable cause.
+                      type: string
+                  required:
+                  - reason
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
+              invalid:
+                description: Invalid counts devices the last run could not turn into
+                  a Target.
+                format: int32
+                type: integer
+              lastError:
+                description: LastError is the error from the last failed run, cleared
+                  on success.
+                type: string
+              lastSuccessfulSyncTime:
+                description: LastSuccessfulSyncTime is when a run last finished successfully.
+                format: date-time
+                type: string
+              lastSyncTime:
+                description: LastSyncTime is when a run last finished, successfully
+                  or not.
+                format: date-time
+                type: string
+              managed:
+                description: Managed is how many Targets this TargetSource owns right
+                  now.
+                format: int32
+                type: integer
+              nextSyncTime:
+                description: NextSyncTime is when the next run is scheduled.
                 format: date-time
                 type: string
               observedGeneration:
+                description: ObservedGeneration is the spec generation this status
+                  describes.
                 format: int64
                 type: integer
-              status:
-                type: string
-              targetsCount:
+              pruned:
+                description: Pruned counts Targets removed by the last run.
                 format: int32
                 type: integer
-            required:
-            - observedGeneration
+              sanitized:
+                description: |-
+                  Sanitized counts devices whose labels had to be rewritten to be valid.
+                  The originals are kept as annotations on the Target.
+                format: int32
+                type: integer
+              sourceDigest:
+                description: |-
+                  SourceDigest is a stable, order-independent hash of the last
+                  successful result. It is informational: it tells a human whether the
+                  source moved between two runs. The controller does not branch on it.
+                type: string
             type: object
         type: object
     served: true

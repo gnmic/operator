@@ -41,8 +41,7 @@ spec:
             {{- if .Values.api.port }}
             - --api-bind-address=:{{ .Values.api.port }}
             {{- end }}
-            - --discovery-chunk-size={{ .Values.discovery.chunkSize }}
-            - --discovery-buffer-size={{ .Values.discovery.bufferSize }}
+            - --targetsource-concurrency={{ .Values.targetSource.concurrency }}
             - --kube-api-qps={{ .Values.kubeApi.qps }}
             - --kube-api-burst={{ .Values.kubeApi.burst }}
             {{- if .Values.watchNamespaces }}

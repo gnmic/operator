@@ -3,18 +3,21 @@ kind: TargetSource
 metadata:
   name: http-ts
 spec:
-  provider:
+  interval: 1m
+  source:
+    type: HTTP
     http:
       url: http://http-svc.default.svc/targets.json
-      push:
-        enabled: true
-        auth:
-          signature:
-            secretRef:
-              name: gnmic-signature
-              key: signature
-            header: x-hook-signature
-            algorithm: sha512
-  targetLabels:
-    integrationtest: http
-  targetProfile: default
+  target:
+    profile: default
+    labels:
+      integrationtest: http
+  webhook:
+    enabled: true
+    auth:
+      signature:
+        secretRef:
+          name: gnmic-signature
+          key: signature
+        header: x-hook-signature
+        algorithm: sha512

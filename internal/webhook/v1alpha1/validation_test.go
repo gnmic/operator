@@ -357,14 +357,9 @@ func TestOtherWebhookValidators_NoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// TargetSource has a real validator now; see targetsource_webhook_test.go.
 	ts := &operatorv1alpha1.TargetSource{ObjectMeta: metav1.ObjectMeta{Name: "ts1"}}
 	tsv := TargetSourceCustomValidator{}
-	if _, err := tsv.ValidateCreate(ctx, ts); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tsv.ValidateUpdate(ctx, ts, ts); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := tsv.ValidateDelete(ctx, ts); err != nil {
 		t.Fatal(err)
 	}

@@ -153,113 +153,146 @@ description: >
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `provider` | ProviderSpec | Yes | - | Provider-specific discovery configuration |
-| `targetPort` | int32 | No | - | Default port used when the discovered target does not provide a port |
-| `targetProfile` | string | Yes | - | Reference to `TargetProfile` applied to discovered targets |
-| `targetLabels` | map[string]string | No | - | Labels added to all discovered targets |
+| `source` | SourceSpec | Yes | - | Where devices come from |
+| `interval` | duration | No | `5m` | Time between runs after a successful one; at least `10s` |
+| `timeout` | duration | No | `1m` | Time budget for one run; at least `1s`, capped at `interval` |
+| `suspend` | bool | No | `false` | Stop discovery, leave existing Targets alone |
+| `target` | TargetTemplateSpec | No | - | How a device becomes a Target |
+| `prune` | PruneSpec | No | - | When Targets whose device is gone may be deleted |
+| `maxTargets` | int32 | No | `10000` | Reject a run discovering more devices than this; `0` disables |
+| `webhook` | WebhookSpec | No | - | Endpoint the source can call to request a run |
 
-### ProviderSpec
+### SourceSpec
+
+`type` names the provider and exactly one matching field must be set.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `http` | HTTPConfig | No | HTTP provider configuration |
+| `type` | string | Yes | `HTTP`, `Static`, `ConfigMap` or `Secret` |
+| `http` | HTTPSource | When type is HTTP | Remote HTTP API |
+| `static` | StaticSource | When type is Static | Inline device list |
+| `configMap` | ObjectSource | When type is ConfigMap | Document in a ConfigMap |
+| `secret` | ObjectSource | When type is Secret | Document in a Secret |
 
-### HTTPConfig
+### HTTPSource
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `url` | string | No | - | HTTP endpoint used to pull targets. Required unless push is enabled |
-| `method` | string | No | GET | HTTP request method |
-| `headers` | map[string]string | No | - | HTTP headers to include in requests |
-| `body` | string | No | - | Request body for POST requests |
-| `authentication` | AuthenticationSpec | No | - | Authentication configuration for the HTTP endpoint |
-| `interval` | duration | No | 6h | Polling interval used to refresh targets |
-| `timeout` | duration | No | 10s | Timeout for HTTP requests |
-| `tls` | ClientTLSConfig | No | - | Client TLS configuration for HTTPS endpoints |
-| `pagination` | PaginationSpec | No | - | Pagination settings for parsing responses |
-| `mapping` | ResponseMappingSpec | No | - | Response mapping configuration for JSON responses |
-| `push` | PushSpec | No | - | Push-based update configuration |
+| `url` | string | Yes | - | Must start with `http://` or `https://` |
+| `method` | string | No | `GET` | `GET` or `POST` |
+| `body` | string | No | - | Sent with POST only |
+| `headers` | map[string]string | No | - | Added to every request; `auth` headers win |
+| `auth` | AuthSpec | No | - | Exactly one of `basic`, `token`, `header` |
+| `tls` | ClientTLSSpec | No | - | For https URLs |
+| `mapping` | MappingSpec | No | - | How to read a document that is not the native list |
+| `pagination` | PaginationSpec | No | - | How to follow a multi-page response |
 
-### ClientTLSConfig
+### AuthSpec
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `insecureSkipVerify` | bool | No | false | Skip verification of the server certificate |
-| `caBundleRef` | ConfigMapKeySelector | No | - | Reference to a ConfigMap containing a PEM CA bundle |
+| Field | Type | Description |
+|-------|------|-------------|
+| `basic.secretRef.name` | string | Secret holding `username` and `password` keys |
+| `basic.usernameKey` / `basic.passwordKey` | string | Override the key names |
+| `token.scheme` | string | Prefix in the Authorization header, default `Bearer` |
+| `token.secretRef` | SecretKeyReference | Secret key holding the token |
+| `header.name` | string | Header to send |
+| `header.secretRef` | SecretKeyReference | Secret key holding the header value |
 
-### AuthenticationSpec
+### ClientTLSSpec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `basic` | BasicAuthSpec | No | Basic authentication configuration |
-| `token` | TokenAuthSpec | No | Token authentication configuration |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `insecureSkipVerify` | bool | `false` | Skip server certificate verification |
+| `caBundleRef` | ConfigMapKeyReference | - | ConfigMap key holding PEM CAs |
+| `clientCertRef.name` | string | - | `kubernetes.io/tls` Secret for mutual TLS |
 
-### BasicAuthSpec
+### MappingSpec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `credentialsSecretRef` | SecretKeySelector | Yes | Reference to a Secret containing username/password keys |
+Every field is a CEL expression over `self` (the document) and `item` (the device object).
 
-### TokenAuthSpec
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `scheme` | string | Yes | Token scheme, e.g. Bearer |
-| `tokenSecretRef` | SecretKeySelector | Yes | Reference to a Secret containing the token |
+| Field | Must return | Default |
+|-------|-------------|---------|
+| `items` | list | The document itself must be a list |
+| `name` | non-empty string | `item.name` |
+| `address` | non-empty string without a port | `item.address` |
+| `port` | integer or numeric string; 0 means unset | `item.port`, then `target.port` |
+| `profile` | string | `item.profile`, then `target.profile` |
+| `labels` | map | `item.labels` |
+| `onError` | `Skip` or `Fail` | `Skip` |
 
 ### PaginationSpec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `nextField` | string | No | JSON field containing the next page reference or pagination token |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `nextField` | string | - | CEL over `self` returning a URL, a token, or null |
+| `requestParam` | string | - | Query parameter carrying a token |
+| `maxPages` | int32 | `100` | Pages per run; reaching it marks the result truncated |
 
-### ResponseMappingSpec
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `targetsField` | string | No | CEL expression selecting the list of targets from the response |
-| `name` | string | No | CEL expression for the target name |
-| `address` | string | No | CEL expression for the target address |
-| `port` | string | No | CEL expression for the target port |
-| `labels` | string | No | CEL expression returning a map of labels |
-| `targetProfile` | string | No | CEL expression for the target profile |
-
-### PushSpec
+### StaticSource
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `enabled` | bool | No | Enable push updates |
-| `auth` | PushAuthSpec | No | Push authentication configuration |
+| `devices[].name` | string | Yes | Device name |
+| `devices[].address` | string | Yes | IP or hostname without a port |
+| `devices[].port` | int32 | No | Overrides `target.port` |
+| `devices[].profile` | string | No | Overrides `target.profile` |
+| `devices[].labels` | map[string]string | No | Added to the Target |
 
-### PushAuthSpec
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `bearer` | PushBearerAuthSpec | No | Bearer token authentication configuration |
-| `signature` | PushSignatureAuthSpec | No | Signature authentication configuration |
-
-### PushBearerAuthSpec
+### ObjectSource
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `tokenSecretRef` | SecretKeySelector | Yes | Reference to a Secret containing the bearer token |
+| `name` | string | Yes | ConfigMap or Secret in the TargetSource namespace |
+| `key` | string | No | Key to read; empty reads every key in sorted order |
+| `mapping` | MappingSpec | No | How to read a document that is not the native list |
 
-### PushSignatureAuthSpec
+### TargetTemplateSpec
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `secretRef` | SecretKeySelector | Yes | Reference to a Secret used to verify request signatures |
-| `header` | string | Yes | Header containing the signature |
-| `algorithm` | string | No | Signature algorithm |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `port` | int32 | `57400` | Used when the source supplies none |
+| `profile` | string | - | TargetProfile used when the source supplies none |
+| `labels` | map[string]string | - | Added to every Target; source labels win |
+
+### PruneSpec
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxDeleteRatio` | int32 (percent) | `50` | Largest share of managed Targets one run may delete; `100` disables, `0` holds all |
+| `allowEmptySource` | bool | `false` | Whether zero devices is a valid answer |
+
+### WebhookSpec
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Turn the refresh endpoint on |
+| `auth.bearer.secretRef` | SecretKeyReference | - | Expected bearer token |
+| `auth.signature.secretRef` | SecretKeyReference | - | HMAC key |
+| `auth.signature.header` | string | `X-Hook-Signature` | Signature header |
+| `auth.signature.algorithm` | string | `sha256` | `sha256` or `sha512` |
+| `debounce` | duration | `5s` | Calls within this window do not schedule another run |
+
+`auth` is required when `enabled` is true.
 
 ### TargetSourceStatus
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | Sync status (Synced, Error, Pending) |
-| `observedGeneration` | int64 | Observed generation of the spec |
-| `targetsCount` | int32 | Number of discovered targets |
-| `lastSync` | Time | Last successful sync timestamp |
+| `observedGeneration` | int64 | Spec generation this status describes |
+| `conditions` | []Condition | `Ready`, `Reconciling`; `Stalled` and `Conflicted` while true |
+| `lastSyncTime` | Time | When a run last finished |
+| `lastSuccessfulSyncTime` | Time | When a run last finished successfully |
+| `nextSyncTime` | Time | When the next run is scheduled |
+| `sourceDigest` | string | Stable hash of the last result |
+| `discovered` | int32 | Devices the source returned |
+| `managed` | int32 | Targets this source owns |
+| `invalid` | int32 | Devices that did not become a Target |
+| `sanitized` | int32 | Devices whose labels were rewritten |
+| `conflicted` | int32 | Wanted names owned by something else |
+| `pruned` | int32 | Targets removed by the last run |
+| `failedDevices` | []FailedDevice | Up to 10 invalid devices with a reason |
+| `consecutiveFailures` | int32 | Drives the retry backoff |
+| `lastError` | string | Error from the last failed run |
 
 ---
 

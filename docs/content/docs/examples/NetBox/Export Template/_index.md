@@ -177,7 +177,7 @@ Sample JSON output produced by the basic export template:
 
 > Ensure the response is valid JSON and contains no hidden or invalid characters, otherwise the gNMIc Operator will fail to parse it.
 
-> If you instead return a JSON object with a nested array, add a mapping section such as `targetsField: "self.targets"` to the TargetSource CR.
+> If you instead return a JSON object with a nested array, add a mapping section such as `items: "self.targets"` to the TargetSource CR.
 
 ---
 
@@ -226,23 +226,24 @@ metadata:
   name: netbox-export-source
   namespace: gnmic-system
 spec:
-  targetPort: 57400
-  targetProfile: netbox-device
-  targetLabels:
-    inventory: netbox
-    sync-source: export-template
-  provider:
+  interval: 30m
+  timeout: 30s
+  source:
+    type: HTTP
     http:
       url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
-      method: GET
-      interval: 30m
-      timeout: 30s
-      authentication:
+      auth:
         token:
           scheme: Token
-          tokenSecretRef:
+          secretRef:
             name: netbox-api-token
             key: token
+  target:
+    port: 57400
+    profile: netbox-device
+    labels:
+      inventory: netbox
+      sync-source: export-template
 ```
 
 ---
@@ -261,9 +262,9 @@ kubectl describe targetsource netbox-export-source -n gnmic-system
 
 Successful sync shows:
 
-- `status.status`: "success" (or similar) <!-- todo: to be verivied -->
-- `status.targetsCount`: number of devices
-- `status.lastSync`: recent timestamp
+- the `Ready` condition is `True` with reason `Succeeded`
+- `status.managed`: number of devices
+- `status.lastSuccessfulSyncTime`: recent timestamp
 
 ---
 
@@ -316,23 +317,24 @@ metadata:
   name: netbox-export-source
   namespace: gnmic-system
 spec:
-  targetPort: 57400
-  targetProfile: netbox-device
-  targetLabels:
-    inventory: netbox
-    sync-source: export-template
-  provider:
+  interval: 30m
+  timeout: 30s
+  source:
+    type: HTTP
     http:
       url: "http://netbox.example.com:8000/api/dcim/devices/?export=gNMIc%20Device%20Export"
-      method: GET
-      interval: 30m
-      timeout: 30s
-      authentication:
+      auth:
         token:
           scheme: Token
-          tokenSecretRef:
+          secretRef:
             name: netbox-api-token
             key: token
+  target:
+    port: 57400
+    profile: netbox-device
+    labels:
+      inventory: netbox
+      sync-source: export-template
 ```
 
 ---
