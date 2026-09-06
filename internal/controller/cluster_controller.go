@@ -50,7 +50,7 @@ type ClusterReconciler struct {
 	// Applied records what each pod was last known to hold, so an unchanged
 	// plan is not re-POSTed to every pod on every reconcile. Shared with the
 	// TargetState controller, which invalidates a pod's entry when its SSE
-	// stream drops. Nil disables the short-circuit.
+	// stream drops or connects. Nil disables the short-circuit.
 	Applied *ApplyCache
 }
 

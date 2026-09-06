@@ -67,8 +67,9 @@ type TargetStateReconciler struct {
 	streams map[string]context.CancelFunc
 
 	// Applied is the Cluster controller's record of what each pod holds. This
-	// controller is the only component that learns when a pod went away, so it
-	// is the one that invalidates. Nil is valid and disables the coupling.
+	// controller is the only component that learns when a pod went away or
+	// came back, so it is the one that invalidates. Nil is valid and disables
+	// the coupling.
 	Applied *ApplyCache
 
 	// reportedMu protects reported and lastSweep.
@@ -169,6 +170,7 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 
 	podName := fmt.Sprintf("%s-%d", stsName, podIndex)
 	pollURL := r.buildPodPollURL(cluster, stsName, podIndex)
+	key := streamKey(cluster.Namespace, cluster.Name, podIndex)
 	delay := reconnectMinDelay
 
 	for {
@@ -191,7 +193,20 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 		// start the SSE stream reader in a separate goroutine
 		streamDone := make(chan error, 1)
 		go func() {
-			streamDone <- gnmic.StreamTargetState(ctx, httpClient, sseURL, events)
+			streamDone <- gnmic.StreamTargetStateWithConnect(ctx, httpClient, sseURL, events, func() {
+				// The stream is now attached to whichever container serves
+				// this pod right now. A record made before this moment may
+				// describe a configuration sent to a previous container: a
+				// collector that crashed and restarted while no stream was
+				// attached (before the first connect, or during a reconnect
+				// backoff) never shows up as a stream drop, and its
+				// replacement starts empty. Dropping the record here means
+				// everything the cache holds from now on was applied to a
+				// container whose death we will see as a drop. The cost is
+				// one redundant apply per connect, which is the direction
+				// to err in.
+				r.Applied.Invalidate(key)
+			})
 		}()
 
 		// process events and poll periodically until the stream ends
@@ -211,7 +226,7 @@ func (r *TargetStateReconciler) runStream(ctx context.Context, cluster *gnmicv1a
 			// drop it so the next reconcile re-applies to this pod. A blip
 			// that did not restart the pod costs one redundant apply, which
 			// is the direction to err in.
-			r.Applied.Invalidate(streamKey(cluster.Namespace, cluster.Name, podIndex))
+			r.Applied.Invalidate(key)
 			// The remembered target set describes a pod we may have just lost
 			// sight of, so it can no longer be diffed against. Dropping it makes
 			// the next poll sweep, which is the only way to find entries

@@ -56,6 +56,18 @@ type TargetStateObject struct {
 // cancelled or the connection is closed. Returns an error on connection failure
 // or unexpected stream termination.
 func StreamTargetState(ctx context.Context, httpClient *http.Client, podURL string, events chan<- SSEEvent) error {
+	return StreamTargetStateWithConnect(ctx, httpClient, podURL, events, nil)
+}
+
+// StreamTargetStateWithConnect is StreamTargetState with a hook that runs once
+// the pod has accepted the stream (HTTP 200), before any event is delivered. A
+// nil onConnect is ignored.
+//
+// The hook exists because a connection attempt that fails and one that
+// succeeds mean different things to the caller: only the latter proves which
+// process is on the other end. The operator uses it to notice a collector that
+// restarted while no stream was attached to it.
+func StreamTargetStateWithConnect(ctx context.Context, httpClient *http.Client, podURL string, events chan<- SSEEvent, onConnect func()) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, podURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create SSE request: %w", err)
@@ -71,6 +83,9 @@ func StreamTargetState(ctx context.Context, httpClient *http.Client, podURL stri
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("SSE endpoint returned status %d", resp.StatusCode)
+	}
+	if onConnect != nil {
+		onConnect()
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
