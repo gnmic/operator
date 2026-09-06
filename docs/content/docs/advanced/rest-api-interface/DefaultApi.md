@@ -12,34 +12,9 @@ All URIs are relative to *http://localhost:8082*
 
 | Method | HTTP request | Description |
 |------------- | ------------- | -------------|
-| **applyTargets** | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
 | **getClusterPlan** | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| **refreshTargetSource** | **POST** /api/v1/namespaces/:namespace/targetsources/:name/refresh | Request an immediate discovery run for a TargetSource. |
 
-
-<a name="applyTargets"></a>
-# **applyTargets**
-> List applyTargets(Target)
-
-Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator.
-
-### Parameters
-
-|Name | Type | Description  | Notes |
-|------------- | ------------- | ------------- | -------------|
-| **Target** | **List** | Target must be passed as a list, multiple targets possible. | |
-
-### Return type
-
-**List**
-
-### Authorization
-
-For authorization details refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
-
-### HTTP request headers
-
-- **Content-Type**: application/json
-- **Accept**: application/json
 
 <a name="getClusterPlan"></a>
 # **getClusterPlan**
@@ -56,10 +31,37 @@ null (empty response body)
 
 ### Authorization
 
-For authorization details refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
+For authorization details refer to [TargetSource > Webhook](/docs/user-guide/targetsource/webhook/).
 
 ### HTTP request headers
 
 - **Content-Type**: Not defined
 - **Accept**: Not defined
+
+<a name="refreshTargetSource"></a>
+# **refreshTargetSource**
+> RefreshResponse refreshTargetSource(body)
+
+Request an immediate discovery run for a TargetSource.
+
+    Notify-only. The body carries no target data; it is only an input to signature verification. A successful call annotates the TargetSource and the controller performs an ordinary full run. Calls within the TargetSource&#39;s webhook.debounce window of the previous one are acknowledged without scheduling another run. 
+
+### Parameters
+
+|Name | Type | Description  | Notes |
+|------------- | ------------- | ------------- | -------------|
+| **body** | **File** | Opaque. Forwarded to HMAC verification when signature auth is configured. | [optional] |
+
+### Return type
+
+**RefreshResponse**
+
+### Authorization
+
+For authorization details refer to [TargetSource > Webhook](/docs/user-guide/targetsource/webhook/).
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: application/json
 

@@ -13,20 +13,20 @@ All URIs are relative to *http://localhost:8082*
 
 | Class | Method | HTTP request | Description |
 |------------ | ------------- | ------------- | -------------|
-| *defaultapi* | [**applyTargets**](/docs/advanced/rest-api-interface/defaultapi/) | **POST** /api/v1/:namespace/target-source/:name/applyTargets | Interface for real-time target updates, usually using a webhook. Targets are applied in the gNMIc Operator. |
-*defaultapi* | [**getClusterPlan**](/docs/advanced/rest-api-interface/defaultapi/) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+| *defaultapi* | [**getClusterPlan**](/docs/advanced/rest-api-interface/defaultapi/) | **GET** /clusters/:namespace/:name/plan | Get cluster plan. |
+*defaultapi* | [**refreshTargetSource**](/docs/advanced/rest-api-interface/defaultapi/) | **POST** /api/v1/namespaces/:namespace/targetsources/:name/refresh | Request an immediate discovery run for a TargetSource. |
 
 
 <a name="documentation-for-models"></a>
 ## Documentation for Models
 
- - [target](/docs/advanced/rest-api-interface/target/)
+ - [refreshresponse](/docs/advanced/rest-api-interface/refreshresponse/)
 
 
 <a name="documentation-for-authorization"></a>
 ## Documentation for Authorization
 
-For a detailed explanation on how to configure the required secrets within the gNMIc Operator, refer to [TargetSource > Push mode](/docs/user-guide/targetsource/push/).
+For a detailed explanation on how to configure the required secrets within the gNMIc Operator, refer to [TargetSource > Webhook](/docs/user-guide/targetsource/webhook/).
 
 <a name="bearerAuth"></a>
 ### bearerAuth

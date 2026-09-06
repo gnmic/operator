@@ -127,7 +127,7 @@ spec:
 | **Cluster** | gNMIc collector deployment (StatefulSet, Services, ConfigMap) |
 | **Pipeline** | Connects targets, subscriptions, and outputs together |
 | **Target** | Network device to collect telemetry from |
-| **TargetSource** | Dynamic target discovery (HTTP, Consul, ConfigMap, K8s) |
+| **TargetSource** | Dynamic target discovery (HTTP, Static, ConfigMap, Secret) |
 | **TargetProfile** | Shared credentials and connection settings |
 | **TunnelTargetPolicy** | Matching rules for gRPC tunnel-connected devices |
 | **Subscription** | gNMI subscription configuration (paths, mode, interval) |

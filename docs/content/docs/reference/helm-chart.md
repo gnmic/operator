@@ -292,19 +292,15 @@ crds:
   keep: true
 ```
 
-### Discovery Buffering
+### TargetSource Discovery
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `discovery.chunkSize` | Maximum number of targets/events sent in a single discovery message | `100` |
-| `discovery.bufferSize` | Amount of discovery messages that can be queued in the channel buffer | `10` |
-
-Controls Go channel buffering between discovery senders (API server, target loader) and receiver (message processor). Directly impacts throughput, latency, and memory consumption. For detailed tuning guidance, see [Discovery Buffering]({{< relref "../advanced/discovery-buffering" >}}).
+| `targetSource.concurrency` | How many TargetSources may run discovery at once. A run holds a worker for up to its `spec.timeout`, so this bounds how long a slow source can delay the others. | `4` |
 
 ```yaml
-discovery:
-  chunkSize: 100
-  bufferSize: 10
+targetSource:
+  concurrency: 4
 ```
 
 ## Examples
