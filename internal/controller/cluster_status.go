@@ -70,8 +70,9 @@ const (
 // buildClusterStatus derives the Cluster status for this pass: resource counters from
 // the pipelines that made it into the plan, and the Ready, CertificatesReady,
 // ConfigApplied and CapacityExhausted conditions from the StatefulSet and the apply
-// outcome. LastTransitionTime is carried over from prior for conditions whose status
-// did not change. It reads nothing from the API and is safe to unit test directly.
+// outcome. Every condition is stamped with now; writeClusterStatus carries the prior
+// LastTransitionTime over for conditions whose status did not change, against the live
+// object. It reads nothing from the API and is safe to unit test directly.
 func buildClusterStatus(cluster *gnmicv1alpha1.Cluster, statefulSet *appsv1.StatefulSet, pipelineCount int, data map[string]*gnmic.PipelineData, outcome applyOutcome) gnmicv1alpha1.ClusterStatus {
 	targets, subscriptions, inputs, outputs := uniqueResourceCounts(data)
 	status := gnmicv1alpha1.ClusterStatus{
@@ -102,16 +103,6 @@ func buildClusterStatus(cluster *gnmicv1alpha1.Cluster, statefulSet *appsv1.Stat
 		status.Conditions = append(status.Conditions, cond)
 	}
 
-	// preserve LastTransitionTime for unchanged conditions
-	for i := range status.Conditions {
-		for _, oldCond := range cluster.Status.Conditions {
-			if oldCond.Type == status.Conditions[i].Type &&
-				oldCond.Status == status.Conditions[i].Status {
-				status.Conditions[i].LastTransitionTime = oldCond.LastTransitionTime
-				break
-			}
-		}
-	}
 	return status
 }
 
@@ -226,6 +217,22 @@ func capacityCondition(cluster *gnmicv1alpha1.Cluster, outcome applyOutcome, now
 	return metav1.Condition{}, false
 }
 
+// preserveTransitionTimes keeps LastTransitionTime from prior for every condition in
+// conds whose status has not changed, so the timestamp marks the last real transition
+// rather than the last reconcile. prior must be the live conditions: merging against a
+// copy read at the start of the reconcile can miss a transition a concurrent pass
+// already recorded, and stamp a fresh time over it.
+func preserveTransitionTimes(prior, conds []metav1.Condition) {
+	for i := range conds {
+		for _, old := range prior {
+			if old.Type == conds[i].Type && old.Status == conds[i].Status {
+				conds[i].LastTransitionTime = old.LastTransitionTime
+				break
+			}
+		}
+	}
+}
+
 // writeClusterStatus persists status when it differs from what is live. The object is
 // re-fetched into cluster first: a concurrent reconcile may have already written a
 // newer status, and comparing against the start-of-reconcile copy can skip a needed
@@ -238,6 +245,7 @@ func (r *ClusterReconciler) writeClusterStatus(ctx context.Context, cluster *gnm
 	if err := r.Get(ctx, clusterNN, cluster); err != nil {
 		return err
 	}
+	preserveTransitionTimes(cluster.Status.Conditions, status.Conditions)
 	if clusterStatusEqual(cluster.Status, status) {
 		return nil
 	}
@@ -248,6 +256,7 @@ func (r *ClusterReconciler) writeClusterStatus(ctx context.Context, cluster *gnm
 				statusErr = err
 				break
 			}
+			preserveTransitionTimes(cluster.Status.Conditions, status.Conditions)
 		}
 		cluster.Status = status
 		if err := r.Status().Update(ctx, cluster); err != nil {
