@@ -6,10 +6,14 @@ paths:
   /clusters/:namespace/:name/plan:
     get:
       summary: "Get cluster plan."
+      description: >
+        Returns the configuration most recently built for the Cluster's
+        collectors. Credentials are masked: each target's password and token
+        read as "****". Everything else is served as built.
       operationId: "getClusterPlan"
       responses:
         '200':
-          description: "ClusterPlan returned"
+          description: "ClusterPlan returned, with credentials masked"
         '404':
           description: "No plan is cached for this Cluster"
   /api/v1/namespaces/:namespace/targetsources/:name/refresh:

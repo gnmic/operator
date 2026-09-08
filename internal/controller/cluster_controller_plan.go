@@ -34,6 +34,24 @@ func (r *ClusterReconciler) GetClusterPlan(namespace, name string) (*gnmic.Apply
 	return plan, nil
 }
 
+// RedactedClusterPlan is the plan as it may leave the process: a copy, with every
+// credential masked. The API server serves this; nothing inside the operator
+// should need it.
+//
+// The copy is taken under the read lock, so the caller never holds a pointer
+// into r.plans and a later reconcile publishing a new plan cannot race with a
+// marshal already in progress (the shared-pointer hazard GetClusterPlan carries).
+func (r *ClusterReconciler) RedactedClusterPlan(namespace, name string) (*gnmic.ApplyPlan, error) {
+	r.m.RLock()
+	defer r.m.RUnlock()
+
+	plan, ok := r.plans[namespace+"/"+name]
+	if !ok {
+		return nil, fmt.Errorf("plan not found for cluster %s/%s", namespace, name)
+	}
+	return plan.Redacted(), nil
+}
+
 func (r *ClusterReconciler) cleanupPlan(namespace, name string) {
 	r.m.Lock()
 	delete(r.plans, namespace+"/"+name)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -38,7 +40,12 @@ func newScheme(t *testing.T) *runtime.Scheme {
 }
 
 func TestGetClusterPlan(t *testing.T) {
-	plan := &gnmic.ApplyPlan{Targets: map[string]*gapi.TargetConfig{"default/t1": {Name: "default/t1"}}}
+	plan := &gnmic.ApplyPlan{Targets: map[string]*gapi.TargetConfig{"default/t1": {
+		Name:     "default/t1",
+		Username: ptr.To("admin"),
+		Password: ptr.To("plaintext-password"),
+		Token:    ptr.To("plaintext-token"),
+	}}}
 	reconciler := controller.NewClusterReconcilerForTest()
 	reconciler.CachePlan("default", "cluster-a", plan)
 	srv := New(":0", reconciler, fake.NewClientBuilder().WithScheme(newScheme(t)).Build())
@@ -53,12 +60,33 @@ func TestGetClusterPlan(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	var got gnmic.ApplyPlan
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := got.Targets["default/t1"]; !ok {
+	var got gnmic.ApplyPlan
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	tc, ok := got.Targets["default/t1"]
+	if !ok {
 		t.Fatalf("plan = %+v", got)
+	}
+	// The endpoint is unauthenticated; what it serves must not include the
+	// device credentials the plan carries for the collectors.
+	for _, secret := range []string{"plaintext-password", "plaintext-token"} {
+		if strings.Contains(string(body), secret) {
+			t.Fatalf("plan response leaks %q: %s", secret, body)
+		}
+	}
+	if tc.Password == nil || *tc.Password != gnmic.RedactedSecret || tc.Token == nil || *tc.Token != gnmic.RedactedSecret {
+		t.Fatalf("credentials not masked: %+v", tc)
+	}
+	if tc.Username == nil || *tc.Username != "admin" {
+		t.Fatalf("username should survive redaction: %+v", tc)
+	}
+	if *plan.Targets["default/t1"].Password != "plaintext-password" {
+		t.Fatal("serving the plan modified the cached copy")
 	}
 	resp2, err := http.Get(ts.URL + "/clusters/default/missing/plan")
 	if err != nil {

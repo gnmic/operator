@@ -96,14 +96,20 @@ func (a *APIServer) Start(ctx context.Context) error {
 // land on a follower.
 func (a *APIServer) NeedLeaderElection() bool { return false }
 
-// GetClusterPlan returns the cached apply plan for a Cluster.
+// GetClusterPlan returns the cached apply plan for a Cluster, with credentials
+// masked.
+//
+// The plan carries each target's password and token straight from its
+// credentials Secret, and this endpoint has no authentication of its own, so
+// the raw plan must never be what goes on the wire. The reconciler hands out a
+// redacted copy; the real one stays inside the process.
 func (a *APIServer) GetClusterPlan(c *gin.Context) {
 	uri, ok := parseURI(c)
 	if !ok {
 		return
 	}
 	logger := a.logger.WithValues("namespace", uri.Namespace, "cluster", uri.Name)
-	plan, err := a.clusterReconciler.GetClusterPlan(uri.Namespace, uri.Name)
+	plan, err := a.clusterReconciler.RedactedClusterPlan(uri.Namespace, uri.Name)
 	if err != nil {
 		logger.Info("no plan for cluster")
 		c.String(http.StatusNotFound, err.Error())

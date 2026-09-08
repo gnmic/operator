@@ -22,6 +22,8 @@ All URIs are relative to *http://localhost:8082*
 
 Get cluster plan.
 
+    Returns the configuration most recently built for the Cluster's collectors. Credentials are masked: each target's password and token read as `****`. Everything else is served as built.
+
 ### Parameters
 This endpoint does not need any parameter.
 
