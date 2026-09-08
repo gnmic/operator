@@ -266,7 +266,9 @@ type HTTPSource struct {
 
 // PaginationSpec follows server-driven pagination. A Link header with
 // rel="next" is always honoured; NextField covers APIs that put the next
-// page in the body.
+// page in the body. A next page must stay on the scheme and host of the
+// source URL: every page is sent with the source's credentials, and they are
+// never sent to another origin.
 type PaginationSpec struct {
 	// NextField is a CEL expression over self returning the next page as a
 	// full URL, or an opaque token, or null to stop.

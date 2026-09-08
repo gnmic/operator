@@ -82,7 +82,7 @@ func (p httpProvider) Fetch(ctx context.Context, req Request) (Result, error) {
 		result.Devices = append(result.Devices, devices...)
 		result.Invalid = append(result.Invalid, failures...)
 
-		next, err := nextPage(src.Pagination, raw, headers, pageURL)
+		next, err := nextPage(src.Pagination, raw, headers, src.URL, pageURL)
 		if err != nil {
 			return Result{}, err
 		}
@@ -230,10 +230,63 @@ func fetchPage(ctx context.Context, client *http.Client, src *gnmicv1alpha1.HTTP
 	return data, resp.Header, nil
 }
 
-// nextPage returns the URL of the next page, or "" when there is none. A Link
-// header with rel="next" is honoured first; then the NextField expression,
-// which may yield a full URL or a token for RequestParam.
-func nextPage(spec *gnmicv1alpha1.PaginationSpec, raw any, headers http.Header, current string) (string, error) {
+// nextPage returns the URL of the next page, or "" when there is none, and
+// refuses one that leaves the origin of the configured source URL.
+//
+// Every page is sent with the source's credentials attached, and nothing here
+// goes through an HTTP redirect -- so the protection Go's http.Client gives
+// (dropping Authorization on a cross-host redirect) never applies. Without this
+// check a hostile or compromised inventory endpoint could answer with
+// `Link: <https://elsewhere/>; rel="next"` and be handed the Secret.
+func nextPage(spec *gnmicv1alpha1.PaginationSpec, raw any, headers http.Header, base, current string) (string, error) {
+	next, err := nextPageCandidate(spec, raw, headers, current)
+	if err != nil || next == "" {
+		return next, err
+	}
+	if err := sameOrigin(base, next); err != nil {
+		return "", err
+	}
+	return next, nil
+}
+
+// sameOrigin reports whether next has the scheme and host of base. Host
+// comparison is case-insensitive and treats an explicit default port as equal
+// to none, so http://inv and http://inv:80 are the same place.
+func sameOrigin(base, next string) error {
+	b, err := url.Parse(base)
+	if err != nil {
+		return Specf("url: %w", err)
+	}
+	n, err := url.Parse(next)
+	if err != nil {
+		return fmt.Errorf("pagination: invalid next page URL %q: %w", next, err)
+	}
+	if !strings.EqualFold(b.Scheme, n.Scheme) || !strings.EqualFold(hostWithPort(b), hostWithPort(n)) {
+		return fmt.Errorf("pagination: next page %q is not on the source origin %s://%s; pagination never leaves the configured host, so credentials are not sent elsewhere",
+			next, b.Scheme, b.Host)
+	}
+	return nil
+}
+
+// hostWithPort returns host:port, filling in the scheme's default port when
+// the URL carries none.
+func hostWithPort(u *url.URL) string {
+	if u.Port() != "" {
+		return u.Host
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http":
+		return u.Hostname() + ":80"
+	case "https":
+		return u.Hostname() + ":443"
+	}
+	return u.Host
+}
+
+// nextPageCandidate is the next page as the server describes it, before the
+// origin check. A Link header with rel="next" is honoured first; then the
+// NextField expression, which may yield a full URL or a token for RequestParam.
+func nextPageCandidate(spec *gnmicv1alpha1.PaginationSpec, raw any, headers http.Header, current string) (string, error) {
 	if next := nextFromLinkHeader(headers); next != "" {
 		return resolveURL(current, next)
 	}
