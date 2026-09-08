@@ -107,12 +107,36 @@ func (r *ClusterReconciler) reconcileTunnelService(ctx context.Context, cluster 
 		return err
 	}
 
-	// check if service needs update
-	if current.Spec.Type != desired.Spec.Type ||
-		len(current.Spec.Ports) != len(desired.Spec.Ports) ||
-		current.Spec.Ports[0].Port != desired.Spec.Ports[0].Port ||
-		!maps.Equal(current.Spec.Selector, desired.Spec.Selector) {
-		current.Spec = desired.Spec
+	// Update the fields this operator owns, individually.
+	//
+	// Annotations in particular are how a cloud load balancer is configured, and they
+	// were not compared at all -- editing spec.grpcTunnel.service.annotations on a
+	// live Cluster did nothing. Assigning the whole Spec is also avoided: it discards
+	// what the cluster filled in (externalTrafficPolicy, sessionAffinity,
+	// loadBalancerClass) on every update.
+	needsUpdate := false
+	if current.Spec.Type != desired.Spec.Type {
+		current.Spec.Type = desired.Spec.Type
+		needsUpdate = true
+	}
+	if !servicePortsEqual(current.Spec.Ports, desired.Spec.Ports) {
+		current.Spec.Ports = desired.Spec.Ports
+		needsUpdate = true
+	}
+	if !maps.Equal(current.Spec.Selector, desired.Spec.Selector) {
+		current.Spec.Selector = desired.Spec.Selector
+		needsUpdate = true
+	}
+	if !maps.Equal(current.Labels, desired.Labels) {
+		current.Labels = desired.Labels
+		needsUpdate = true
+	}
+	if !maps.Equal(current.Annotations, desired.Annotations) {
+		current.Annotations = desired.Annotations
+		needsUpdate = true
+	}
+
+	if needsUpdate {
 		logger.Info("updating tunnel service", "service", serviceName)
 		return r.Update(ctx, &current)
 	}

@@ -42,4 +42,7 @@ func (r *ClusterReconciler) cleanupPlan(namespace, name string) {
 	// leave entries behind, and a cluster recreated under the same name starts
 	// from no assumptions about what its pods hold.
 	r.Applied.InvalidateCluster(namespace, name)
+	// The HTTP client goes with them, closing whatever it still holds open to pods
+	// that no longer exist.
+	r.clients.evict(clusterKey(namespace, name))
 }

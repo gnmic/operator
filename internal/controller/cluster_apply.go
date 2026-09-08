@@ -26,7 +26,6 @@ import (
 	"io"
 	"maps"
 	"net/http"
-	"os"
 	"time"
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -182,81 +181,92 @@ func (r *ClusterReconciler) applyConfigToPods(ctx context.Context, cluster *gnmi
 
 func (r *ClusterReconciler) createHTTPClientForCluster(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (*http.Client, error) {
 	if cluster.Spec.API == nil || cluster.Spec.API.TLS == nil {
-		return &http.Client{
-			Timeout: 30 * time.Second,
-		}, nil
+		// No TLS material to key a cache on, and a nil Transport uses
+		// http.DefaultTransport, which already pools connections.
+		return &http.Client{Timeout: applyRequestTimeout}, nil
 	}
-	tlsConfig := &tls.Config{}
-	if cluster.Spec.API.TLS.IssuerRef != "" {
-		// load controller's client certificate for mTLS
-		cert, err := os.ReadFile(gnmic.GetControllerCertPath())
-		if err != nil {
-			return nil, fmt.Errorf("failed to read controller cert file: %w", err)
-		}
-		key, err := os.ReadFile(gnmic.GetControllerKeyPath())
-		if err != nil {
-			return nil, fmt.Errorf("failed to read controller key file: %w", err)
-		}
-		certificate, err := tls.X509KeyPair(cert, key)
-		if err != nil {
-			return nil, err
-		}
-		tlsConfig.Certificates = []tls.Certificate{certificate}
 
-		// fetch the CA from the Issuer's secret to verify gNMIc pod certificates
-		ca, err := r.getIssuerCA(ctx, cluster.Namespace, cluster.Spec.API.TLS.IssuerRef)
+	// Everything on this path is either an informer read or an in-memory lookup.
+	// The client certificate is resolved per handshake by TLSMaterial, and the
+	// controller CA is held by its file watcher, so neither is read here.
+	var issuerCA []byte
+	var issuerRevision string
+	if ref := cluster.Spec.API.TLS.IssuerRef; ref != "" {
+		var err error
+		issuerCA, issuerRevision, err = r.getIssuerCA(ctx, cluster.Namespace, ref)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get issuer CA: %w", err)
 		}
-		tlsConfig.RootCAs = x509.NewCertPool()
-		tlsConfig.RootCAs.AppendCertsFromPEM(ca)
 	}
-	if cluster.Spec.API.TLS.BundleRef != "" {
-		// load additional CA bundle to verify gNMIc pod server certificates
-		ca, err := os.ReadFile(gnmic.GetControllerCAPath())
-		if err != nil {
-			return nil, fmt.Errorf("failed to read controller ca file: %w", err)
+	bundlePEM, bundleRevision := r.TLS.CA()
+
+	revision := issuerRevision + "|" + bundleRevision
+	return r.clients.get(clusterKey(cluster.Namespace, cluster.Name), revision, clientPooled,
+		func() (*tls.Config, error) {
+			return buildCollectorTLSConfig(r.TLS, issuerCA, cluster.Spec.API.TLS, bundlePEM)
+		})
+}
+
+// buildCollectorTLSConfig assembles the TLS config the operator uses to reach a
+// cluster's collector pods. Only called on a cache miss.
+func buildCollectorTLSConfig(material *TLSMaterial, issuerCA []byte, clusterTLS *gnmicv1alpha1.ClusterTLSConfig, bundlePEM []byte) (*tls.Config, error) {
+	tlsConfig := &tls.Config{}
+
+	if clusterTLS.IssuerRef != "" {
+		// The certificate is fetched at handshake time, so a rotation applies
+		// without rebuilding this config.
+		if getCert := material.ClientCertificate(); getCert != nil {
+			tlsConfig.GetClientCertificate = getCert
 		}
+		tlsConfig.RootCAs = x509.NewCertPool()
+		if !tlsConfig.RootCAs.AppendCertsFromPEM(issuerCA) {
+			return nil, fmt.Errorf("issuer %s CA contains no usable certificate", clusterTLS.IssuerRef)
+		}
+	}
+
+	if clusterTLS.BundleRef != "" {
 		if tlsConfig.RootCAs == nil {
 			tlsConfig.RootCAs = x509.NewCertPool()
 		}
-		tlsConfig.RootCAs.AppendCertsFromPEM(ca)
+		if !tlsConfig.RootCAs.AppendCertsFromPEM(bundlePEM) {
+			return nil, fmt.Errorf("CA bundle %s contains no usable certificate", clusterTLS.BundleRef)
+		}
 	}
-	return &http.Client{
-			Timeout: 30 * time.Second, // TODO: make configurable ?
-			Transport: &http.Transport{
-				TLSClientConfig: tlsConfig,
-			},
-		},
-		nil
+
+	return tlsConfig, nil
 }
 
+// clusterKey identifies a cluster for the caches keyed by it.
+func clusterKey(namespace, name string) string { return namespace + "/" + name }
+
 // getIssuerCA fetches the CA certificate from a cert-manager Issuer's backing secret
-func (r *ClusterReconciler) getIssuerCA(ctx context.Context, namespace, issuerName string) ([]byte, error) {
+func (r *ClusterReconciler) getIssuerCA(ctx context.Context, namespace, issuerName string) ([]byte, string, error) {
 	// get the Issuer
 	issuer := &certmanagerv1.Issuer{}
 	if err := r.Get(ctx, types.NamespacedName{Name: issuerName, Namespace: namespace}, issuer); err != nil {
-		return nil, fmt.Errorf("failed to get issuer %s: %w", issuerName, err)
+		return nil, "", fmt.Errorf("failed to get issuer %s: %w", issuerName, err)
 	}
 
 	// the Issuer should be a CA issuer with a secretName
 	if issuer.Spec.CA == nil || issuer.Spec.CA.SecretName == "" {
-		return nil, fmt.Errorf("issuer %s is not a CA issuer or has no secret configured", issuerName)
+		return nil, "", fmt.Errorf("issuer %s is not a CA issuer or has no secret configured", issuerName)
 	}
 
 	// get the CA secret
 	caSecret := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Name: issuer.Spec.CA.SecretName, Namespace: namespace}, caSecret); err != nil {
-		return nil, fmt.Errorf("failed to get CA secret %s: %w", issuer.Spec.CA.SecretName, err)
+		return nil, "", fmt.Errorf("failed to get CA secret %s: %w", issuer.Spec.CA.SecretName, err)
 	}
 
 	// the CA certificate is stored in tls.crt
 	caCert, ok := caSecret.Data["tls.crt"]
 	if !ok {
-		return nil, fmt.Errorf("CA secret %s does not contain tls.crt", issuer.Spec.CA.SecretName)
+		return nil, "", fmt.Errorf("CA secret %s does not contain tls.crt", issuer.Spec.CA.SecretName)
 	}
 
-	return caCert, nil
+	// The Secret's resourceVersion is a change token the informer already tracks,
+	// so callers can tell "same CA" from "same issuer" without hashing anything.
+	return caCert, caSecret.ResourceVersion, nil
 }
 
 // shrinkPodPlan returns a copy of podPlan whose Targets are the intersection of

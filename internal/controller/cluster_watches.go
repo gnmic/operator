@@ -22,6 +22,7 @@ import (
 	"maps"
 	"slices"
 
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -191,10 +192,75 @@ func (r *ClusterReconciler) findClustersForSecret(ctx context.Context, obj clien
 			profiles[profileList.Items[i].Name] = struct{}{}
 		}
 	}
-	if len(profiles) == 0 {
+
+	var requests []reconcile.Request
+	if len(profiles) > 0 {
+		requests = r.findClustersUsingProfiles(ctx, secret.Namespace, profiles)
+	}
+
+	// A Secret can also be the backing store of a cert-manager Issuer a Cluster
+	// names. Nothing mapped that before, so rotating an issuing CA reached the
+	// operator only when some unrelated event happened to wake this controller --
+	// in practice the backstop, up to a reconcile interval later.
+	seen := make(map[types.NamespacedName]struct{}, len(requests))
+	for _, req := range requests {
+		seen[req.NamespacedName] = struct{}{}
+	}
+	for _, req := range r.findClustersTrustingSecret(ctx, secret.Namespace, secret.Name) {
+		if _, ok := seen[req.NamespacedName]; ok {
+			continue
+		}
+		seen[req.NamespacedName] = struct{}{}
+		requests = append(requests, req)
+	}
+	return requests
+}
+
+// findClustersTrustingSecret returns the Clusters whose TLS configuration names an
+// Issuer backed by this Secret.
+func (r *ClusterReconciler) findClustersTrustingSecret(ctx context.Context, namespace, secretName string) []reconcile.Request {
+	var issuerList certmanagerv1.IssuerList
+	if err := r.List(ctx, &issuerList, client.InNamespace(namespace)); err != nil {
 		return nil
 	}
-	return r.findClustersUsingProfiles(ctx, secret.Namespace, profiles)
+	issuers := make(map[string]struct{})
+	for i := range issuerList.Items {
+		ca := issuerList.Items[i].Spec.CA
+		if ca != nil && ca.SecretName == secretName {
+			issuers[issuerList.Items[i].Name] = struct{}{}
+		}
+	}
+	if len(issuers) == 0 {
+		return nil
+	}
+
+	var clusterList gnmicv1alpha1.ClusterList
+	if err := r.List(ctx, &clusterList, client.InNamespace(namespace)); err != nil {
+		return nil
+	}
+	var requests []reconcile.Request
+	for i := range clusterList.Items {
+		cluster := &clusterList.Items[i]
+		refs := []string{}
+		if cluster.Spec.API != nil && cluster.Spec.API.TLS != nil {
+			refs = append(refs, cluster.Spec.API.TLS.IssuerRef)
+		}
+		if cluster.Spec.GRPCTunnel != nil && cluster.Spec.GRPCTunnel.TLS != nil {
+			refs = append(refs, cluster.Spec.GRPCTunnel.TLS.IssuerRef)
+		}
+		if cluster.Spec.ClientTLS != nil {
+			refs = append(refs, cluster.Spec.ClientTLS.IssuerRef)
+		}
+		for _, ref := range refs {
+			if _, ok := issuers[ref]; ok {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: cluster.Name, Namespace: namespace},
+				})
+				break
+			}
+		}
+	}
+	return requests
 }
 
 // profileUser is something that names a TargetProfile and can itself be

@@ -150,10 +150,21 @@ func main() {
 	// have restarted and lost its configuration.
 	applyCache := controller.NewApplyCache()
 
+	// The operator's own client certificate and CA, watched on disk. Rotation is
+	// picked up by fsnotify rather than by re-reading the files on every reconcile,
+	// and the certificate is resolved per TLS handshake, so a new one applies
+	// without rebuilding any client.
+	tlsMaterial := controller.NewTLSMaterial()
+	if err := mgr.Add(tlsMaterial); err != nil {
+		setupLog.Error(err, "unable to start the TLS material watcher")
+		os.Exit(1)
+	}
+
 	clusterReconciler := &controller.ClusterReconciler{
 		Client:  mgr.GetClient(),
 		Scheme:  mgr.GetScheme(),
 		Applied: applyCache,
+		TLS:     tlsMaterial,
 	}
 	if err = clusterReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Cluster")
@@ -250,6 +261,7 @@ func main() {
 		Client:  mgr.GetClient(),
 		Scheme:  mgr.GetScheme(),
 		Applied: applyCache,
+		TLS:     tlsMaterial,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "TargetState")
 		os.Exit(1)

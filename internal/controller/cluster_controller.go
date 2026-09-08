@@ -52,6 +52,15 @@ type ClusterReconciler struct {
 	// TargetState controller, which invalidates a pod's entry when its SSE
 	// stream drops or connects. Nil disables the short-circuit.
 	Applied *ApplyCache
+
+	// clients keeps one HTTP client per cluster so an apply reuses its
+	// connections instead of building a transport per reconcile. Nil builds a
+	// fresh client every time.
+	clients *clientCache
+
+	// TLS holds the operator's own certificate and CA, kept current by file
+	// watchers so no reconcile has to read them.
+	TLS *TLSMaterial
 }
 
 const (
@@ -199,6 +208,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func (r *ClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.m = &sync.RWMutex{}
 	r.plans = make(map[string]*gnmic.ApplyPlan)
+	r.clients = newClientCache()
 
 	specOrLabelsPredicate := generationOrLabelsChangedPredicate{}
 	return ctrl.NewControllerManagedBy(mgr).

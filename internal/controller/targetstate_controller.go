@@ -19,10 +19,8 @@ package controller
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +78,15 @@ type TargetStateReconciler struct {
 	reported map[string]map[string]struct{}
 	// lastSweep is when each pod last ran the full-list fallback.
 	lastSweep map[string]time.Time
+
+	// clients keeps one HTTP client per cluster. runStream builds one per
+	// reconnect attempt otherwise, and a flapping pod turns that into an
+	// unbounded pile of transports holding connections open.
+	clients *clientCache
+
+	// TLS holds the operator's own certificate and CA, kept current by file
+	// watchers so no reconnect has to read them.
+	TLS *TLSMaterial
 }
 
 // +kubebuilder:rbac:groups=operator.gnmic.dev,resources=clusters,verbs=get;list;watch
@@ -105,6 +112,7 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if apierrors.IsNotFound(err) {
 			// cluster deleted — stop all streams and clean up target statuses
 			r.stopStreamsForCluster(req.Namespace, req.Name)
+			r.clients.evict(clusterKey(req.Namespace, req.Name))
 			r.removeClusterFromTargets(ctx, req.Namespace, req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -555,69 +563,58 @@ func (r *TargetStateReconciler) buildPodPollURL(cluster *gnmicv1alpha1.Cluster, 
 // createHTTPClient creates an HTTP client with appropriate TLS configuration for the cluster.
 func (r *TargetStateReconciler) createHTTPClient(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (*http.Client, error) {
 	if cluster.Spec.API == nil || cluster.Spec.API.TLS == nil {
+		// A nil Transport uses http.DefaultTransport, which already pools.
 		return &http.Client{}, nil
 	}
-	tlsConfig := &tls.Config{}
-	if cluster.Spec.API.TLS.IssuerRef != "" {
-		cert, err := os.ReadFile(gnmic.GetControllerCertPath())
-		if err != nil {
-			return nil, fmt.Errorf("failed to read controller cert: %w", err)
-		}
-		key, err := os.ReadFile(gnmic.GetControllerKeyPath())
-		if err != nil {
-			return nil, fmt.Errorf("failed to read controller key: %w", err)
-		}
-		certificate, err := tls.X509KeyPair(cert, key)
-		if err != nil {
-			return nil, err
-		}
-		tlsConfig.Certificates = []tls.Certificate{certificate}
 
-		ca, err := r.getIssuerCA(ctx, cluster.Namespace, cluster.Spec.API.TLS.IssuerRef)
+	// Informer reads and in-memory lookups only: the client certificate is resolved
+	// per handshake and the controller CA is held by its file watcher. That matters
+	// more here than on the apply path, because runStream calls this on every
+	// reconnect attempt.
+	var issuerCA []byte
+	var issuerRevision string
+	if ref := cluster.Spec.API.TLS.IssuerRef; ref != "" {
+		var err error
+		issuerCA, issuerRevision, err = r.getIssuerCA(ctx, cluster.Namespace, ref)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get issuer CA: %w", err)
 		}
-		tlsConfig.RootCAs = x509.NewCertPool()
-		tlsConfig.RootCAs.AppendCertsFromPEM(ca)
 	}
-	if cluster.Spec.API.TLS.BundleRef != "" {
-		ca, err := os.ReadFile(gnmic.GetControllerCAPath())
-		if err != nil {
-			return nil, fmt.Errorf("failed to read controller CA: %w", err)
-		}
-		if tlsConfig.RootCAs == nil {
-			tlsConfig.RootCAs = x509.NewCertPool()
-		}
-		tlsConfig.RootCAs.AppendCertsFromPEM(ca)
-	}
-	return &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}, nil
+	bundlePEM, bundleRevision := r.TLS.CA()
+
+	// No client timeout: this client carries the SSE stream, which is meant to stay
+	// open. The periodic poll bounds itself with a context deadline instead.
+	revision := issuerRevision + "|" + bundleRevision
+	return r.clients.get(clusterKey(cluster.Namespace, cluster.Name), revision, clientStreaming,
+		func() (*tls.Config, error) {
+			return buildCollectorTLSConfig(r.TLS, issuerCA, cluster.Spec.API.TLS, bundlePEM)
+		})
 }
 
 // getIssuerCA fetches the CA certificate from a cert-manager Issuer's backing secret.
-func (r *TargetStateReconciler) getIssuerCA(ctx context.Context, namespace, issuerName string) ([]byte, error) {
+func (r *TargetStateReconciler) getIssuerCA(ctx context.Context, namespace, issuerName string) ([]byte, string, error) {
 	issuer := &certmanagerv1.Issuer{}
 	if err := r.Get(ctx, types.NamespacedName{Name: issuerName, Namespace: namespace}, issuer); err != nil {
-		return nil, fmt.Errorf("failed to get issuer %s: %w", issuerName, err)
+		return nil, "", fmt.Errorf("failed to get issuer %s: %w", issuerName, err)
 	}
 	if issuer.Spec.CA == nil || issuer.Spec.CA.SecretName == "" {
-		return nil, fmt.Errorf("issuer %s is not a CA issuer or has no secret configured", issuerName)
+		return nil, "", fmt.Errorf("issuer %s is not a CA issuer or has no secret configured", issuerName)
 	}
 	caSecret := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Name: issuer.Spec.CA.SecretName, Namespace: namespace}, caSecret); err != nil {
-		return nil, fmt.Errorf("failed to get CA secret %s: %w", issuer.Spec.CA.SecretName, err)
+		return nil, "", fmt.Errorf("failed to get CA secret %s: %w", issuer.Spec.CA.SecretName, err)
 	}
 	caCert, ok := caSecret.Data["tls.crt"]
 	if !ok {
-		return nil, fmt.Errorf("CA secret %s does not contain tls.crt", issuer.Spec.CA.SecretName)
+		return nil, "", fmt.Errorf("CA secret %s does not contain tls.crt", issuer.Spec.CA.SecretName)
 	}
-	return caCert, nil
+	// The Secret's resourceVersion is a change token the informer already tracks,
+	// so callers can tell "same CA" from "same issuer" without hashing anything.
+	return caCert, caSecret.ResourceVersion, nil
 }
 
 func (r *TargetStateReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.clients = newClientCache()
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&gnmicv1alpha1.Cluster{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
