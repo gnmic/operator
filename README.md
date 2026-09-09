@@ -35,13 +35,13 @@ gNMIc Operator automates the deployment, configuration, and lifecycle management
 Quick install (recommended)
 
 ```bash
-kubectl apply -f https://github.com/gnmic/operator/releases/download/v0.1.0/install.yaml
+kubectl apply -f https://github.com/gnmic/operator/releases/latest/download/install.yaml
 ```
 
 Or using Helm
 
 ```bash
-helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.x.y
+helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.4.0
 ```
 
 Or using Kustomize with custom overlay

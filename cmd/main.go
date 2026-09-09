@@ -46,6 +46,10 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+
+	// version is set at build time by the release workflow
+	// (-ldflags "-X main.version=<tag>"); "dev" otherwise.
+	version = "dev"
 )
 
 func init() {
@@ -292,7 +296,7 @@ func main() {
 	}
 
 	// start manager
-	setupLog.Info("starting manager")
+	setupLog.Info("starting manager", "version", version)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)

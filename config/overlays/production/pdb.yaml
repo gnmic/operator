@@ -1,0 +1,16 @@
+# Keeps one manager replica available through voluntary disruptions (node
+# drains, upgrades). Only meaningful together with leader election and more
+# than one replica; with a single replica it blocks drains of that node.
+#
+# Overlay resources are not passed through the base's namespace and prefix
+# transformers, so both are spelled out to match what the base produces.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gnmic-controller-manager-pdb
+  namespace: gnmic-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager

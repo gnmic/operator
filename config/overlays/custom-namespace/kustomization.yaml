@@ -14,11 +14,12 @@ resources:
 # Change the namespace (default is gnmic-system)
 namespace: telemetry-system
 
-# Optionally change the name prefix
+# Optionally add a name prefix. It goes in front of the base's own gnmic-
+# prefix, so names come out as telemetry-gnmic-<name>.
 namePrefix: telemetry-
 
 # Set a specific image version
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.1.0"  # Change to your desired version
+    newTag: "0.4.0"  # Change to your desired version

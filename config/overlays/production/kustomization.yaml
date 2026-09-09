@@ -1,24 +1,28 @@
 # Example: Production-ready deployment with custom resources
-# 
+#
 # Usage:
 #   1. Copy this directory to your GitOps repo
 #   2. Modify values as needed
 #   3. kubectl apply -k .
+#
+# The base (../../default) already places everything in the gnmic-system
+# namespace with the gnmic- name prefix; setting either here again would stack
+# a second prefix onto every name.
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../../default
-
-namespace: gnmic-system
-namePrefix: gnmic-
+  # Resources of your own are listed here. A PodDisruptionBudget cannot be
+  # introduced through `patches`, which only modify what the base emits.
+  - pdb.yaml
 
 # Pin to a specific version for production stability
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.1.0"  # Pin to a specific version
+    newTag: "0.4.0"  # Pin to a specific version
 
 # Add common labels
 labels:
@@ -28,7 +32,10 @@ labels:
     includeSelectors: false
 
 patches:
-  # Increase resources for production workloads
+  # Increase resources for production workloads. The memory the manager needs
+  # scales with the number of cached objects (every Secret, ConfigMap, Service,
+  # StatefulSet and Certificate in the watched namespaces), not only with
+  # Target count; measure and raise these above your observed peak.
   - target:
       kind: Deployment
       name: controller-manager
@@ -38,19 +45,7 @@ patches:
         value:
           limits:
             cpu: "1"
-            memory: 512Mi
+            memory: 1Gi
           requests:
             cpu: 100m
-            memory: 128Mi
-  
-  # Add pod disruption budget for high availability
-  - patch: |
-      apiVersion: policy/v1
-      kind: PodDisruptionBudget
-      metadata:
-        name: controller-manager-pdb
-      spec:
-        minAvailable: 1
-        selector:
-          matchLabels:
-            control-plane: controller-manager
+            memory: 256Mi
