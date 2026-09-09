@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/cert-manager/cert-manager v1.21.1
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/getkin/kin-openapi v0.148.0
+	github.com/getkin/kin-openapi v0.149.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-logr/logr v1.4.4
 	github.com/google/cel-go v0.31.0
