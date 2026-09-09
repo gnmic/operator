@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"sort"
 	"strconv"
@@ -105,7 +104,7 @@ func (r *ClusterReconciler) reconcilePrometheusServices(ctx context.Context, clu
 			var outputName string
 			_, outputName = utils.SplitNN(outputNN)              // messy
 			pipelineName, outputName = utils.SplitNN(outputName) // more messy
-			serviceName := fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster.Name, pipelineName, outputName)
+			serviceName := PrometheusServiceName(cluster.Name, pipelineName, outputName)
 			desiredServiceNames[serviceName] = struct{}{}
 
 			if err := r.reconcilePrometheusService(ctx, cluster, serviceName, outputName, pipelineName, port, urlPath, &outputSpec); err != nil {

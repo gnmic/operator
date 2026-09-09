@@ -316,7 +316,7 @@ func (r *ClusterReconciler) findClustersUsingProfiles(ctx context.Context, names
 	clusterSet := make(map[string]struct{})
 	for i := range pipelineList.Items {
 		pipeline := &pipelineList.Items[i]
-		if !pipeline.Spec.Enabled {
+		if !pipeline.Spec.Enabled || pipeline.Spec.ClusterRef == "" {
 			continue
 		}
 		if _, done := clusterSet[pipeline.Spec.ClusterRef]; done {
@@ -357,7 +357,10 @@ func (r *ClusterReconciler) findClustersReferencingResource(ctx context.Context,
 
 	clusterSet := make(map[string]struct{})
 	for _, pipeline := range pipelineList.Items {
-		if !pipeline.Spec.Enabled {
+		// An empty clusterRef would enqueue a request for the bare "gnmic-"
+		// prefix and drive the not-found cleanup path for a Cluster that never
+		// existed; findClusterForPipeline already guards against it.
+		if !pipeline.Spec.Enabled || pipeline.Spec.ClusterRef == "" {
 			continue
 		}
 		// check if pipeline references this resource by name or selector

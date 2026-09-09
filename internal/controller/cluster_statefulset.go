@@ -60,8 +60,8 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 	// update in-place only the fields we manage
 	needsUpdate := false
 
-	if current.Spec.Replicas == nil || *current.Spec.Replicas != *cluster.Spec.Replicas {
-		current.Spec.Replicas = cluster.Spec.Replicas
+	if desired := desiredReplicas(cluster); ptr.Deref(current.Spec.Replicas, 0) != desired {
+		current.Spec.Replicas = ptr.To(desired)
 		needsUpdate = true
 	}
 
@@ -355,7 +355,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 			// organize by pod name so subPathExpr can select the right one
 
 			certSources := []corev1.VolumeProjection{}
-			for i := int32(0); i < *cluster.Spec.Replicas; i++ {
+			for i := int32(0); i < desiredReplicas(cluster); i++ {
 				podName := fmt.Sprintf("%s-%d", stsName, i)
 				secretName := fmt.Sprintf("%s-tls", podName)
 				certSources = append(certSources, corev1.VolumeProjection{
@@ -391,15 +391,8 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 			ReadOnly:    true,
 		})
 
-		// add POD_NAME env var for subPathExpr (only needed for non-CSI approach)
-		envVars = append(envVars, corev1.EnvVar{
-			Name: "POD_NAME",
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "metadata.name",
-				},
-			},
-		})
+		// POD_NAME drives the subPathExpr above.
+		envVars = ensurePodNameEnv(envVars)
 	}
 
 	// add CA bundle volume if specified (for verifying target certificates)
@@ -465,7 +458,7 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 			} else {
 				// use projected volume with subPathExpr to mount the correct certificate per pod
 				tunnelCertSources := []corev1.VolumeProjection{}
-				for i := int32(0); i < *cluster.Spec.Replicas; i++ {
+				for i := int32(0); i < desiredReplicas(cluster); i++ {
 					podName := fmt.Sprintf("%s-%d", stsName, i)
 					secretName := fmt.Sprintf("%s-tunnel-tls", podName)
 					tunnelCertSources = append(tunnelCertSources, corev1.VolumeProjection{
@@ -501,24 +494,8 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 				ReadOnly:    true,
 			})
 
-			// ensure POD_NAME env var is set (might already be set for API TLS)
-			hasPodNameEnv := false
-			for _, env := range envVars {
-				if env.Name == "POD_NAME" {
-					hasPodNameEnv = true
-					break
-				}
-			}
-			if !hasPodNameEnv {
-				envVars = append(envVars, corev1.EnvVar{
-					Name: "POD_NAME",
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.name",
-						},
-					},
-				})
-			}
+			// POD_NAME may already be there from the API TLS path.
+			envVars = ensurePodNameEnv(envVars)
 		}
 
 		// add tunnel CA bundle volume if bundleRef is configured for client certificate verification

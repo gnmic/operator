@@ -165,8 +165,12 @@ func (r *ClusterReconciler) updatePipelineStatus(ctx context.Context, pipeline *
 				return fmt.Errorf("failed to update pipeline status: %w", err)
 			}
 			logger.Info("updated pipeline status", "pipeline", pipeline.Name, "targets", newStatus.TargetsCount)
-			break
+			return nil
 		}
+		// Falling out of the loop used to return nil, reporting success for a
+		// status that was never written. updatePipelineStatusWithError already
+		// got this right.
+		return fmt.Errorf("failed to update pipeline status after retries: conflict")
 	}
 
 	return nil

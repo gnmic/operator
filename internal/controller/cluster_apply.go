@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"time"
 
@@ -274,17 +273,13 @@ func (r *ClusterReconciler) getIssuerCA(ctx context.Context, namespace, issuerNa
 // yields an empty target map — used to drain a pod.
 func shrinkPodPlan(podPlan *gnmic.ApplyPlan, previous map[string]struct{}) *gnmic.ApplyPlan {
 	out := &gnmic.ApplyPlan{
-		Targets:             maps.Clone(podPlan.Targets),
+		Targets:             make(map[string]*gapi.TargetConfig, len(previous)),
 		Subscriptions:       podPlan.Subscriptions,
 		Outputs:             podPlan.Outputs,
 		Inputs:              podPlan.Inputs,
 		Processors:          podPlan.Processors,
 		TunnelTargetMatches: podPlan.TunnelTargetMatches,
 	}
-	if out.Targets == nil {
-		out.Targets = make(map[string]*gapi.TargetConfig)
-	}
-	clear(out.Targets)
 	if previous == nil {
 		return out
 	}

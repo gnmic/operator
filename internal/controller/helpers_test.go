@@ -252,15 +252,6 @@ func TestPipelineReconciler(t *testing.T) {
 	}
 }
 
-func TestTunnelTargetPolicyReconciler(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = gnmicv1alpha1.AddToScheme(scheme)
-	r := &TunnelTargetPolicyReconciler{Client: fake.NewClientBuilder().WithScheme(scheme).Build(), Scheme: scheme}
-	if _, err := r.Reconcile(context.Background(), ctrl.Request{}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestGetClusterPlan(t *testing.T) {
 	r := NewClusterReconcilerForTest()
 	plan := &gnmic.ApplyPlan{}

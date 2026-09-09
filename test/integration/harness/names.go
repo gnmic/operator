@@ -2,7 +2,12 @@
 
 package harness
 
-import "fmt"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"strings"
+)
 
 // Labels the operator puts on the objects it owns. Mirrors
 // internal/controller/const.go; kept here so suites do not import internal
@@ -43,8 +48,18 @@ func ControllerCAConfigMap(cluster string) string {
 	return resourcePrefix + cluster + "-controller-ca"
 }
 
+// PromServiceName mirrors controller.PrometheusServiceName, including the
+// cut-and-hash applied when the joined name exceeds the 63-character Service
+// limit.
 func PromServiceName(cluster, pipeline, output string) string {
-	return fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster, pipeline, output)
+	const maxLen = 63
+	name := fmt.Sprintf("%s%s-prom-%s-%s", resourcePrefix, cluster, pipeline, output)
+	if len(name) <= maxLen {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	suffix := hex.EncodeToString(sum[:])[:8]
+	return strings.TrimRight(name[:maxLen-len(suffix)-1], "-") + "-" + suffix
 }
 
 func PodName(cluster string, ordinal int) string {

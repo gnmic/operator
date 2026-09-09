@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/google/cel-go/cel"
+
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
 )
 
@@ -48,6 +50,20 @@ func (p httpProvider) Fetch(ctx context.Context, req Request) (Result, error) {
 	}
 	failOnError := src.Mapping != nil && src.Mapping.OnError == gnmicv1alpha1.MappingErrorFail
 
+	// Compile every expression once per run, not once per page. Both are spec
+	// errors, and surface here before a single request goes out.
+	extractor, err := NewExtractor(src.Mapping)
+	if err != nil {
+		return Result{}, err
+	}
+	var nextProg cel.Program
+	if src.Pagination != nil && src.Pagination.NextField != "" {
+		nextProg, err = CompileExpression(src.Pagination.NextField)
+		if err != nil {
+			return Result{}, Specf("pagination.nextField: %w", err)
+		}
+	}
+
 	var result Result
 	seen := make(map[string]struct{})
 	pageURL := src.URL
@@ -72,7 +88,7 @@ func (p httpProvider) Fetch(ctx context.Context, req Request) (Result, error) {
 		if err != nil {
 			return Result{}, fmt.Errorf("%s: %w", pageURL, err)
 		}
-		devices, failures, err := Extract(raw, src.Mapping)
+		devices, failures, err := extractor.Extract(raw)
 		if err != nil {
 			return Result{}, err
 		}
@@ -82,7 +98,7 @@ func (p httpProvider) Fetch(ctx context.Context, req Request) (Result, error) {
 		result.Devices = append(result.Devices, devices...)
 		result.Invalid = append(result.Invalid, failures...)
 
-		next, err := nextPage(src.Pagination, raw, headers, src.URL, pageURL)
+		next, err := nextPage(src.Pagination, nextProg, raw, headers, src.URL, pageURL)
 		if err != nil {
 			return Result{}, err
 		}
@@ -238,8 +254,8 @@ func fetchPage(ctx context.Context, client *http.Client, src *gnmicv1alpha1.HTTP
 // (dropping Authorization on a cross-host redirect) never applies. Without this
 // check a hostile or compromised inventory endpoint could answer with
 // `Link: <https://elsewhere/>; rel="next"` and be handed the Secret.
-func nextPage(spec *gnmicv1alpha1.PaginationSpec, raw any, headers http.Header, base, current string) (string, error) {
-	next, err := nextPageCandidate(spec, raw, headers, current)
+func nextPage(spec *gnmicv1alpha1.PaginationSpec, nextProg cel.Program, raw any, headers http.Header, base, current string) (string, error) {
+	next, err := nextPageCandidate(spec, nextProg, raw, headers, current)
 	if err != nil || next == "" {
 		return next, err
 	}
@@ -285,19 +301,16 @@ func hostWithPort(u *url.URL) string {
 
 // nextPageCandidate is the next page as the server describes it, before the
 // origin check. A Link header with rel="next" is honoured first; then the
-// NextField expression, which may yield a full URL or a token for RequestParam.
-func nextPageCandidate(spec *gnmicv1alpha1.PaginationSpec, raw any, headers http.Header, current string) (string, error) {
+// NextField expression (compiled by the caller, once per run), which may yield
+// a full URL or a token for RequestParam.
+func nextPageCandidate(spec *gnmicv1alpha1.PaginationSpec, nextProg cel.Program, raw any, headers http.Header, current string) (string, error) {
 	if next := nextFromLinkHeader(headers); next != "" {
 		return resolveURL(current, next)
 	}
-	if spec == nil || spec.NextField == "" {
+	if spec == nil || spec.NextField == "" || nextProg == nil {
 		return "", nil
 	}
-	prog, err := CompileExpression(spec.NextField)
-	if err != nil {
-		return "", Specf("pagination.nextField: %w", err)
-	}
-	out, err := evalExpression(prog, raw, nil)
+	out, err := evalExpression(nextProg, raw, nil)
 	if err != nil {
 		return "", fmt.Errorf("pagination.nextField: %w", err)
 	}

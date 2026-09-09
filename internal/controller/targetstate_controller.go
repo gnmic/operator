@@ -138,7 +138,7 @@ func (r *TargetStateReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	desiredPods := int(*cluster.Spec.Replicas)
+	desiredPods := int(desiredReplicas(&cluster))
 
 	// stop all existing streams for this cluster so they reconnect
 	// with the latest cluster config (port, TLS, image, etc.)
@@ -431,6 +431,29 @@ func (r *TargetStateReconciler) stopStreamsForCluster(namespace, clusterName str
 		if strings.HasPrefix(key, prefix) {
 			cancel()
 			delete(r.streams, key)
+		}
+	}
+	r.forgetCluster(namespace, clusterName)
+}
+
+// forgetCluster drops every pod's remembered report state for a cluster.
+//
+// A stream stopped here returns through ctx.Done() and never reaches the
+// disconnect path that forgets a single pod, so on a delete, a scale to zero
+// or a restart after a spec change the entries for pods that no longer exist
+// stayed for the life of the process.
+func (r *TargetStateReconciler) forgetCluster(namespace, clusterName string) {
+	prefix := podStateKey(namespace, clusterName, "")
+	r.reportedMu.Lock()
+	defer r.reportedMu.Unlock()
+	for key := range r.reported {
+		if strings.HasPrefix(key, prefix) {
+			delete(r.reported, key)
+		}
+	}
+	for key := range r.lastSweep {
+		if strings.HasPrefix(key, prefix) {
+			delete(r.lastSweep, key)
 		}
 	}
 }

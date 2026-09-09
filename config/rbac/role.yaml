@@ -71,7 +71,6 @@ rules:
   - pipelines
   - targets
   - targetsources
-  - tunneltargetpolicies
   verbs:
   - create
   - delete
@@ -85,7 +84,6 @@ rules:
   resources:
   - clusters/finalizers
   - pipelines/finalizers
-  - tunneltargetpolicies/finalizers
   verbs:
   - update
 - apiGroups:
@@ -95,7 +93,6 @@ rules:
   - pipelines/status
   - targets/status
   - targetsources/status
-  - tunneltargetpolicies/status
   verbs:
   - get
   - patch
@@ -108,6 +105,7 @@ rules:
   - processors
   - subscriptions
   - targetprofiles
+  - tunneltargetpolicies
   verbs:
   - get
   - list

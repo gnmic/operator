@@ -50,10 +50,41 @@ func Decode(data []byte) (any, error) {
 
 // Extract reads devices out of a decoded document. See Parse.
 func Extract(raw any, mapping *gnmicv1alpha1.MappingSpec) ([]Device, []Failure, error) {
-	if mapping == nil {
+	e, err := NewExtractor(mapping)
+	if err != nil {
+		return nil, nil, err
+	}
+	return e.Extract(raw)
+}
+
+// Extractor is a MappingSpec compiled once, for reading many documents -- the
+// pages of one fetch. Compiling inside Extract meant every CEL expression was
+// compiled again for every page of every run.
+type Extractor struct {
+	mapping *gnmicv1alpha1.MappingSpec
+	cm      *compiledMapping
+}
+
+// NewExtractor compiles the mapping. A nil mapping reads the native list. A
+// compile error is a spec error, and is reported before anything is fetched.
+func NewExtractor(mapping *gnmicv1alpha1.MappingSpec) (*Extractor, error) {
+	e := &Extractor{mapping: mapping}
+	if mapping != nil {
+		cm, err := compileMapping(mapping)
+		if err != nil {
+			return nil, err
+		}
+		e.cm = cm
+	}
+	return e, nil
+}
+
+// Extract reads devices out of one decoded document.
+func (e *Extractor) Extract(raw any) ([]Device, []Failure, error) {
+	if e.mapping == nil {
 		return extractNative(raw)
 	}
-	return extractMapped(raw, mapping)
+	return extractMapped(raw, e.mapping, e.cm)
 }
 
 // extractNative reads the operator's own shape.
@@ -118,13 +149,10 @@ func compileMapping(m *gnmicv1alpha1.MappingSpec) (*compiledMapping, error) {
 	return cm, nil
 }
 
-// extractMapped reads an arbitrary document through a MappingSpec.
-func extractMapped(raw any, mapping *gnmicv1alpha1.MappingSpec) ([]Device, []Failure, error) {
-	cm, err := compileMapping(mapping)
-	if err != nil {
-		return nil, nil, err
-	}
+// extractMapped reads an arbitrary document through an already compiled MappingSpec.
+func extractMapped(raw any, mapping *gnmicv1alpha1.MappingSpec, cm *compiledMapping) ([]Device, []Failure, error) {
 	var items []any
+	var err error
 	if cm.items != nil {
 		out, err := evalExpression(cm.items, raw, nil)
 		if err != nil {

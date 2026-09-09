@@ -46,7 +46,7 @@ func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *
 	}
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := *cluster.Spec.Replicas
+	replicas := desiredReplicas(cluster)
 
 	allReady := true
 
@@ -229,7 +229,7 @@ func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, clu
 	}
 
 	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := *cluster.Spec.Replicas
+	replicas := desiredReplicas(cluster)
 
 	allReady := true
 
@@ -495,29 +495,6 @@ func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cl
 	logger.Info("deleting client TLS certificate", "certificate", certName)
 	if err := r.Delete(ctx, cert); err != nil && !apierrors.IsNotFound(err) {
 		return err
-	}
-
-	return nil
-}
-
-// cleanupClientTLSCertificatesLegacy deletes any legacy per-pod client TLS certificates
-// This is for backwards compatibility when upgrading from per-pod to single certificate
-func (r *ClusterReconciler) cleanupClientTLSCertificatesLegacy(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
-	logger := log.FromContext(ctx)
-
-	var certList certmanagerv1.CertificateList
-	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		LabelClusterName: cluster.Name,
-		LabelCertType:    LabelValueCertTypeClient,
-	}); err != nil {
-		return client.IgnoreNotFound(err)
-	}
-
-	for _, cert := range certList.Items {
-		logger.Info("deleting client TLS certificate", "certificate", cert.Name)
-		if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
 	}
 
 	return nil

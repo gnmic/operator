@@ -23,6 +23,15 @@ const (
 	SSEStoreConfig = "config"
 )
 
+// sseMaxLineBytes is the longest single line the stream reader accepts.
+//
+// bufio.Scanner's default is 64 KiB, and an event over that turned into a
+// stream error and a reconnect -- with the ApplyCache invalidation and full
+// re-apply that a reconnect costs. A target-state event is small, but nothing
+// bounds what a pod may put in one, and a line length is no reason to reload
+// a collector.
+const sseMaxLineBytes = 4 << 20
+
 // SSEEvent represents a parsed SSE event from a gNMIc pod.
 type SSEEvent struct {
 	// The SSE event type (create, update, delete).
@@ -89,56 +98,80 @@ func StreamTargetStateWithConnect(ctx context.Context, httpClient *http.Client, 
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
-	var currentEventType string
+	scanner.Buffer(make([]byte, 0, 64*1024), sseMaxLineBytes)
+
+	// One event is a run of field lines ended by a blank line. Parsing per the
+	// spec rather than per line means: the space after the colon is optional,
+	// several data: lines are one payload joined by newlines, and event: is
+	// taken wherever it appears in the frame, not only ahead of data:.
+	var frame sseFrame
+	deliver := func() error {
+		f := frame
+		frame = sseFrame{}
+		if !f.hasData {
+			return nil
+		}
+		var data SSEEventData
+		if err := json.Unmarshal([]byte(f.data.String()), &data); err != nil {
+			return nil // skip malformed events
+		}
+		// only forward target state events
+		if data.Kind != "targets" || data.Store != SSEStoreState {
+			return nil
+		}
+		// A bare send here blocks forever once the buffer is full and the consumer
+		// has stopped draining, so the goroutine never returns to scanner.Scan(),
+		// never observes the closed body, and leaks along with its connection.
+		select {
+		case events <- SSEEvent{EventType: f.eventType, Data: data}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		return nil
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
+		if line == "" {
+			if err := deliver(); err != nil {
+				return err
+			}
+			continue
+		}
 		// keepalive comment
 		if strings.HasPrefix(line, ":") {
 			continue
 		}
-
-		// empty line = end of event (but we process on "data:" line)
-		if line == "" {
-			currentEventType = ""
-			continue
-		}
-		if after, found := strings.CutPrefix(line, "event: "); found {
-			currentEventType = after
-			continue
-		}
-		if dataStr, found := strings.CutPrefix(line, "data: "); found {
-
-			var data SSEEventData
-			if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-				continue // skip malformed events
+		field, value, _ := strings.Cut(line, ":")
+		value = strings.TrimPrefix(value, " ")
+		switch field {
+		case "event":
+			frame.eventType = value
+		case "data":
+			if frame.hasData {
+				frame.data.WriteByte('\n')
 			}
-
-			// only forward target state events
-			if data.Kind != "targets" || data.Store != SSEStoreState {
-				continue
-			}
-
-			// A bare send here blocks forever once the buffer is full and the consumer
-			// has stopped draining, so the goroutine never returns to scanner.Scan(),
-			// never observes the closed body, and leaks along with its connection.
-			select {
-			case events <- SSEEvent{
-				EventType: currentEventType,
-				Data:      data,
-			}:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
+			frame.data.WriteString(value)
+			frame.hasData = true
 		}
+		// id, retry and unknown fields are ignored.
 	}
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("SSE stream error: %w", err)
 	}
+	// The server closed the stream without a blank line after the last event.
+	// The spec says to drop it; the previous reader delivered on the data line
+	// and so would have forwarded it, and losing a final state change over a
+	// missing newline is the worse outcome.
+	return deliver()
+}
 
-	return nil
+// sseFrame accumulates the fields of one event until the blank line ends it.
+type sseFrame struct {
+	eventType string
+	data      strings.Builder
+	hasData   bool
 }
 
 // ParseTargetStateObject parses the raw JSON object from a target state SSE event.
