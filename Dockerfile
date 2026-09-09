@@ -1,6 +1,6 @@
 # Build the manager binary
 # Use BUILDPLATFORM to run Go natively (fast cross-compilation)
-FROM --platform=$BUILDPLATFORM golang:1.26.6 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.1 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # Set by the release workflow to the git tag; "dev" for local builds.
