@@ -1,0 +1,13 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TunnelTargetPolicy
+metadata:
+  name: {{ .Name }}
+  labels:
+    suite: "007"
+spec:
+  profile: {{ .Profile }}
+{{- if ne .MatchID "" }}
+  match:
+    type: {{ .MatchType }}
+    id: {{ .MatchID }}
+{{- end }}

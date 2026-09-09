@@ -1,0 +1,81 @@
+# Shared props for 007-tunnel. The TunnelTargetPolicy and Pipeline are created
+# per test so each one starts from "peers connected, nothing matching them".
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sim-credentials
+stringData:
+  username: gnmic
+  password: gnmic
+---
+# Deliberately wrong, for proving the policy's profile is what the collector
+# authenticates with.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wrong-credentials
+stringData:
+  username: gnmic
+  password: not-the-password
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: default
+spec:
+  credentialsRef: sim-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  tls: {}
+  retryTimer: 2s
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: wrong-creds
+spec:
+  credentialsRef: wrong-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  tls: {}
+  retryTimer: 2s
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: {{ .GnmicImage }}
+  replicas: 1
+  api:
+    restPort: 7890
+  grpcTunnel:
+    port: 57401
+    tls:
+      issuerRef: suite-ca-issuer
+    service:
+      # kind has no load balancer; the simulator reaches the pods through the
+      # cluster IP, which is also what the short-name DNS in gnmi-gen.yaml hits.
+      type: ClusterIP
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: if-counters
+  labels:
+    suite: "007"
+spec:
+  mode: STREAM/SAMPLE
+  sampleInterval: 1s
+  encoding: JSON_IETF
+  paths:
+    - /interface/statistics/in-octets
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: prom
+  labels:
+    suite: "007"
+spec:
+  type: prometheus

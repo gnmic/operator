@@ -1,0 +1,16 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: {{ .Name }}
+spec:
+  clusterRef: c1
+  enabled: true
+  tunnelTargetPolicyRefs:
+    - {{ .Policy }}
+  subscriptionSelectors:
+    - matchLabels:
+        suite: "007"
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          suite: "007"

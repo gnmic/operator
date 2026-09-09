@@ -1,0 +1,71 @@
+# Simulated devices for 007-tunnel. Every server here dials OUT to the Cluster's
+# gRPC tunnel Service instead of waiting to be dialed: the collector never learns
+# their addresses, only the tunnel target IDs (the server names below).
+#
+# The Service is addressed by its short name: gnmi-gen runs in the suite
+# namespace alongside the Cluster, so DNS resolves it without the FQDN and the
+# config needs no templating. The Service does not exist when gnmi-gen starts
+# (the baseline is applied after the simulator is up); retry_interval covers
+# the gap.
+global:
+  seed: 42
+  shutdown_timeout: 5s
+
+api:
+  listen: 0.0.0.0:8080
+
+tunnel_server_profiles:
+  collector:
+    address: gnmic-c1-grpc-tunnel:57401
+    target_type: GNMI_GNOI
+    retry_interval: 2s
+    tls:
+      # The Cluster's tunnel certificate is issued by the suite CA; verifying
+      # it is the operator's job, not the simulator's.
+      skip_verify: true
+
+data_profiles:
+  interface_counter:
+    type: uint64
+    update_frequency: 1s
+    random:
+      distribution: counter
+      min: 100000
+      max: 900000
+      step_min: 100
+      step_max: 10000
+
+servers:
+  - name: leaf1
+    listen: 0.0.0.0:57400
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    tunnel_server: collector
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter
+
+  - name: leaf2
+    listen: 0.0.0.0:57401
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    tunnel_server: collector
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter
+
+  # A third peer whose ID does not match "leaf.*", for the match-narrowing case.
+  - name: spine1
+    listen: 0.0.0.0:57402
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    tunnel_server: collector
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter
