@@ -8,7 +8,7 @@ This directory contains example overlays for customizing the gNMIc Operator inst
 Deploy the operator to a custom namespace with a different name prefix.
 
 ```bash
-kubectl apply -k https://github.com/gnmic/operator/config/overlays/custom-namespace?ref=v0.4.0
+kubectl apply -k https://github.com/gnmic/operator/config/overlays/custom-namespace?ref=v0.5.0
 ```
 
 ### `production/`
@@ -35,7 +35,7 @@ kind: Kustomization
 
 resources:
   # Reference the base config (use a specific version tag)
-  - https://github.com/gnmic/operator/config/default?ref=v0.4.0
+  - https://github.com/gnmic/operator/config/default?ref=v0.5.0
 
 # Customize namespace
 namespace: my-namespace
@@ -44,7 +44,7 @@ namespace: my-namespace
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.4.0"
+    newTag: "0.5.0"
 
 # Add custom patches as needed
 patches:

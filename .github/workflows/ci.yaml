@@ -150,6 +150,6 @@ jobs:
           cache: true
 
       # GNMIC_IMAGE is built from a pinned openconfig/gnmic commit (see test.mk
-      # GNMIC_GIT_REF) so Cluster007 runs against #926 rather than v0.47.0.
+      # GNMIC_GIT_REF) so 011-gnmi-server runs against #995 rather than v0.48.0.
       - name: Run integration tests v2
         run: make run-integration-tests-v2 IT_OPERATOR_IMG=gnmic-operator:ci

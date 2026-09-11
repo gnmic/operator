@@ -17,7 +17,7 @@ A Helm chart for deploying the gNMIc Operator on Kubernetes.
 helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator
 
 # Install a specific version
-helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.4.0
+helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.5.0
 ```
 
 ### From Source

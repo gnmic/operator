@@ -22,7 +22,7 @@ resources:
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.4.0"  # Pin to a specific version
+    newTag: "0.5.0"  # Pin to a specific version
 
 # Add common labels
 labels:

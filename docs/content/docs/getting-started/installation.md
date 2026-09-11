@@ -34,11 +34,11 @@ cat <<EOF > kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://github.com/gnmic/operator/config/default?ref=v0.4.0
+  - https://github.com/gnmic/operator/config/default?ref=v0.5.0
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.4.0"
+    newTag: "0.5.0"
 EOF
 
 # Apply
@@ -49,11 +49,11 @@ kubectl apply -k .
 
 ```bash
 # Add the Helm repository (OCI)
-helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.4.0
+helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.5.0
 
 # Or with custom values
 helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator \
-  --version 0.4.0 \
+  --version 0.5.0 \
   --namespace gnmic-system \
   --create-namespace \
   --set resources.limits.memory=512Mi
@@ -70,13 +70,13 @@ For a complete list of Helm chart configuration options, see the [Helm Chart Ref
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://github.com/gnmic/operator/config/default?ref=v0.4.0
+  - https://github.com/gnmic/operator/config/default?ref=v0.5.0
 namespace: my-namespace
 namePrefix: my-
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.4.0"
+    newTag: "0.5.0"
 ```
 
 ### Custom Resources
@@ -86,11 +86,11 @@ images:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://github.com/gnmic/operator/config/default?ref=v0.4.0
+  - https://github.com/gnmic/operator/config/default?ref=v0.5.0
 images:
   - name: controller
     newName: ghcr.io/gnmic/operator
-    newTag: "0.4.0"
+    newTag: "0.5.0"
 patches:
   - target:
       kind: Deployment
