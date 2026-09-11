@@ -239,6 +239,16 @@ else
 	@docker image inspect $(GNMIC_IMAGE) >/dev/null 2>&1 || docker pull $(GNMIC_IMAGE)
 endif
 
+# CI reads the pins from here rather than repeating them in the workflow, so
+# the collector the suites run against is the same locally and in CI. One
+# key=value per line, in $GITHUB_OUTPUT form.
+.PHONY: integration-pins
+integration-pins: ## Print the collector image pins (key=value lines, for CI)
+	@echo "gnmic_git_ref=$(GNMIC_GIT_REF)"
+	@echo "gnmic_image=$(GNMIC_IMAGE)"
+	@echo "gnmic_go_version=$(GNMIC_GO_VERSION)"
+	@echo "gnmic_alpine_version=$(GNMIC_ALPINE_VERSION)"
+
 .PHONY: integration-images
 integration-images: gnmic-image ## Build the operator image and load it, gnmi-gen and gnmic into the integration cluster
 	$(MAKE) docker-build IMG=$(IT_OPERATOR_IMG)
