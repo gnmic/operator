@@ -2,6 +2,10 @@ name: CI
 
 on:
   workflow_dispatch:
+  # Nightly run of every job, including the integration suites that do not run
+  # on pull requests.
+  schedule:
+    - cron: '0 6 * * *'
   push:
     branches:
       - main
@@ -132,11 +136,19 @@ jobs:
 
   # Assertion-driven suites under test/integration/suite (gnmi-gen + kind gnmic-it).
   # Separate job/cluster from the containerlab lane above so both can run in parallel.
+  #
+  # Runs on pushes to main, nightly, and on demand -- not on pull requests: the
+  # full sweep is 11 suites and ~20 minutes, and it builds the pinned collector
+  # from source the first time a pin is seen.
   integration-test-v2:
-    if: false # temporary disable
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     name: Integration Test v2
     runs-on: ubuntu-latest
     needs: build
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -149,7 +161,35 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      # GNMIC_IMAGE is built from a pinned openconfig/gnmic commit (see test.mk
-      # GNMIC_GIT_REF) so 011-gnmi-server runs against #995 rather than v0.48.0.
+      # test.mk owns the pins; the workflow only reads them, so local runs and
+      # CI test the same collector build.
+      - name: Read collector pins
+        id: pins
+        run: make -s integration-pins >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        if: steps.pins.outputs.gnmic_git_ref != ''
+        uses: docker/setup-buildx-action@v4
+
+      # The collector is built from a pinned openconfig/gnmic commit (see test.mk
+      # GNMIC_GIT_REF) because 011-gnmi-server needs #995, which no release has
+      # yet. Building here with the GitHub Actions layer cache means the compile
+      # happens once per pin; later runs are a cache hit. `make` below sees the
+      # image already present and skips its own build. When GNMIC_GIT_REF is
+      # empty the pin is a registry tag and this step is skipped.
+      - name: Build pinned collector image
+        if: steps.pins.outputs.gnmic_git_ref != ''
+        uses: docker/build-push-action@v7
+        with:
+          context: https://github.com/openconfig/gnmic.git#${{ steps.pins.outputs.gnmic_git_ref }}
+          build-args: |
+            GO_VERSION=${{ steps.pins.outputs.gnmic_go_version }}
+            ALPINE_VERSION=${{ steps.pins.outputs.gnmic_alpine_version }}
+          tags: ${{ steps.pins.outputs.gnmic_image }}
+          load: true
+          push: false
+          cache-from: type=gha,scope=gnmic-${{ steps.pins.outputs.gnmic_git_ref }}
+          cache-to: type=gha,mode=max,scope=gnmic-${{ steps.pins.outputs.gnmic_git_ref }}
+
       - name: Run integration tests v2
         run: make run-integration-tests-v2 IT_OPERATOR_IMG=gnmic-operator:ci
