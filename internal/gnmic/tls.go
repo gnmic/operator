@@ -95,6 +95,26 @@ func TLSConfigForClusterPod(cluster *gnmicv1alpha1.Cluster) *TLSConfig {
 	return tlsConfig
 }
 
+// GNMIServerTLSConfig returns the TLS configuration for the collector's
+// northbound gNMI server, or nil when api.tls is not set.
+//
+// It presents the same server certificate as the REST API -- both listen on the
+// pod, and the certificate carries the pod's DNS names -- but it does not copy
+// TLSConfigForClusterPod's client-auth block. That block requires a client
+// certificate signed by the controller CA, which is right for the REST API (only
+// the operator calls it) and would lock every gNMI client out of this one.
+func GNMIServerTLSConfig(cluster *gnmicv1alpha1.Cluster) *TLSConfig {
+	if cluster.Spec.API == nil || cluster.Spec.API.TLS == nil {
+		return nil
+	}
+	tlsConfig := &TLSConfig{}
+	if cluster.Spec.API.TLS.IssuerRef != "" {
+		tlsConfig.CertFile = CertFilePath
+		tlsConfig.KeyFile = KeyFilePath
+	}
+	return tlsConfig
+}
+
 // TunnelServerTLSConfig returns the TLS configuration for the gRPC tunnel server
 func TunnelServerTLSConfig(cluster *gnmicv1alpha1.Cluster) *TLSConfig {
 	if cluster.Spec.GRPCTunnel == nil || cluster.Spec.GRPCTunnel.TLS == nil {

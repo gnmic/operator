@@ -283,6 +283,28 @@ func (r *ClusterReconciler) buildConfigContent(cluster *gnmicv1alpha1.Cluster) (
 		config["tunnel-server"] = tunnelConfig
 	}
 
+	// add the northbound gNMI server if a port is configured
+	//
+	// gnmiPort used to add only a container port and a Service port; nothing told
+	// the collector to listen, so the documented "gNMI proxy/cache" was a port
+	// that answered nothing. The collector serves from its in-process cache, and
+	// only builds one when this section names it, so the cache is spelled out
+	// rather than left to a default that does not exist. The listener itself is
+	// openconfig/gnmic#995; a collector without it accepts and ignores the block.
+	if cluster.Spec.API != nil && cluster.Spec.API.GNMIPort != 0 {
+		gnmiServerConfig := map[string]any{
+			"address":        fmt.Sprintf(":%d", cluster.Spec.API.GNMIPort),
+			"enable-metrics": true,
+			"cache": map[string]any{
+				"type": "oc",
+			},
+		}
+		if gnmiTLSConfig := gnmic.GNMIServerTLSConfig(cluster); gnmiTLSConfig != nil {
+			gnmiServerConfig["tls"] = gnmiTLSConfig
+		}
+		config["gnmi-server"] = gnmiServerConfig
+	}
+
 	return yaml.Marshal(config)
 }
 

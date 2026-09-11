@@ -109,13 +109,27 @@ spec:
 
 ## gNMI Server
 
-Enable the gNMI server for using the collecor as a gNMI Proxy/Cache
+Setting `api.gnmiPort` turns each collector pod into a northbound gNMI server:
+clients can `Capabilities`, `Get` and `Subscribe` against the collector, which
+answers from an in-memory cache of everything its targets stream. This makes
+the cluster usable as a gNMI proxy/cache in front of the devices.
 
 ```yaml
 spec:
   api:
     gnmiPort: 9393
 ```
+
+The operator renders a `gnmi-server` section into the collector configuration
+with the address, an `oc` (in-memory) cache, and -- when `api.tls` is set --
+the same server certificate the REST API presents. Client certificates are not
+required on this listener. The port is exposed on each pod and on the headless
+Service as `gnmi`, so a client inside the cluster reaches pod `N` at
+`gnmic-<cluster>-<N>.gnmic-<cluster>.<namespace>.svc:<gnmiPort>`.
+
+The listener requires a gNMIc collector that includes
+[openconfig/gnmic#995](https://github.com/openconfig/gnmic/pull/995); an older
+collector accepts the section and starts no server.
 
 ## gRPC Tunnel Server
 

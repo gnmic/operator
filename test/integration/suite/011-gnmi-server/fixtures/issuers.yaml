@@ -1,0 +1,31 @@
+# Suite-local cert-manager issuer chain for the TLS case (a Cluster with
+# api.tls.issuerRef, whose gNMI server presents the API certificate).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: suite-ca
+spec:
+  isCA: true
+  commonName: suite-ca
+  secretName: suite-ca-secret
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: suite-ca-issuer
+spec:
+  ca:
+    secretName: suite-ca-secret
