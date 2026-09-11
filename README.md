@@ -41,7 +41,7 @@ kubectl apply -f https://github.com/gnmic/operator/releases/latest/download/inst
 Or using Helm
 
 ```bash
-helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.4.0
+helm install gnmic-operator oci://ghcr.io/gnmic/operator/charts/gnmic-operator --version 0.5.0
 ```
 
 Or using Kustomize with custom overlay

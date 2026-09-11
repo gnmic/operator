@@ -192,14 +192,19 @@ IT_CONTEXT      := kind-$(IT_CLUSTER_NAME)
 IT_KUBECTL      := kubectl --context $(IT_CONTEXT)
 IT_OPERATOR_IMG ?= gnmic-operator:integration
 GNMIGEN_IMAGE   ?= registry.kmrd.dev/gnmic/gnmigen:0.0.0
-# Collector image for the v2 suites. v0.47.0 (latest release) predates
-# openconfig/gnmic#926, which waits for a subscription reader to exit before
-# starting its replacement; without that, Cluster007 flakes on "want 3 streams,
-# got 2". Until that lands in a release, build from this commit (main at #927,
-# which includes #926). Clear GNMIC_GIT_REF and set GNMIC_IMAGE to a registry
-# tag to use a release instead.
-GNMIC_GIT_REF   ?= 597750387b5117f625a76681f6b4d83147f9151b
-GNMIC_IMAGE     ?= gnmic:597750387b51
+# Collector image for the v2 suites. v0.48.0 (latest release) predates
+# openconfig/gnmic#995, the collector's northbound gNMI server, which
+# 011-gnmi-server exercises; an older collector accepts the gnmi-server section
+# and starts nothing. Until that lands in a release, build from the #995 merge
+# commit (which also carries #926, the subscription-reader fix Cluster007 needs).
+# Clear GNMIC_GIT_REF and set GNMIC_IMAGE to a registry tag to use a release
+# instead.
+GNMIC_GIT_REF   ?= ddf12965f72f24d67844bb9734f3654fd82fea45
+GNMIC_IMAGE     ?= gnmic:ddf12965f72f
+# gnmic's Dockerfile takes its base images as build args, normally supplied by
+# its versions.env. These mirror that file at GNMIC_GIT_REF.
+GNMIC_GO_VERSION     ?= 1.26.5
+GNMIC_ALPINE_VERSION ?= latest
 # A second pinned tag, so rollout tests can prove an image change took effect.
 GNMIC_IMAGE_ALT ?= ghcr.io/openconfig/gnmic:0.47.0-amd64
 IT_SUITE_DIR    := test/integration/suite
@@ -227,7 +232,9 @@ integration-env-up: install-kind ## Create the integration kind cluster and depl
 gnmic-image: ## Build GNMIC_IMAGE from GNMIC_GIT_REF, or pull it when the ref is unset
 ifdef GNMIC_GIT_REF
 	@docker image inspect $(GNMIC_IMAGE) >/dev/null 2>&1 || \
-		DOCKER_BUILDKIT=1 docker build -t $(GNMIC_IMAGE) https://github.com/openconfig/gnmic.git#$(GNMIC_GIT_REF)
+		DOCKER_BUILDKIT=1 docker build -t $(GNMIC_IMAGE) \
+			--build-arg GO_VERSION=$(GNMIC_GO_VERSION) --build-arg ALPINE_VERSION=$(GNMIC_ALPINE_VERSION) \
+			https://github.com/openconfig/gnmic.git#$(GNMIC_GIT_REF)
 else
 	@docker image inspect $(GNMIC_IMAGE) >/dev/null 2>&1 || docker pull $(GNMIC_IMAGE)
 endif
