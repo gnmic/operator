@@ -1,0 +1,37 @@
+# Simulated devices for 009-targetsource: four plaintext targets a TargetSource
+# can discover. Only the sources that ask to be collected (template label
+# collect=yes) are picked up by the Pipeline, so stream counts stay attributable.
+global:
+  seed: 42
+  shutdown_timeout: 5s
+
+api:
+  listen: 0.0.0.0:8080
+
+data_profiles:
+  interface_counter:
+    type: uint64
+    update_frequency: 1s
+    random:
+      distribution: counter
+      min: 100000
+      max: 900000
+      step_min: 100
+      step_max: 10000
+
+servers:
+  - name: leaf{{.index}}
+    expand:
+      index:
+        start: 1
+        end: 4
+      listen:
+        host: 0.0.0.0
+        port_start: 57400
+    tls: {}
+    authentication:
+      username: gnmic
+      password: gnmic
+    paths:
+      - path: /interface/statistics/in-octets
+        profile: interface_counter

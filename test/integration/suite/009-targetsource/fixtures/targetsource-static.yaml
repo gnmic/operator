@@ -1,0 +1,34 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: {{ .Name }}
+spec:
+  # Long on purpose: every test drives runs through watches or the webhook,
+  # never by waiting for the interval.
+  interval: 1h
+  suspend: {{ .Suspend }}
+{{- if .MaxTargets }}
+  maxTargets: {{ .MaxTargets }}
+{{- end }}
+  source:
+    type: Static
+    static:
+      devices:
+{{- range .Devices }}
+        - name: {{ .Name }}
+          address: {{ .Address }}
+{{- end }}
+  target:
+    profile: default
+    labels:
+      source: {{ .Name }}
+{{- if .Collect }}
+      collect: "yes"
+{{- end }}
+{{- if .Webhook }}
+  webhook:
+    enabled: true
+    auth:
+      bearer:
+        secretRef: { name: hook-token, key: token }
+{{- end }}

@@ -1,0 +1,78 @@
+# Shared props for 009-targetsource. TargetSources are created per test; the
+# Pipeline collects whatever they produce that carries collect=yes.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sim-credentials
+stringData:
+  username: gnmic
+  password: gnmic
+---
+# Bearer token the webhook test presents to the operator API.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hook-token
+stringData:
+  token: refresh-me-please
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetProfile
+metadata:
+  name: default
+spec:
+  credentialsRef: sim-credentials
+  encoding: JSON_IETF
+  timeout: 10s
+  tls: {}
+  retryTimer: 2s
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Cluster
+metadata:
+  name: c1
+spec:
+  image: {{ .GnmicImage }}
+  replicas: 1
+  api:
+    restPort: 7890
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Subscription
+metadata:
+  name: if-counters
+  labels:
+    suite: "009"
+spec:
+  mode: STREAM/SAMPLE
+  sampleInterval: 1s
+  encoding: JSON_IETF
+  paths:
+    - /interface/statistics/in-octets
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Output
+metadata:
+  name: prom
+  labels:
+    suite: "009"
+spec:
+  type: prometheus
+---
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: Pipeline
+metadata:
+  name: collect
+spec:
+  clusterRef: c1
+  enabled: true
+  targetSelectors:
+    - matchLabels:
+        collect: "yes"
+  subscriptionSelectors:
+    - matchLabels:
+        suite: "009"
+  outputs:
+    outputSelectors:
+      - matchLabels:
+          suite: "009"

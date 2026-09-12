@@ -1,0 +1,21 @@
+apiVersion: operator.gnmic.dev/v1alpha1
+kind: TargetSource
+metadata:
+  name: {{ .Name }}
+spec:
+  # Long on purpose: a change to the ConfigMap must be what triggers a run.
+  interval: 1h
+  source:
+    type: ConfigMap
+    configMap:
+      name: {{ .ConfigMap }}
+      key: inventory.json
+  target:
+    profile: default
+    labels:
+      source: {{ .Name }}
+  prune:
+    allowEmptySource: {{ .AllowEmptySource }}
+{{- if .MaxDeleteRatio }}
+    maxDeleteRatio: {{ .MaxDeleteRatio }}
+{{- end }}
