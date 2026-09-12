@@ -32,12 +32,19 @@ func (f *Forward) Close() {
 	}
 }
 
-// ForwardPodPort forwards a container port on a specific pod.
+// ForwardPodPort forwards a container port on a specific pod in the suite
+// namespace.
 //
 // This uses client-go directly rather than shelling out to kubectl: no child
 // process to leak, failures arrive as Go errors, and the forward closes
 // deterministically when the suite ends.
 func (k *K8s) ForwardPodPort(pod string, remotePort int) (*Forward, error) {
+	return k.ForwardPodPortIn(k.Namespace, pod, remotePort)
+}
+
+// ForwardPodPortIn is ForwardPodPort for a pod in another namespace -- the
+// operator's own, for suites that call its API.
+func (k *K8s) ForwardPodPortIn(namespace, pod string, remotePort int) (*Forward, error) {
 	transport, upgrader, err := spdy.RoundTripperFor(k.RestCfg)
 	if err != nil {
 		return nil, fmt.Errorf("building spdy transport: %w", err)
@@ -45,7 +52,7 @@ func (k *K8s) ForwardPodPort(pod string, remotePort int) (*Forward, error) {
 	url := k.Clientset.CoreV1().RESTClient().
 		Post().
 		Resource("pods").
-		Namespace(k.Namespace).
+		Namespace(namespace).
 		Name(pod).
 		SubResource("portforward").
 		URL()

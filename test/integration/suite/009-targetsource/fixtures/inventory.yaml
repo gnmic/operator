@@ -1,0 +1,12 @@
+# An inventory document in the native list shape, read by a ConfigMap source.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Name }}
+data:
+  inventory.json: |
+    [
+{{- range $i, $d := .Devices }}
+      {{ if $i }},{{ end }}{"name": "{{ $d.Name }}", "address": "{{ $d.Address }}"}
+{{- end }}
+    ]
