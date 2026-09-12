@@ -125,7 +125,15 @@ with the address, an `oc` (in-memory) cache, and -- when `api.tls` is set --
 the same server certificate the REST API presents. Client certificates are not
 required on this listener. The port is exposed on each pod and on the headless
 Service as `gnmi`, so a client inside the cluster reaches pod `N` at
-`gnmic-<cluster>-<N>.gnmic-<cluster>.<namespace>.svc:<gnmiPort>`.
+`gnmic-<cluster>-<N>.gnmic-<cluster>.<namespace>.svc:<gnmiPort>`. The
+certificate covers both the per-pod names and the headless Service name
+`gnmic-<cluster>.<namespace>.svc`, which resolves to an arbitrary pod.
+
+Each pod serves only the targets assigned to it: a `Get` or `Subscribe` for a
+specific target is answered by the pod that collects it, and `target: "*"` on
+one pod covers that pod's share. `Target.status.clusterStates[<cluster>].pod`
+names the owning pod. Exposure outside the cluster is left to an Ingress or
+Gateway of your own; a LoadBalancer IP cannot appear in the certificate.
 
 The listener requires a gNMIc collector that includes
 [openconfig/gnmic#995](https://github.com/openconfig/gnmic/pull/995); an older

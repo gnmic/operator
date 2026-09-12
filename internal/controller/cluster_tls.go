@@ -122,6 +122,16 @@ func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster, cer
 		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
 		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
 		fmt.Sprintf("%s.%s.%s.svc.%s", podName, stsName, cluster.Namespace, gnmic.ClusterDomain()),
+		// The headless Service name resolves to every pod, so a client that
+		// dials it lands on an arbitrary one. The certificate this pod presents
+		// on the REST and gNMI ports must cover that name too, or a verifying
+		// client can only ever use the per-pod names. The tunnel certificate
+		// has carried its Service name from the start; this brings the API
+		// certificate in line.
+		stsName,
+		fmt.Sprintf("%s.%s", stsName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.svc", stsName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.svc.%s", stsName, cluster.Namespace, gnmic.ClusterDomain()),
 	}
 
 	return &certmanagerv1.Certificate{
