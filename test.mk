@@ -190,7 +190,11 @@ apply-test-resources: apply-test-targets apply-test-subscriptions apply-test-out
 IT_CLUSTER_NAME ?= gnmic-it
 IT_CONTEXT      := kind-$(IT_CLUSTER_NAME)
 IT_KUBECTL      := kubectl --context $(IT_CONTEXT)
-IT_OPERATOR_IMG ?= gnmic-operator:integration
+# Tagged from the tree so the image in the cluster says what it was built from
+# (`-dirty` when uncommitted changes are included). The tag is for traceability
+# only: integration-deploy-operator restarts the Deployment regardless, because
+# a rebuilt image loaded under an unchanged tag is otherwise never run.
+IT_OPERATOR_IMG ?= gnmic-operator:$(shell git describe --always --dirty 2>/dev/null || echo integration)
 GNMIGEN_IMAGE   ?= registry.kmrd.dev/gnmic/gnmigen:0.0.0
 # Collector image for the v2 suites. v0.48.0 (latest release) predates
 # openconfig/gnmic#995, the collector's northbound gNMI server, which
@@ -270,18 +274,20 @@ define it_deploy
 	exit $$status
 endef
 
+# `kubectl apply` with an unchanged image tag changes nothing, so a rebuilt image
+# loaded under the same tag would keep the old pod running and every suite would
+# test stale code. The deploy therefore restarts the Deployment unconditionally;
+# on a fresh cluster the rollout is a no-op.
 .PHONY: integration-deploy-operator
-integration-deploy-operator: ## Deploy or redeploy the operator into the integration cluster
-	@$(it_deploy)
-	@echo "waiting for the operator to be available..."
-	$(IT_KUBECTL) wait --namespace gnmic-system --for=condition=Available deployment/gnmic-controller-manager --timeout=180s
-
-.PHONY: integration-env-refresh
-integration-env-refresh: ## Rebuild the operator image and restart it, without recreating the cluster
-	$(MAKE) integration-images
+integration-deploy-operator: ## Deploy (or redeploy) the operator into the integration cluster and roll it
 	@$(it_deploy)
 	$(IT_KUBECTL) -n gnmic-system rollout restart deployment/gnmic-controller-manager
 	$(IT_KUBECTL) -n gnmic-system rollout status deployment/gnmic-controller-manager --timeout=180s
+
+.PHONY: integration-env-refresh
+integration-env-refresh: ## Rebuild the operator image and redeploy it, without recreating the cluster
+	$(MAKE) integration-images
+	$(MAKE) integration-deploy-operator
 
 .PHONY: integration-env-down
 integration-env-down: ## Delete the integration kind cluster

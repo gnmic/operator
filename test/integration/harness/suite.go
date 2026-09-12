@@ -380,14 +380,6 @@ func (s *Suite) Dump(w io.Writer) {
 	fmt.Fprintf(w, "===== end diagnostics =====\n\n")
 }
 
-// RequireGnmiGen skips a test when no simulator is present.
-func (s *Suite) RequireGnmiGen(t *testing.T) {
-	t.Helper()
-	if s.GnmiGen == nil {
-		t.Skip("test requires gnmi-gen")
-	}
-}
-
 // namespaceFor derives a suite's namespace from its numeric prefix, so
 // "003-targets" runs in gnmic-it-003 and suites never collide.
 func namespaceFor(suiteName string) string {
