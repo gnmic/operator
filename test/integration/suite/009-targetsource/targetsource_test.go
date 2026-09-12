@@ -341,10 +341,10 @@ func TestTS002_ConfigMapEditsRunWithoutInterval(t *testing.T) {
 	// Drop leaf4: 1 of 4 is within the guard, so it is pruned.
 	applyInventory(t, cm, devices(leaf1, leaf2, leaf3))
 	waitTargetsExactly(t, src, targetName(src, leaf1), targetName(src, leaf2), targetName(src, leaf3))
-	ts := waitManaged(t, src, 3)
-	if ts.Status.Pruned != 1 {
-		t.Errorf("pruned = %d, want 1", ts.Status.Pruned)
-	}
+	// status.pruned counts one run. The delete it reports fires the owned-Target
+	// watch, which runs the source again with nothing to do and pruned=0, so the
+	// counter is not something to pin after the fact; the Target being gone is.
+	waitManaged(t, src, 3)
 	waitCondition(t, src, condReady, metav1.ConditionTrue, reasonSucceeded)
 }
 

@@ -396,6 +396,46 @@ func (k *K8s) WaitReadyPods(t *testing.T, cluster string, want int, timeout time
 	return ready
 }
 
+// WaitStatefulSetRolledOut blocks until a cluster's StatefulSet asks for
+// replicas pods and has finished getting there: every pod present, Ready, and
+// on the current template revision.
+//
+// The replica count is an input, not read from the object: right after the
+// Cluster is patched the operator has not yet touched the StatefulSet, and the
+// old object -- fewer replicas, nothing in flight -- looks converged. Waiting
+// on it returned at once and left the caller holding a port-forward to a pod
+// that was about to be rolled.
+//
+// WaitReadyPods is not enough after a change that touches the pod template
+// as well as the replica count (TLS clusters: the per-ordinal certificate
+// projections live in the template). The StatefulSet creates the new ordinal
+// first and rolls the old ones afterwards, so "N pods Ready" is briefly true
+// while an old pod is still about to be replaced.
+func (k *K8s) WaitStatefulSetRolledOut(t *testing.T, cluster string, replicas int32) {
+	t.Helper()
+	name := StatefulSetName(cluster)
+	Wait(t, Long, fmt.Sprintf("StatefulSet %s rolled out at %d replicas", name, replicas), func() (bool, string) {
+		var sts appsv1.StatefulSet
+		if err := k.Client.Get(k.Ctx, types.NamespacedName{Namespace: k.Namespace, Name: name}, &sts); err != nil {
+			return false, err.Error()
+		}
+		st := sts.Status
+		done := sts.Spec.Replicas != nil && *sts.Spec.Replicas == replicas &&
+			st.ObservedGeneration >= sts.Generation &&
+			st.Replicas == replicas && st.ReadyReplicas == replicas &&
+			st.CurrentRevision != "" && st.CurrentRevision == st.UpdateRevision
+		return done, fmt.Sprintf("spec=%v gen=%d/%d replicas=%d ready=%d updated=%d current=%s update=%s",
+			ptrDeref(sts.Spec.Replicas), st.ObservedGeneration, sts.Generation, st.Replicas, st.ReadyReplicas, st.UpdatedReplicas, st.CurrentRevision, st.UpdateRevision)
+	})
+}
+
+func ptrDeref(p *int32) int32 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 // WaitPodGone blocks until a named pod no longer exists.
 func (k *K8s) WaitPodGone(t *testing.T, name string) {
 	t.Helper()
