@@ -5,12 +5,14 @@
 //
 // Test -> ID:
 //
-//	TestTLS001_ClientCertsMounted          -> 010-1
-//	TestTLS002_MissingIssuerGatesReady     -> 010-2
-//	TestTLS003_SkipVerifyCollectsTLS       -> 010-3
-//	TestTLS004_CAVerification              -> 010-4
-//	TestTLS005_APITLSKeepsConfigPath      -> 010-5
-//	TestTLS006_ClientCertRotation          -> 010-6
+//	TestTLS001_ClientCertsMounted             -> 010-1
+//	TestTLS002_MissingIssuerGatesReady        -> 010-2
+//	TestTLS003_SkipVerifyCollectsTLS          -> 010-3
+//	TestTLS004_CAVerification                 -> 010-4
+//	TestTLS005_APITLSKeepsConfigPath          -> 010-5
+//	TestTLS006_ClientCertRotation             -> 010-6
+//	TestTLS007_ScaleDoesNotRollPods           -> 010-7
+//	TestTLS008_LegacyPerPodCertificateRemoved -> 010-8
 //
 // Run:
 //
@@ -27,6 +29,7 @@ import (
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -215,7 +218,7 @@ func patchAPITLS(t *testing.T, issuerRef string) {
 	t.Helper()
 	s.K8s.Patch(t, s.K8s.Cluster(t, cluster), fmt.Sprintf(
 		`{"spec":{"api":{"restPort":7890,"tls":{"issuerRef":%q}}}}`, issuerRef))
-	waitCertReady(t, harness.APICertName(cluster, 0))
+	waitCertReady(t, harness.APICertName(cluster))
 	harness.WaitClusterCondition(t, s.K8s, cluster, harness.CondCertificatesReady, metav1.ConditionTrue, harness.Long)
 	waitClusterReady(t, cluster)
 	waitPodFile(t, cluster, "/etc/gnmic/tls/tls.crt")
@@ -636,4 +639,107 @@ func keysOf(m map[string][]byte) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestTLS007_ScaleDoesNotRollPods: with api.tls, scaling used to roll every
+// existing pod, because the pod template enumerated one certificate Secret per
+// ordinal. One cluster-wide certificate keeps the template independent of the
+// replica count, so pod-0 survives a scale to two untouched.
+func TestTLS007_ScaleDoesNotRollPods(t *testing.T) {
+	waitIdle(t)
+	const name = "scale"
+	applyCluster(t, name, map[string]any{"APIIssuer": issuer})
+	waitCertReady(t, harness.APICertName(name))
+	waitClusterReady(t, name)
+	pod0 := s.K8s.WaitReadyPods(t, name, 1, harness.Long)[0]
+	before := s.K8s.StatefulSet(t, harness.StatefulSetName(name))
+
+	s.K8s.Patch(t, s.K8s.Cluster(t, name), `{"spec":{"replicas":2}}`)
+	s.K8s.WaitStatefulSetRolledOut(t, name, 2)
+	s.K8s.WaitReadyPods(t, name, 2, harness.Long)
+
+	after := s.K8s.StatefulSet(t, harness.StatefulSetName(name))
+	if after.Status.UpdateRevision != before.Status.UpdateRevision {
+		t.Errorf("pod template revision changed on scale: %s -> %s", before.Status.UpdateRevision, after.Status.UpdateRevision)
+	}
+	var p corev1.Pod
+	if err := s.K8s.Client.Get(s.Ctx, types.NamespacedName{Namespace: s.Namespace, Name: pod0.Name}, &p); err != nil {
+		t.Fatalf("pod-0 after scale: %v", err)
+	}
+	if p.UID != pod0.UID {
+		t.Errorf("pod-0 was replaced by the scale (uid %s -> %s)", pod0.UID, p.UID)
+	}
+
+	// One server certificate for the cluster, none per pod.
+	var certs certmanagerv1.CertificateList
+	if err := s.K8s.Client.List(s.Ctx, &certs, client.InNamespace(s.Namespace),
+		client.MatchingLabels{harness.LabelClusterName: name}); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, c := range certs.Items {
+		names = append(names, c.Name)
+	}
+	if len(certs.Items) != 1 || certs.Items[0].Name != harness.APICertName(name) {
+		t.Errorf("certificates for %s = %v, want only %s", name, names, harness.APICertName(name))
+	}
+}
+
+// TestTLS008_LegacyPerPodCertificateRemoved: operators before 0.6.0 issued one
+// Certificate per pod (<sts>-<ordinal>-tls). After the upgrade the cluster gets
+// its wildcard certificate and, once the pods run the template that mounts it,
+// the legacy Certificates are deleted. Their Secrets stay behind: the operator
+// never writes Secrets (the TLS guide gives the command to remove them).
+func TestTLS008_LegacyPerPodCertificateRemoved(t *testing.T) {
+	waitIdle(t)
+	const name = "legacy"
+	legacyName := harness.StatefulSetName(name) + "-0-tls"
+	// What the old operator left behind: a per-pod Certificate carrying the
+	// cluster label, and the Secret cert-manager issued for it.
+	s.K8s.ApplyYAML(t, `
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Name }}
+  labels:
+    operator.gnmic.dev/cluster: {{ .Cluster }}
+spec:
+  secretName: {{ .Name }}
+  secretTemplate:
+    labels:
+      operator.gnmic.dev/cluster: {{ .Cluster }}
+      operator.gnmic.dev/pod-name: {{ .Pod }}
+  issuerRef:
+    name: {{ .Issuer }}
+    kind: Issuer
+  commonName: {{ .Pod }}
+  dnsNames: [{{ .Pod }}]
+`, map[string]any{"Name": legacyName, "Cluster": name, "Pod": harness.PodName(name, 0), "Issuer": issuer})
+	waitCertReady(t, legacyName)
+	t.Cleanup(func() {
+		_ = s.K8s.Client.Delete(s.Ctx, &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: s.Namespace, Name: legacyName}})
+	})
+
+	applyCluster(t, name, map[string]any{"APIIssuer": issuer})
+	waitCertReady(t, harness.APICertName(name))
+	waitClusterReady(t, name)
+
+	harness.Wait(t, harness.Long, "legacy per-pod Certificate deleted", func() (bool, string) {
+		var c certmanagerv1.Certificate
+		err := s.K8s.Client.Get(s.Ctx, types.NamespacedName{Namespace: s.Namespace, Name: legacyName}, &c)
+		if apierrors.IsNotFound(err) {
+			return true, ""
+		}
+		if err != nil {
+			return false, err.Error()
+		}
+		return false, "still present"
+	})
+	var sec corev1.Secret
+	if err := s.K8s.Client.Get(s.Ctx, types.NamespacedName{Namespace: s.Namespace, Name: legacyName}, &sec); err != nil {
+		t.Errorf("legacy Secret %s should be left in place: %v", legacyName, err)
+	}
+	if !conditionTrue(s.K8s.Cluster(t, name), harness.CondReady) {
+		t.Error("cluster lost Ready during the legacy cleanup")
+	}
 }

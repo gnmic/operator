@@ -372,49 +372,22 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 				},
 			})
 		} else {
-			// use projected volume with subPathExpr to mount the correct certificate per pod
-			// each pod has a certificate secret named <stsName>-<ordinal>-tls
-			// organize by pod name so subPathExpr can select the right one
-
-			certSources := []corev1.VolumeProjection{}
-			for i := int32(0); i < desiredReplicas(cluster); i++ {
-				podName := fmt.Sprintf("%s-%d", stsName, i)
-				secretName := fmt.Sprintf("%s-tls", podName)
-				certSources = append(certSources, corev1.VolumeProjection{
-					Secret: &corev1.SecretProjection{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretName,
-						},
-						Items: []corev1.KeyToPath{
-							{Key: "tls.crt", Path: fmt.Sprintf("%s/tls.crt", podName)},
-							{Key: "tls.key", Path: fmt.Sprintf("%s/tls.key", podName)},
-							{Key: "ca.crt", Path: fmt.Sprintf("%s/ca.crt", podName)},
-						},
-						Optional: ptr.To(true),
-					},
-				})
-			}
-
+			// One Secret for the whole cluster, mounted as is. A projection of
+			// one Secret per ordinal here put the replica count into the pod
+			// template and rolled every pod on every scale.
 			volumes = append(volumes, corev1.Volume{
 				Name: "tls-certs",
 				VolumeSource: corev1.VolumeSource{
-					Projected: &corev1.ProjectedVolumeSource{
-						Sources: certSources,
-					},
+					Secret: &corev1.SecretVolumeSource{SecretName: apiCertificateName(cluster)},
 				},
 			})
 		}
 
-		// add TLS volume mount to main container using subPathExpr to select the pod's certificate
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:        "tls-certs",
-			MountPath:   gnmic.CertFilesBasePath,
-			SubPathExpr: "$(POD_NAME)", // Selects the subdirectory matching the pod name
-			ReadOnly:    true,
+			Name:      "tls-certs",
+			MountPath: gnmic.CertFilesBasePath,
+			ReadOnly:  true,
 		})
-
-		// POD_NAME drives the subPathExpr above.
-		envVars = ensurePodNameEnv(envVars)
 	}
 
 	// add CA bundle volume if specified (for verifying target certificates)
@@ -478,46 +451,20 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 					},
 				})
 			} else {
-				// use projected volume with subPathExpr to mount the correct certificate per pod
-				tunnelCertSources := []corev1.VolumeProjection{}
-				for i := int32(0); i < desiredReplicas(cluster); i++ {
-					podName := fmt.Sprintf("%s-%d", stsName, i)
-					secretName := fmt.Sprintf("%s-tunnel-tls", podName)
-					tunnelCertSources = append(tunnelCertSources, corev1.VolumeProjection{
-						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: secretName,
-							},
-							Items: []corev1.KeyToPath{
-								{Key: "tls.crt", Path: fmt.Sprintf("%s/tls.crt", podName)},
-								{Key: "tls.key", Path: fmt.Sprintf("%s/tls.key", podName)},
-								{Key: "ca.crt", Path: fmt.Sprintf("%s/ca.crt", podName)},
-							},
-							Optional: ptr.To(true),
-						},
-					})
-				}
-
+				// one Secret for the whole cluster; see the API TLS volume above
 				volumes = append(volumes, corev1.Volume{
 					Name: "tunnel-tls-certs",
 					VolumeSource: corev1.VolumeSource{
-						Projected: &corev1.ProjectedVolumeSource{
-							Sources: tunnelCertSources,
-						},
+						Secret: &corev1.SecretVolumeSource{SecretName: tunnelCertificateName(cluster)},
 					},
 				})
 			}
 
-			// add tunnel TLS volume mount
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{
-				Name:        "tunnel-tls-certs",
-				MountPath:   gnmic.TunnelCertFilesBasePath,
-				SubPathExpr: "$(POD_NAME)",
-				ReadOnly:    true,
+				Name:      "tunnel-tls-certs",
+				MountPath: gnmic.TunnelCertFilesBasePath,
+				ReadOnly:  true,
 			})
-
-			// POD_NAME may already be there from the API TLS path.
-			envVars = ensurePodNameEnv(envVars)
 		}
 
 		// add tunnel CA bundle volume if bundleRef is configured for client certificate verification
