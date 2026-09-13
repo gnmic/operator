@@ -165,6 +165,16 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	logger.Info("reconciled cluster statefulset", "replicas", ptr.Deref(statefulSet.Spec.Replicas, 0), "image", statefulSet.Spec.Template.Spec.Containers[0].Image)
 
+	// Per-pod certificates from an earlier operator are removed only once every
+	// pod runs the template that mounts the cluster-wide ones; an old pod still
+	// projects the old Secrets. Best effort: a failure here is logged and
+	// retried on the next pass, it must not hold up the apply.
+	if (certManagerIssued(apiTLS(cluster)) || certManagerIssued(tunnelTLS(cluster))) && statefulSetRolledOut(statefulSet) {
+		if err := r.cleanupLegacyPodCertificates(ctx, cluster); err != nil {
+			logger.Error(err, "failed to clean up legacy per-pod certificates")
+		}
+	}
+
 	// resolve the enabled pipelines referencing this cluster into an apply plan
 	pipelines, err := r.listPipelinesForCluster(ctx, cluster)
 	if err != nil {
