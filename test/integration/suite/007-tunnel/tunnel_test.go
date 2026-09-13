@@ -475,11 +475,11 @@ func TestTunnel006_EveryPodReceivesMatches(t *testing.T) {
 		s.K8s.Patch(t, s.K8s.Cluster(t, cluster), `{"spec":{"replicas":1}}`)
 		s.K8s.WaitPodGone(t, harness.PodName(cluster, 1))
 	})
-	// With grpcTunnel.tls the pod template enumerates one certificate source
-	// per ordinal, so a replica change also rolls the existing pod -- after the
-	// new ordinal is Ready. Wait for the whole rollout, or a forward opened to
-	// old pod-0 dies seconds later (seen in CI). The forward from before the
-	// scale is stale for the same reason.
+	// Wait for the StatefulSet to settle at two Ready replicas on one revision
+	// before forwarding: a forward opened to a pod that is about to be rolled
+	// dies seconds later (seen in CI, back when the tunnel certificate was
+	// projected per ordinal and a scale rolled pod-0 too). The forward from
+	// before the scale is re-opened for the same reason.
 	s.K8s.WaitStatefulSetRolledOut(t, cluster, 2)
 	harness.WaitConfigApplied(t, s.K8s, cluster)
 	get0 = collectorAPI(t, 0)
