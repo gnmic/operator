@@ -79,10 +79,15 @@ affinity: {}
 leaderElection:
   enabled: true
 
-# Webhook configuration
+# Webhook configuration. With enabled: false the chart also sets
+# ENABLE_WEBHOOKS=false on the manager, so it runs without a serving
+# certificate (no cert-manager required).
 webhook:
   enabled: true
   port: 9443
+
+# Extra environment variables for the manager container.
+extraEnv: []
 
 # Metrics configuration
 metrics:
