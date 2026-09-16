@@ -95,13 +95,13 @@ spec:
 
 ## Certificate Modes
 
-### Projected Volumes (Default)
+### Secret Volume (Default)
 
 When `useCSIDriver: false` (default):
 
-- The operator creates a cert-manager `Certificate` CR per pod
-- cert-manager creates a `Secret` per pod
-- Secrets are mounted via Kubernetes projected volumes
+- The operator creates one cert-manager `Certificate` CR per cluster
+- cert-manager creates the matching `Secret`
+- The Secret is mounted into every pod as a plain Secret volume
 
 **Advantages:**
 - Works with any cert-manager installation
@@ -132,21 +132,32 @@ spec:
 
 ### Certificate Creation
 
-For a 3-replica cluster named `my-cluster`:
+For a cluster named `my-cluster`, regardless of its replica count:
 
 ```
-Certificate: gnmic-my-cluster-0-tls
-  → Secret: gnmic-my-cluster-0-tls
-  → CN: gnmic-my-cluster-0
+Certificate: gnmic-my-cluster-api-tls
+  → Secret: gnmic-my-cluster-api-tls
+  → CN: gnmic-my-cluster
   → DNS SANs:
-    - gnmic-my-cluster-0
-    - gnmic-my-cluster-0.gnmic-my-cluster.default.svc
+    - *.gnmic-my-cluster.default.svc.cluster.local   (every pod, via the headless Service)
+    - *.gnmic-my-cluster.default.svc, *.gnmic-my-cluster.default, *.gnmic-my-cluster
+    - gnmic-my-cluster.default.svc.cluster.local     (the headless Service itself)
+    - gnmic-my-cluster.default.svc, gnmic-my-cluster.default, gnmic-my-cluster
+```
 
-Certificate: gnmic-my-cluster-1-tls
-  ...
+The wildcard covers every pod, so scaling the cluster neither issues new
+certificates nor changes the pod template; existing pods keep running. A
+tunnel-TLS cluster gets a second certificate, `gnmic-my-cluster-tunnel-tls`,
+built the same way plus the names of the tunnel Service.
 
-Certificate: gnmic-my-cluster-2-tls
-  ...
+Clusters created by operator versions before 0.6.0 had one certificate per pod
+(`gnmic-my-cluster-0-tls`, ...). On upgrade the operator issues the cluster-wide
+certificate, rolls the pods onto it, and deletes the per-pod Certificates once
+every pod runs the new template. Their Secrets are left in place, because the
+operator never writes Secrets; remove them once the rollout is complete:
+
+```bash
+kubectl delete secrets -l operator.gnmic.dev/cluster-name=my-cluster,operator.gnmic.dev/pod-name
 ```
 
 ### Controller CA Distribution
@@ -209,7 +220,7 @@ When scaling a TLS-enabled cluster:
 kubectl get certificates -l operator.gnmic.dev/cluster-name=my-cluster
 
 # Check certificate details
-kubectl describe certificate gnmic-my-cluster-0-tls
+kubectl describe certificate gnmic-my-cluster-api-tls
 ```
 
 ### Check Secrets
@@ -219,7 +230,7 @@ kubectl describe certificate gnmic-my-cluster-0-tls
 kubectl get secrets -l operator.gnmic.dev/cluster-name=my-cluster
 
 # Inspect certificate content
-kubectl get secret gnmic-my-cluster-0-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
+kubectl get secret gnmic-my-cluster-api-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
 ```
 
 ### Check Controller CA ConfigMap
@@ -237,7 +248,7 @@ kubectl get configmap gnmic-my-cluster-controller-ca -o yaml
 kubectl logs -n cert-manager deploy/cert-manager
 
 # Check certificate conditions
-kubectl get certificate gnmic-my-cluster-0-tls -o jsonpath='{.status.conditions}'
+kubectl get certificate gnmic-my-cluster-api-tls -o jsonpath='{.status.conditions}'
 ```
 
 **Issuer not found:**

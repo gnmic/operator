@@ -210,7 +210,7 @@ spec:
 | Resource | Name Pattern | Purpose |
 |----------|--------------|---------|
 | Service | `gnmic-{cluster}-tunnel` | Exposes tunnel port to external devices |
-| Certificate | `gnmic-{cluster}-{index}-tunnel-tls` | Per-pod tunnel TLS certificate (if TLS enabled) |
+| Certificate | `gnmic-{cluster}-tunnel-tls` | Tunnel server certificate shared by the pods (if TLS enabled) |
 
 ### Using Tunnel Targets
 
@@ -252,8 +252,8 @@ spec:
 
 When TLS is enabled:
 
-1. **Per-Pod Certificates**: The operator creates a cert-manager `Certificate` for each pod
-2. **Automatic Mounting**: Certificates are mounted at `/etc/certs/api/`
+1. **One Certificate per Cluster**: The operator creates a single cert-manager `Certificate` whose names cover every pod (`*.gnmic-{cluster}.{namespace}.svc`) and the headless Service. Scaling the cluster therefore never changes the pod template or restarts existing pods.
+2. **Automatic Mounting**: The certificate Secret is mounted at `/etc/gnmic/tls/`
 3. **mTLS**: The operator authenticates to pods using client certificates
 4. **CA Sync**: The operator's CA is synced to the cluster namespace as a ConfigMap
 
@@ -316,8 +316,8 @@ When TLS is enabled, additional resources are created:
 
 | Resource | Name Pattern | Purpose |
 |----------|--------------|---------|
-| Certificate | `gnmic-{cluster}-{index}-tls` | Per-pod TLS certificate |
-| Secret | `gnmic-{cluster}-{index}-tls` | Certificate and key (created by cert-manager) |
+| Certificate | `gnmic-{cluster}-api-tls` | Server certificate shared by the pods (wildcard + headless Service names) |
+| Secret | `gnmic-{cluster}-api-tls` | Certificate and key (created by cert-manager) |
 | ConfigMap | `gnmic-{cluster}-controller-ca` | Controller's CA for mTLS verification |
 
 ## gNMI Client TLS (Target Connections)

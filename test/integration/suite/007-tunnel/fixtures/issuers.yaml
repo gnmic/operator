@@ -1,5 +1,5 @@
 # Suite-local cert-manager issuer chain. selfsigned-issuer bootstraps the CA;
-# suite-ca-issuer signs the Cluster's per-pod tunnel server certificates
+# suite-ca-issuer signs the Cluster's tunnel server certificate
 # (spec.grpcTunnel.tls.issuerRef). Applied before gnmi-gen so the Issuer is
 # Ready when the baseline Cluster asks for certificates.
 apiVersion: cert-manager.io/v1

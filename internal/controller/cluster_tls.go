@@ -25,9 +25,11 @@ import (
 
 	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -36,128 +38,118 @@ import (
 	"github.com/gnmic/operator/internal/gnmic"
 )
 
-// reconcileCertificates creates/updates cert-manager Certificate resources for each pod
-// returns true if all certificates are ready, false otherwise
+// reconcileCertificates creates/updates the cert-manager Certificate the
+// cluster's pods present on the REST and gNMI ports, and reports whether it is
+// ready.
+//
+// One certificate per cluster, with wildcard DNS names, rather than one per
+// pod. Per-pod certificates put the replica count into the pod template -- one
+// Secret projection per ordinal -- so every scale operation rolled every pod,
+// and a new ordinal had to wait for its own issuance before it could start. A
+// server certificate gains nothing from a per-pod key: the operator verifies
+// the pod's hostname, and the wildcard matches every pod under the headless
+// Service. Client TLS already worked this way.
 func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (bool, error) {
-	logger := log.FromContext(ctx)
-
 	if cluster.Spec.API == nil || cluster.Spec.API.TLS == nil || cluster.Spec.API.TLS.IssuerRef == "" {
 		return true, nil // TLS not configured, skip
 	}
-
-	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := desiredReplicas(cluster)
-
-	allReady := true
-
-	// create/update certificates for each replica
-	for i := int32(0); i < replicas; i++ {
-		podName := fmt.Sprintf("%s-%d", stsName, i)
-		certName := fmt.Sprintf("%s-tls", podName)
-
-		cert := r.buildCertificate(cluster, certName, podName, stsName)
-
-		if err := controllerutil.SetControllerReference(cluster, cert, r.Scheme); err != nil {
-			return false, err
-		}
-
-		var current certmanagerv1.Certificate
-		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if apierrors.IsNotFound(err) {
-			logger.Info("creating certificate", "certificate", certName)
-			if err := r.Create(ctx, cert); err != nil {
-				return false, err
-			}
-			allReady = false
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-
-		// check if certificate needs update
-		if r.certificateNeedsUpdate(&current, cert) {
-			current.Spec = cert.Spec
-			if err := r.Update(ctx, &current); err != nil {
-				return false, err
-			}
-		}
-
-		// check if certificate is ready
-		if !r.isCertificateReady(&current) {
-			logger.Info("certificate not ready", "certificate", certName)
-			allReady = false
-		}
-	}
-
-	// clean up certificates for replicas that no longer exist (scale down)
-	var certList certmanagerv1.CertificateList
-	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		LabelClusterName: cluster.Name,
-	}); err != nil {
-		return false, err
-	}
-
-	for _, cert := range certList.Items {
-		// extract the ordinal from the certificate name (for example: "gnmic-cluster1-2-tls" -> 2)
-		ordinal := r.extractOrdinalFromCertName(cert.Name, stsName)
-		if ordinal >= int(replicas) {
-			logger.Info("deleting certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
-				return false, err
-			}
-		}
-	}
-
-	return allReady, nil
+	return r.ensureCertificate(ctx, cluster, r.buildCertificate(cluster))
 }
 
-// buildCertificate creates a cert-manager Certificate spec for a pod
-func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster, certName, podName, stsName string) *certmanagerv1.Certificate {
-	// build DNS names for the certificate
-	// pod DNS: <pod-name>.<service-name>.<namespace>.svc.<cluster-domain>
-	dnsNames := []string{
-		podName,
-		fmt.Sprintf("%s.%s", podName, stsName),
-		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc.%s", podName, stsName, cluster.Namespace, gnmic.ClusterDomain()),
-		// The headless Service name resolves to every pod, so a client that
-		// dials it lands on an arbitrary one. The certificate this pod presents
-		// on the REST and gNMI ports must cover that name too, or a verifying
-		// client can only ever use the per-pod names. The tunnel certificate
-		// has carried its Service name from the start; this brings the API
-		// certificate in line.
-		stsName,
-		fmt.Sprintf("%s.%s", stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.svc", stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.svc.%s", stsName, cluster.Namespace, gnmic.ClusterDomain()),
-	}
+// ensureCertificate creates or updates one Certificate and reports whether it
+// is Ready.
+func (r *ClusterReconciler) ensureCertificate(ctx context.Context, cluster *gnmicv1alpha1.Cluster, cert *certmanagerv1.Certificate) (bool, error) {
+	logger := log.FromContext(ctx)
 
+	if err := controllerutil.SetControllerReference(cluster, cert, r.Scheme); err != nil {
+		return false, err
+	}
+	var current certmanagerv1.Certificate
+	err := r.Get(ctx, client.ObjectKeyFromObject(cert), &current)
+	if apierrors.IsNotFound(err) {
+		logger.Info("creating certificate", "certificate", cert.Name)
+		if err := r.Create(ctx, cert); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if r.certificateNeedsUpdate(&current, cert) {
+		current.Spec = cert.Spec
+		if err := r.Update(ctx, &current); err != nil {
+			return false, err
+		}
+	}
+	if !r.isCertificateReady(&current) {
+		logger.Info("certificate not ready", "certificate", cert.Name)
+		return false, nil
+	}
+	return true, nil
+}
+
+// apiCertificateName is the Certificate (and Secret) for the REST/gNMI server
+// certificate. Distinct from the per-pod names an earlier operator used
+// (<sts>-<ordinal>-tls), which cleanupLegacyPodCertificates removes.
+func apiCertificateName(cluster *gnmicv1alpha1.Cluster) string {
+	return resourcePrefix + cluster.Name + "-api-tls"
+}
+
+// tunnelCertificateName is the Certificate (and Secret) for the tunnel server.
+func tunnelCertificateName(cluster *gnmicv1alpha1.Cluster) string {
+	return resourcePrefix + cluster.Name + "-tunnel-tls"
+}
+
+// serverDNSNames are the names a cluster-wide server certificate must cover:
+// every pod under the headless Service, through a wildcard, and the Service
+// name itself, which resolves to an arbitrary pod. Bare pod hostnames are not
+// included -- a wildcard cannot express them, and the operator dials the fully
+// qualified form.
+func serverDNSNames(stsName, namespace string) []string {
+	domain := gnmic.ClusterDomain()
+	return []string{
+		"*." + stsName,
+		fmt.Sprintf("*.%s.%s", stsName, namespace),
+		fmt.Sprintf("*.%s.%s.svc", stsName, namespace),
+		fmt.Sprintf("*.%s.%s.svc.%s", stsName, namespace, domain),
+		stsName,
+		fmt.Sprintf("%s.%s", stsName, namespace),
+		fmt.Sprintf("%s.%s.svc", stsName, namespace),
+		fmt.Sprintf("%s.%s.svc.%s", stsName, namespace, domain),
+	}
+}
+
+// buildCertificate is the cert-manager Certificate spec for the cluster's
+// REST/gNMI server certificate.
+func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster) *certmanagerv1.Certificate {
+	stsName := resourcePrefix + cluster.Name
+	name := apiCertificateName(cluster)
 	return &certmanagerv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      certName,
+			Name:      name,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":       "gnmic",
-				"app.kubernetes.io/managed-by": "gnmic-operator",
+				"app.kubernetes.io/name":       LabelValueName,
+				"app.kubernetes.io/managed-by": LabelValueManagedBy,
 				LabelClusterName:               cluster.Name,
+				LabelCertType:                  LabelValueCertTypeAPI,
 			},
 		},
 		Spec: certmanagerv1.CertificateSpec{
-			SecretName: certName,
+			SecretName: name,
 			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
 				Labels: map[string]string{
 					LabelClusterName: cluster.Name,
-					LabelPodName:     podName,
+					LabelCertType:    LabelValueCertTypeAPI,
 				},
 			},
 			IssuerRef: cmmeta.IssuerReference{
 				Name: cluster.Spec.API.TLS.IssuerRef,
 				Kind: "Issuer", // defaults to Issuer. TODO: configurable to ClusterIssuer ?
 			},
-			CommonName: podName,
-			DNSNames:   dnsNames,
+			CommonName: stsName,
+			DNSNames:   serverDNSNames(stsName, cluster.Namespace),
 			Usages: []certmanagerv1.KeyUsage{
 				certmanagerv1.UsageServerAuth,
 				certmanagerv1.UsageClientAuth,
@@ -195,7 +187,8 @@ func (r *ClusterReconciler) isCertificateReady(cert *certmanagerv1.Certificate) 
 	return false
 }
 
-// extractOrdinalFromCertName extracts the StatefulSet ordinal from a certificate name
+// extractOrdinalFromCertName extracts the StatefulSet ordinal from a legacy per-pod
+// certificate name; -1 for anything else (including the cluster-wide certificates).
 // for example: "gnmic-cluster1-2-tls" with stsName "gnmic-cluster1" returns 2
 func (r *ClusterReconciler) extractOrdinalFromCertName(certName, stsName string) int {
 	// remove the "-tls" suffix and the stsName prefix
@@ -229,108 +222,33 @@ func (r *ClusterReconciler) cleanupCertificates(ctx context.Context, cluster *gn
 	return nil
 }
 
-// reconcileTunnelCertificates creates/updates cert-manager Certificate resources for tunnel TLS
-// returns true if all certificates are ready, false otherwise
+// reconcileTunnelCertificates creates/updates the cert-manager Certificate the
+// cluster's pods present on the gRPC tunnel port, and reports whether it is
+// ready. One certificate per cluster; see reconcileCertificates.
 func (r *ClusterReconciler) reconcileTunnelCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (bool, error) {
-	logger := log.FromContext(ctx)
-
 	if cluster.Spec.GRPCTunnel == nil || cluster.Spec.GRPCTunnel.TLS == nil || cluster.Spec.GRPCTunnel.TLS.IssuerRef == "" {
 		return true, nil // tunnel TLS not configured, skip
 	}
-
-	stsName := fmt.Sprintf("%s%s", resourcePrefix, cluster.Name)
-	replicas := desiredReplicas(cluster)
-
-	allReady := true
-
-	// create/update certificates for each replica
-	for i := int32(0); i < replicas; i++ {
-		podName := fmt.Sprintf("%s-%d", stsName, i)
-		certName := fmt.Sprintf("%s-tunnel-tls", podName)
-
-		cert := r.buildTunnelCertificate(cluster, certName, podName, stsName)
-
-		if err := controllerutil.SetControllerReference(cluster, cert, r.Scheme); err != nil {
-			return false, err
-		}
-
-		var current certmanagerv1.Certificate
-		err := r.Get(ctx, types.NamespacedName{Name: certName, Namespace: cluster.Namespace}, &current)
-		if apierrors.IsNotFound(err) {
-			logger.Info("creating tunnel certificate", "certificate", certName)
-			if err := r.Create(ctx, cert); err != nil {
-				return false, err
-			}
-			allReady = false
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-
-		// check if certificate needs update
-		if r.certificateNeedsUpdate(&current, cert) {
-			current.Spec = cert.Spec
-			if err := r.Update(ctx, &current); err != nil {
-				return false, err
-			}
-		}
-
-		// check if certificate is ready
-		if !r.isCertificateReady(&current) {
-			logger.Info("tunnel certificate not ready", "certificate", certName)
-			allReady = false
-		}
-	}
-
-	// clean up certificates for replicas that no longer exist (scale down)
-	var certList certmanagerv1.CertificateList
-	if err := r.List(ctx, &certList, client.InNamespace(cluster.Namespace), client.MatchingLabels{
-		LabelClusterName: cluster.Name,
-		LabelCertType:    LabelValueCertTypeTunnel,
-	}); err != nil {
-		return false, err
-	}
-
-	for _, cert := range certList.Items {
-		// extract the ordinal from the certificate name (for example: "gnmic-cluster1-2-tunnel-tls" -> 2)
-		ordinal := r.extractOrdinalFromTunnelCertName(cert.Name, stsName)
-		if ordinal >= int(replicas) {
-			logger.Info("deleting tunnel certificate for scaled-down replica", "certificate", cert.Name)
-			if err := r.Delete(ctx, &cert); err != nil && !apierrors.IsNotFound(err) {
-				return false, err
-			}
-		}
-	}
-
-	return allReady, nil
+	return r.ensureCertificate(ctx, cluster, r.buildTunnelCertificate(cluster))
 }
 
-// buildTunnelCertificate creates a cert-manager Certificate spec for tunnel TLS
-func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluster, certName, podName, stsName string) *certmanagerv1.Certificate {
-	// build DNS names for the certificate
-	dnsNames := []string{
-		podName,
-		fmt.Sprintf("%s.%s", podName, stsName),
-		fmt.Sprintf("%s.%s.%s", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc", podName, stsName, cluster.Namespace),
-		fmt.Sprintf("%s.%s.%s.svc.%s", podName, stsName, cluster.Namespace, gnmic.ClusterDomain()),
-	}
-
-	// also add the tunnel service DNS names if service is configured
-	if cluster.Spec.GRPCTunnel.Service != nil {
-		tunnelServiceName := fmt.Sprintf("%s%s-grpc-tunnel", resourcePrefix, cluster.Name)
-		dnsNames = append(dnsNames,
-			tunnelServiceName,
-			fmt.Sprintf("%s.%s", tunnelServiceName, cluster.Namespace),
-			fmt.Sprintf("%s.%s.svc", tunnelServiceName, cluster.Namespace),
-			fmt.Sprintf("%s.%s.svc.%s", tunnelServiceName, cluster.Namespace, gnmic.ClusterDomain()),
-		)
-	}
+// buildTunnelCertificate is the cert-manager Certificate spec for the cluster's
+// tunnel server certificate. Devices dial the tunnel Service, so its names are
+// included alongside the pod wildcard.
+func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluster) *certmanagerv1.Certificate {
+	stsName := resourcePrefix + cluster.Name
+	name := tunnelCertificateName(cluster)
+	tunnelServiceName := fmt.Sprintf("%s%s-grpc-tunnel", resourcePrefix, cluster.Name)
+	dnsNames := append(serverDNSNames(stsName, cluster.Namespace),
+		tunnelServiceName,
+		fmt.Sprintf("%s.%s", tunnelServiceName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.svc", tunnelServiceName, cluster.Namespace),
+		fmt.Sprintf("%s.%s.svc.%s", tunnelServiceName, cluster.Namespace, gnmic.ClusterDomain()),
+	)
 
 	return &certmanagerv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      certName,
+			Name:      name,
 			Namespace: cluster.Namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":       LabelValueName,
@@ -340,11 +258,10 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 			},
 		},
 		Spec: certmanagerv1.CertificateSpec{
-			SecretName: certName,
+			SecretName: name,
 			SecretTemplate: &certmanagerv1.CertificateSecretTemplate{
 				Labels: map[string]string{
 					LabelClusterName: cluster.Name,
-					LabelPodName:     podName,
 					LabelCertType:    LabelValueCertTypeTunnel,
 				},
 			},
@@ -352,7 +269,7 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 				Name: cluster.Spec.GRPCTunnel.TLS.IssuerRef,
 				Kind: "Issuer",
 			},
-			CommonName: podName,
+			CommonName: stsName,
 			DNSNames:   dnsNames,
 			Usages: []certmanagerv1.KeyUsage{
 				certmanagerv1.UsageServerAuth,
@@ -507,5 +424,52 @@ func (r *ClusterReconciler) cleanupClientTLSCertificates(ctx context.Context, cl
 		return err
 	}
 
+	return nil
+}
+
+// statefulSetRolledOut reports whether every pod of the StatefulSet exists, is
+// Ready, and runs the current template revision -- i.e. no rollout is in
+// flight or pending.
+func statefulSetRolledOut(sts *appsv1.StatefulSet) bool {
+	if sts == nil {
+		return false
+	}
+	want := ptr.Deref(sts.Spec.Replicas, 1)
+	st := sts.Status
+	return st.ObservedGeneration >= sts.Generation &&
+		st.Replicas == want && st.ReadyReplicas == want &&
+		st.CurrentRevision != "" && st.CurrentRevision == st.UpdateRevision
+}
+
+// cleanupLegacyPodCertificates removes the per-pod Certificates an earlier
+// operator issued (<sts>-<ordinal>-tls, <sts>-<ordinal>-tunnel-tls), once
+// every pod runs a template that no longer mounts them. Before that, an old
+// pod still projects their Secrets and cert-manager would stop renewing files
+// that pod depends on. The Certificates are told apart from the cluster-wide
+// ones by their ordinal names.
+//
+// cert-manager does not delete a Certificate's Secret with it, and Secrets are
+// read-only for this operator (see the RBAC markers), so the legacy Secrets
+// stay behind, labelled with the pod name they served. The documentation gives
+// the one-line command to remove them.
+func (r *ClusterReconciler) cleanupLegacyPodCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) error {
+	logger := log.FromContext(ctx)
+	stsName := resourcePrefix + cluster.Name
+
+	var certs certmanagerv1.CertificateList
+	if err := r.List(ctx, &certs, client.InNamespace(cluster.Namespace), client.MatchingLabels{LabelClusterName: cluster.Name}); err != nil {
+		return err
+	}
+	for i := range certs.Items {
+		c := &certs.Items[i]
+		if r.extractOrdinalFromCertName(c.Name, stsName) < 0 && r.extractOrdinalFromTunnelCertName(c.Name, stsName) < 0 {
+			continue
+		}
+		logger.Info("deleting legacy per-pod certificate; its secret is left for manual removal",
+			"certificate", c.Name, "secret", c.Spec.SecretName)
+		if err := r.Delete(ctx, c); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
 	return nil
 }
