@@ -19,6 +19,8 @@ package v1alpha1
 import (
 	"context"
 
+	certmanager "github.com/cert-manager/cert-manager/pkg/apis/certmanager"
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -117,6 +119,26 @@ func validateClusterTLS(tls *operatorv1alpha1.ClusterTLSConfig, fldPath *field.P
 	return errs
 }
 
+// validateAPIIssuer rejects an API TLS issuer the operator cannot read. It fetches the
+// issuer's CA secret to verify the pods, and only a cert-manager.io Issuer has one.
+func validateAPIIssuer(tls *operatorv1alpha1.ClusterTLSConfig, fldPath *field.Path) field.ErrorList {
+	const reason = "api.tls needs a cert-manager.io Issuer, whose CA secret the operator reads to verify the pods"
+
+	var errs field.ErrorList
+	if tls == nil {
+		return errs
+	}
+
+	if tls.IssuerKind != "" && tls.IssuerKind != certmanagerv1.IssuerKind {
+		errs = append(errs, field.Invalid(fldPath.Child("issuerKind"), tls.IssuerKind, reason))
+	}
+	if tls.IssuerGroup != "" && tls.IssuerGroup != certmanager.GroupName {
+		errs = append(errs, field.Invalid(fldPath.Child("issuerGroup"), tls.IssuerGroup, reason))
+	}
+
+	return errs
+}
+
 // validateClusterSpec validates the ClusterSpec fields.
 func validateClusterSpec(spec *operatorv1alpha1.ClusterSpec) error {
 	var allErrs field.ErrorList
@@ -169,6 +191,7 @@ func validateClusterSpec(spec *operatorv1alpha1.ClusterSpec) error {
 		}
 
 		allErrs = append(allErrs, validateClusterTLS(spec.API.TLS, apiPath.Child("tls"))...)
+		allErrs = append(allErrs, validateAPIIssuer(spec.API.TLS, apiPath.Child("tls"))...)
 	}
 
 	// validate clientTLS.

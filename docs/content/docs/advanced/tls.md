@@ -346,8 +346,21 @@ spec:
 | Field | Type | Description |
 |-------|------|-------------|
 | `issuerRef` | string | cert-manager Issuer to sign client certificates |
+| `issuerKind` | string | Kind of the issuer, `Issuer` by default. `ClusterIssuer` and external kinds such as `StepIssuer` are accepted |
+| `issuerGroup` | string | API group of the issuer, `cert-manager.io` by default |
 | `useCSIDriver` | bool | Use CSI driver for certificate mounting |
 | `bundleRef` | string | ConfigMap with CA bundle for target verification |
+
+An external issuer is named by kind and group. With [step-issuer](https://github.com/smallstep/step-issuer):
+
+```yaml
+spec:
+  clientTLS:
+    issuerRef: step-ca
+    issuerKind: StepIssuer
+    issuerGroup: certmanager.step.sm
+    bundleRef: target-ca-bundle
+```
 
 ### How Client TLS Works
 
@@ -501,9 +514,9 @@ kubectl exec gnmic-my-cluster-0 -- cat /etc/gnmic/client-ca/ca.crt
 
 | Configuration | Purpose | Key Fields |
 |---------------|---------|------------|
-| `api.tls` | Secure operator ↔ pod communication | `issuerRef`, `useCSIDriver`, `bundleRef` |
-| `clientTLS` | Secure pod → target gNMI connections | `issuerRef`, `useCSIDriver`, `bundleRef` |
-| `grpcTunnel.tls` | Secure device → pod tunnel connections | `issuerRef`, `useCSIDriver`, `bundleRef` |
+| `api.tls` | Secure operator ↔ pod communication | `issuerRef`, `issuerKind`, `issuerGroup`, `useCSIDriver`, `bundleRef` |
+| `clientTLS` | Secure pod → target gNMI connections | `issuerRef`, `issuerKind`, `issuerGroup`, `useCSIDriver`, `bundleRef` |
+| `grpcTunnel.tls` | Secure device → pod tunnel connections | `issuerRef`, `issuerKind`, `issuerGroup`, `useCSIDriver`, `bundleRef` |
 
 All three TLS configurations use the same `ClusterTLSConfig` structure and support both projected volumes and CSI driver modes.
 

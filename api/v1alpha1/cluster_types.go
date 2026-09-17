@@ -98,6 +98,12 @@ type ServiceConfig struct {
 type ClusterTLSConfig struct {
 	// A CertManager Issuer used to sign the gNMIc pods API or gNMI client certificates.
 	IssuerRef string `json:"issuerRef,omitempty"`
+	// Kind of the issuer named by issuerRef, Issuer by default. ClusterIssuer and external
+	// kinds such as StepIssuer work for the gNMI client and gRPC tunnel certificates.
+	// The API certificates need a cert-manager.io Issuer: the operator reads its CA secret.
+	IssuerKind string `json:"issuerKind,omitempty"`
+	// API group of the issuer named by issuerRef, cert-manager.io by default.
+	IssuerGroup string `json:"issuerGroup,omitempty"`
 	// Additional trusted CA bundle to mount to the gNMIc pods API or gNMI client certificates.
 	BundleRef string `json:"bundleRef,omitempty"`
 	// If true the operator will use CertManager CSI driver to request and mount the pods API or gNMI client certificates.

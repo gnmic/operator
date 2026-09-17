@@ -36,6 +36,37 @@ import (
 	"github.com/gnmic/operator/internal/gnmic"
 )
 
+const (
+	csiIssuerNameAttr  = "csi.cert-manager.io/issuer-name"
+	csiIssuerKindAttr  = "csi.cert-manager.io/issuer-kind"
+	csiIssuerGroupAttr = "csi.cert-manager.io/issuer-group"
+)
+
+// issuerReference names the issuer for a TLS block. Kind defaults to Issuer. The
+// group stays empty when unset: cert-manager reads that as cert-manager.io, and
+// Certificates written before these fields existed keep their spec.
+func issuerReference(tls *gnmicv1alpha1.ClusterTLSConfig) cmmeta.IssuerReference {
+	kind := tls.IssuerKind
+	if kind == "" {
+		kind = certmanagerv1.IssuerKind
+	}
+
+	return cmmeta.IssuerReference{Name: tls.IssuerRef, Kind: kind, Group: tls.IssuerGroup}
+}
+
+// csiIssuerAttributes adds the issuer attributes the cert-manager CSI driver reads.
+// The group is only set when named; the driver defaults it to cert-manager.io.
+func csiIssuerAttributes(tls *gnmicv1alpha1.ClusterTLSConfig, attrs map[string]string) map[string]string {
+	ref := issuerReference(tls)
+	attrs[csiIssuerNameAttr] = ref.Name
+	attrs[csiIssuerKindAttr] = ref.Kind
+	if ref.Group != "" {
+		attrs[csiIssuerGroupAttr] = ref.Group
+	}
+
+	return attrs
+}
+
 // reconcileCertificates creates/updates cert-manager Certificate resources for each pod
 // returns true if all certificates are ready, false otherwise
 func (r *ClusterReconciler) reconcileCertificates(ctx context.Context, cluster *gnmicv1alpha1.Cluster) (bool, error) {
@@ -152,10 +183,7 @@ func (r *ClusterReconciler) buildCertificate(cluster *gnmicv1alpha1.Cluster, cer
 					LabelPodName:     podName,
 				},
 			},
-			IssuerRef: cmmeta.IssuerReference{
-				Name: cluster.Spec.API.TLS.IssuerRef,
-				Kind: "Issuer", // defaults to Issuer. TODO: configurable to ClusterIssuer ?
-			},
+			IssuerRef:  issuerReference(cluster.Spec.API.TLS),
 			CommonName: podName,
 			DNSNames:   dnsNames,
 			Usages: []certmanagerv1.KeyUsage{
@@ -173,7 +201,7 @@ func (r *ClusterReconciler) certificateNeedsUpdate(current, desired *certmanager
 	if current.Spec.SecretName != desired.Spec.SecretName {
 		return true
 	}
-	if current.Spec.IssuerRef.Name != desired.Spec.IssuerRef.Name {
+	if current.Spec.IssuerRef != desired.Spec.IssuerRef {
 		return true
 	}
 	if current.Spec.CommonName != desired.Spec.CommonName {
@@ -348,10 +376,7 @@ func (r *ClusterReconciler) buildTunnelCertificate(cluster *gnmicv1alpha1.Cluste
 					LabelCertType:    LabelValueCertTypeTunnel,
 				},
 			},
-			IssuerRef: cmmeta.IssuerReference{
-				Name: cluster.Spec.GRPCTunnel.TLS.IssuerRef,
-				Kind: "Issuer",
-			},
+			IssuerRef:  issuerReference(cluster.Spec.GRPCTunnel.TLS),
 			CommonName: podName,
 			DNSNames:   dnsNames,
 			Usages: []certmanagerv1.KeyUsage{
@@ -475,10 +500,7 @@ func (r *ClusterReconciler) buildClientTLSCertificate(cluster *gnmicv1alpha1.Clu
 					LabelCertType:    LabelValueCertTypeClient,
 				},
 			},
-			IssuerRef: cmmeta.IssuerReference{
-				Name: cluster.Spec.ClientTLS.IssuerRef,
-				Kind: "Issuer",
-			},
+			IssuerRef:  issuerReference(cluster.Spec.ClientTLS),
 			CommonName: commonName,
 			DNSNames:   []string{commonName},
 			Usages: []certmanagerv1.KeyUsage{

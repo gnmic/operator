@@ -364,3 +364,22 @@ func TestOtherWebhookValidators_NoOp(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestValidateAPIIssuer(t *testing.T) {
+	t.Parallel()
+
+	path := field.NewPath("tls")
+	native := &operatorv1alpha1.ClusterTLSConfig{IssuerRef: "ca", IssuerKind: "Issuer", IssuerGroup: "cert-manager.io"}
+	if errs := validateAPIIssuer(native, path); len(errs) != 0 {
+		t.Fatalf("cert-manager.io Issuer rejected: %v", errs)
+	}
+	external := &operatorv1alpha1.ClusterTLSConfig{
+		IssuerRef: "step-ca", IssuerKind: "StepIssuer", IssuerGroup: "certmanager.step.sm",
+	}
+	if errs := validateAPIIssuer(external, path); len(errs) != 2 {
+		t.Fatalf("expected issuerKind and issuerGroup errors, got %v", errs)
+	}
+	if validateAPIIssuer(nil, path) != nil {
+		t.Fatal("expected nil for nil tls")
+	}
+}

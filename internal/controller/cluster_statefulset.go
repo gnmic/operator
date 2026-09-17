@@ -362,12 +362,10 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 					CSI: &corev1.CSIVolumeSource{
 						Driver:   "csi.cert-manager.io",
 						ReadOnly: ptr.To(true),
-						VolumeAttributes: map[string]string{
-							"csi.cert-manager.io/issuer-name": cluster.Spec.API.TLS.IssuerRef,
-							"csi.cert-manager.io/issuer-kind": "Issuer",
-							"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc." + gnmic.ClusterDomain(),
+						VolumeAttributes: csiIssuerAttributes(cluster.Spec.API.TLS, map[string]string{
+							"csi.cert-manager.io/dns-names": "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc." + gnmic.ClusterDomain(),
 							// "csi.cert-manager.io/renewBefore": "72h", // TODO: make configurable ?
-						},
+						}),
 					},
 				},
 			})
@@ -469,11 +467,10 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 						CSI: &corev1.CSIVolumeSource{
 							Driver:   "csi.cert-manager.io",
 							ReadOnly: ptr.To(true),
-							VolumeAttributes: map[string]string{
-								"csi.cert-manager.io/issuer-name": cluster.Spec.GRPCTunnel.TLS.IssuerRef,
-								"csi.cert-manager.io/issuer-kind": "Issuer",
-								"csi.cert-manager.io/dns-names":   "${POD_NAME}." + stsName + "." + cluster.Namespace + ".svc." + gnmic.ClusterDomain(),
-							},
+							VolumeAttributes: csiIssuerAttributes(cluster.Spec.GRPCTunnel.TLS, map[string]string{
+								"csi.cert-manager.io/dns-names": "${POD_NAME}." + stsName + "." +
+									cluster.Namespace + ".svc." + gnmic.ClusterDomain(),
+							}),
 						},
 					},
 				})
@@ -558,12 +555,10 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 						CSI: &corev1.CSIVolumeSource{
 							Driver:   "csi.cert-manager.io",
 							ReadOnly: ptr.To(true),
-							VolumeAttributes: map[string]string{
-								"csi.cert-manager.io/issuer-name": cluster.Spec.ClientTLS.IssuerRef,
-								"csi.cert-manager.io/issuer-kind": "Issuer",
+							VolumeAttributes: csiIssuerAttributes(cluster.Spec.ClientTLS, map[string]string{
 								"csi.cert-manager.io/common-name": commonName,
 								"csi.cert-manager.io/dns-names":   commonName,
-							},
+							}),
 						},
 					},
 				})

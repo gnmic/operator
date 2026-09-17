@@ -34,11 +34,15 @@ spec:
 | `api.gnmiPort` | int32 | No | | Port for gNMI server (optional) |
 | `api.tls` | ClusterTLSConfig | No | | TLS for REST API (operator ↔ pods) |
 | `api.tls.issuerRef` | string | No | | CertManager Issuer reference, used to sign the REST API certificates |
+| `api.tls.issuerKind` | string | No | Issuer | Kind of the issuer named by `issuerRef`. Only `Issuer` is accepted here: the operator reads the issuer's CA secret to verify the pods |
+| `api.tls.issuerGroup` | string | No | cert-manager.io | API group of the issuer named by `issuerRef`. Only `cert-manager.io` is accepted here |
 | `api.tls.bundleRef` | string | No | | ConfigMap reference, used to add API server trust bundles to the POD (key=`ca.crt`) |
 | `api.tls.useCSIDriver` | bool | No | | If true the API certificates are generated and mounted using CertManager CSI Driver |
 | **gNMI client TLS** | | | | |
 | `clientTLS` | ClusterTLSConfig | No | | TLS for gNMI client (pods → targets) |
 | `clientTLS.issuerRef` | string | No | | CertManager Issuer reference, used to sign the gNMI client certificates |
+| `clientTLS.issuerKind` | string | No | Issuer | Kind of the issuer named by `issuerRef`, e.g. `ClusterIssuer` or an external kind such as `StepIssuer` |
+| `clientTLS.issuerGroup` | string | No | cert-manager.io | API group of the issuer named by `issuerRef`, e.g. `certmanager.step.sm` |
 | `clientTLS.bundleRef` | string | No | | ConfigMap reference, used to add gNMI client trust bundles to the POD (key=`ca.crt`) |
 | `clientTLS.useCSIDriver` | bool | No | | If true the gNMI client certificates are generated and mounted using CertManager CSI Driver |
 | **Target Distribution** | | | | |
@@ -163,6 +167,8 @@ spec:
 |-------|------|----------|---------|-------------|
 | `grpcTunnel.port` | in32 | No | | gRPC tunnel server port number |
 | `grpcTunnel.tls.issuerRef` | string | No | | CertManager Issuer reference, used to sign the gRPC Tunnel server certificates |
+| `grpcTunnel.tls.issuerKind` | string | No | Issuer | Kind of the issuer named by `issuerRef`, e.g. `ClusterIssuer` or an external kind such as `StepIssuer` |
+| `grpcTunnel.tls.issuerGroup` | string | No | cert-manager.io | API group of the issuer named by `issuerRef`, e.g. `certmanager.step.sm` |
 | `grpcTunnel.tls.bundleRef` | string | No | | ConfigMap reference, used to add gRPC Tunnel server trust bundles to the POD (key=`ca.crt`) |
 | `grpcTunnel.tls.useCSIDriver` | bool | No | | If true the gRPC Tunnel server certificates are generated and mounted using CertManager CSI Driver |
 | `grpcTunnel.service.type` | corev1.ServiceType | No | Loadbalancer | gRPC Tunnel Kubernetes Service type |
@@ -245,6 +251,8 @@ spec:
 | Field | Type | Description |
 |-------|------|-------------|
 | `issuerRef` | string | Name of cert-manager Issuer in cluster's namespace. It is used to sign the PODs REST API certificates. |
+| `issuerKind` | string | Kind of the issuer. Only `Issuer` is accepted for the API certificates: the operator reads the issuer's CA secret to verify the pods. |
+| `issuerGroup` | string | API group of the issuer. Only `cert-manager.io` is accepted for the API certificates. |
 | `useCSIDriver` | bool | Use cert-manager CSI driver (default: false). When enabled the PODs certificates are issued and mounted using CertManager CSI driver instead of mounting Secrets. |
 | `bundleRef` | string | Additional CA bundle for REST API client verification. |
 
