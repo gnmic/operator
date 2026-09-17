@@ -34,6 +34,8 @@ description: >
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `issuerRef` | string | No | - | cert-manager Issuer name for certificates |
+| `issuerKind` | string | No | Issuer | Kind of the issuer. `api.tls` accepts only `Issuer` |
+| `issuerGroup` | string | No | cert-manager.io | API group of the issuer. `api.tls` accepts only `cert-manager.io` |
 | `useCSIDriver` | bool | No | false | Use cert-manager CSI driver instead of projected volumes |
 | `bundleRef` | string | No | - | Additional CA bundle for client certificate verification |
 

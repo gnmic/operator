@@ -91,6 +91,16 @@ spec:
                         description: Additional trusted CA bundle to mount to the
                           gNMIc pods API or gNMI client certificates.
                         type: string
+                      issuerGroup:
+                        description: API group of the issuer named by issuerRef, cert-manager.io
+                          by default.
+                        type: string
+                      issuerKind:
+                        description: |-
+                          Kind of the issuer named by issuerRef, Issuer by default. ClusterIssuer and external
+                          kinds such as StepIssuer work for the gNMI client and gRPC tunnel certificates.
+                          The API certificates need a cert-manager.io Issuer: the operator reads its CA secret.
+                        type: string
                       issuerRef:
                         description: A CertManager Issuer used to sign the gNMIc pods
                           API or gNMI client certificates.
@@ -112,6 +122,16 @@ spec:
                   bundleRef:
                     description: Additional trusted CA bundle to mount to the gNMIc
                       pods API or gNMI client certificates.
+                    type: string
+                  issuerGroup:
+                    description: API group of the issuer named by issuerRef, cert-manager.io
+                      by default.
+                    type: string
+                  issuerKind:
+                    description: |-
+                      Kind of the issuer named by issuerRef, Issuer by default. ClusterIssuer and external
+                      kinds such as StepIssuer work for the gNMI client and gRPC tunnel certificates.
+                      The API certificates need a cert-manager.io Issuer: the operator reads its CA secret.
                     type: string
                   issuerRef:
                     description: A CertManager Issuer used to sign the gNMIc pods
@@ -320,6 +340,16 @@ spec:
                       bundleRef:
                         description: Additional trusted CA bundle to mount to the
                           gNMIc pods API or gNMI client certificates.
+                        type: string
+                      issuerGroup:
+                        description: API group of the issuer named by issuerRef, cert-manager.io
+                          by default.
+                        type: string
+                      issuerKind:
+                        description: |-
+                          Kind of the issuer named by issuerRef, Issuer by default. ClusterIssuer and external
+                          kinds such as StepIssuer work for the gNMI client and gRPC tunnel certificates.
+                          The API certificates need a cert-manager.io Issuer: the operator reads its CA secret.
                         type: string
                       issuerRef:
                         description: A CertManager Issuer used to sign the gNMIc pods
