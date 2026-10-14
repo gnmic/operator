@@ -125,7 +125,7 @@ spec:
         labels: |
           {
             "site": item.site.name,
-            "role": item.device_role.name,
+            "role": item.role.name,
             "model": item.device_type.model,
             "status": item.status.value
           }
@@ -235,7 +235,7 @@ spec:
         labels: |
           {
             "site": item.site.name,
-            "role": item.device_role.name,
+            "role": item.role.name,
             "model": item.device_type.model,
             "status": item.status.value
           }
