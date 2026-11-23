@@ -157,7 +157,7 @@ every pod runs the new template. Their Secrets are left in place, because the
 operator never writes Secrets; remove them once the rollout is complete:
 
 ```bash
-kubectl delete secrets -l operator.gnmic.dev/cluster-name=my-cluster,operator.gnmic.dev/pod-name
+kubectl delete secrets -l operator.gnmic.dev/cluster=my-cluster,operator.gnmic.dev/pod-name
 ```
 
 ### Controller CA Distribution
@@ -196,20 +196,21 @@ This allows gNMIc pods to verify the operator's client certificate.
 
 ## Scaling with TLS
 
-When scaling a TLS-enabled cluster:
+The cluster already holds its server certificate, and the pod template does not depend on the replica count.
 
 ### Scale Up
 
-1. Operator creates new `Certificate` CRs for new pods
-2. cert-manager issues certificates
-3. Operator waits for certificates to be ready
-4. StatefulSet creates new pods with certificates
+1. The StatefulSet adds pods.
+2. Each new pod mounts the existing server Secret (`gnmic-<cluster>-api-tls`, and `gnmic-<cluster>-tunnel-tls` when tunnel TLS is enabled). The wildcard already covers that pod's DNS name.
+
+With `useCSIDriver: true`, the cert-manager CSI driver issues the new pod's certificate when the volume is mounted.
 
 ### Scale Down
 
-1. StatefulSet terminates pods
-2. Operator cleans up orphaned `Certificate` CRs
-3. cert-manager cleans up associated secrets
+1. The StatefulSet terminates the extra pods.
+2. The cluster certificate and its Secret stay in place.
+
+With `useCSIDriver: true`, the CSI driver drops the pod's certificate when the volume is unmounted.
 
 ## Troubleshooting
 
@@ -217,7 +218,7 @@ When scaling a TLS-enabled cluster:
 
 ```bash
 # List certificates for a cluster
-kubectl get certificates -l operator.gnmic.dev/cluster-name=my-cluster
+kubectl get certificates -l operator.gnmic.dev/cluster=my-cluster
 
 # Check certificate details
 kubectl describe certificate gnmic-my-cluster-api-tls
@@ -227,7 +228,7 @@ kubectl describe certificate gnmic-my-cluster-api-tls
 
 ```bash
 # List TLS secrets
-kubectl get secrets -l operator.gnmic.dev/cluster-name=my-cluster
+kubectl get secrets -l operator.gnmic.dev/cluster=my-cluster
 
 # Inspect certificate content
 kubectl get secret gnmic-my-cluster-api-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
@@ -264,7 +265,7 @@ kubectl get issuers
 Check that pods have the certificates mounted:
 
 ```bash
-kubectl exec gnmic-my-cluster-0 -- ls -la /etc/certs/api/
+kubectl exec gnmic-my-cluster-0 -- ls -la /etc/gnmic/tls/
 ```
 
 ## Security Best Practices

@@ -69,8 +69,6 @@ func csiIssuerAttributes(tls *gnmicv1alpha1.ClusterTLSConfig, attrs map[string]s
 	return attrs
 }
 
-// reconcileCertificates creates/updates cert-manager Certificate resources for each pod
-// returns true if all certificates are ready, false otherwise
 // reconcileCertificates creates/updates the cert-manager Certificate the
 // cluster's pods present on the REST and gNMI ports, and reports whether it is
 // ready.
