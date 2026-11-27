@@ -2,7 +2,6 @@ package gnmic
 
 import (
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"gopkg.in/yaml.v2"
 )
 
 // buildInputConfig creates a gNMIc input config map from an InputSpec
@@ -10,11 +9,12 @@ import (
 func buildInputConfig(spec *gnmicv1alpha1.InputSpec, outputs []string, processors []string) (map[string]any, error) {
 	config := make(map[string]any)
 
-	// parse the config YAML/JSON
-	if spec.Config.Raw != nil {
-		if err := yaml.Unmarshal(spec.Config.Raw, &config); err != nil {
+	if len(spec.Config.Raw) > 0 {
+		decoded, err := decodeConfig(spec.Config.Raw)
+		if err != nil {
 			return nil, err
 		}
+		config = decoded
 	}
 
 	// set the type
