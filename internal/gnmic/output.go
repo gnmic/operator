@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -64,11 +63,14 @@ type TLSOptions struct {
 func buildOutputConfig(spec *gnmicv1alpha1.OutputSpec, options *outputConfigOptions) (map[string]any, error) {
 	config := make(map[string]any)
 
-	// parse the config YAML/JSON
-	if spec.Config.Raw != nil {
-		if err := yaml.Unmarshal(spec.Config.Raw, &config); err != nil {
+	// Config.Raw is the apiserver's JSON. Nested objects must stay
+	// map[string]any so the apply payload can be marshaled.
+	if len(spec.Config.Raw) > 0 {
+		decoded, err := decodeConfig(spec.Config.Raw)
+		if err != nil {
 			return nil, err
 		}
+		config = decoded
 	}
 
 	// set the type
@@ -119,9 +121,9 @@ func FormatServiceAddress(spec *gnmicv1alpha1.OutputSpec, host string, port int3
 		return fmt.Sprintf("%s:%d", host, port)
 	case PrometheusWriteOutputType:
 		// find out of TLS is enabled in the raw config
-		if spec.Config.Raw != nil {
-			var config map[string]any
-			if err := yaml.Unmarshal(spec.Config.Raw, &config); err != nil {
+		if len(spec.Config.Raw) > 0 {
+			config, err := decodeConfig(spec.Config.Raw)
+			if err != nil {
 				return fmt.Sprintf("http://%s:%d", host, port)
 			}
 			if config["tls"] != nil {
@@ -130,9 +132,9 @@ func FormatServiceAddress(spec *gnmicv1alpha1.OutputSpec, host string, port int3
 		}
 		return fmt.Sprintf("http://%s:%d", host, port)
 	case InfluxDBOutputType:
-		if spec.Config.Raw != nil {
-			var config map[string]any
-			if err := yaml.Unmarshal(spec.Config.Raw, &config); err != nil {
+		if len(spec.Config.Raw) > 0 {
+			config, err := decodeConfig(spec.Config.Raw)
+			if err != nil {
 				return fmt.Sprintf("http://%s:%d", host, port)
 			}
 			if config["tls"] != nil {

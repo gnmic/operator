@@ -51,7 +51,7 @@ func TestPlanBuilder_Build(t *testing.T) {
 	pipeline.Inputs["default/in1"] = gnmicv1alpha1.InputSpec{Type: "kafka"}
 	pipeline.OutputProcessors["default/proc1"] = gnmicv1alpha1.ProcessorSpec{
 		Type:   "event-starlark",
-		Config: apiextensionsv1.JSON{Raw: []byte(`script: "true"`)},
+		Config: apiextensionsv1.JSON{Raw: []byte(`{"script":"true"}`)},
 	}
 	pipeline.TunnelTargetPolicies["default/policy1"] = gnmicv1alpha1.TunnelTargetPolicySpec{
 		Profile: "default",

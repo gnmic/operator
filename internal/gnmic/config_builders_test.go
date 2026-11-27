@@ -1,6 +1,7 @@
 package gnmic
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestDurationOrDefault(t *testing.T) {
 func TestBuildOutputConfig(t *testing.T) {
 	spec := &gnmicv1alpha1.OutputSpec{
 		Type:   PrometheusOutputType,
-		Config: *rawJSON(`path: /custom`),
+		Config: *rawJSON(`{"path":"/custom"}`),
 	}
 	out, err := buildOutputConfig(spec, &outputConfigOptions{
 		Processors:        []string{"proc1"},
@@ -97,7 +98,7 @@ func TestBuildOutputConfig(t *testing.T) {
 		Config: *rawJSON(":\ninvalid"),
 	}, &outputConfigOptions{})
 	if err == nil {
-		t.Fatal("expected yaml error")
+		t.Fatal("expected json error")
 	}
 }
 
@@ -112,7 +113,7 @@ func TestFormatServiceAddressAndParsePort(t *testing.T) {
 	}
 	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{
 		Type:   PrometheusWriteOutputType,
-		Config: *rawJSON("tls: {}"),
+		Config: *rawJSON(`{"tls":{}}`),
 	}, "svc", 9090); got != "https://svc:9090" {
 		t.Fatalf("prom write tls address = %q", got)
 	}
@@ -133,7 +134,7 @@ func TestFormatServiceAddressAndParsePort(t *testing.T) {
 func TestBuildInputAndProcessorConfig(t *testing.T) {
 	in, err := buildInputConfig(&gnmicv1alpha1.InputSpec{
 		Type:   "kafka",
-		Config: *rawJSON(`topic: events`),
+		Config: *rawJSON(`{"topic":"events"}`),
 	}, []string{"out1"}, []string{"proc1"})
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +145,7 @@ func TestBuildInputAndProcessorConfig(t *testing.T) {
 
 	proc, err := buildProcessorConfig(&gnmicv1alpha1.ProcessorSpec{
 		Type:   "event-starlark",
-		Config: *rawJSON(`script: "true"`),
+		Config: *rawJSON(`{"script":"true"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +185,54 @@ func TestBuildSubscriptionConfig(t *testing.T) {
 	mode, stream := specModeToConfig("ONCE")
 	if mode != "ONCE" || stream != "" {
 		t.Fatalf("specModeToConfig = %s/%s", mode, stream)
+	}
+}
+
+// The documented prometheus_write TLS block is a nested object. Decoding it
+// with yaml.v2 used to build a plan that encoding/json could not marshal, so
+// the controller sent nothing.
+func TestPrometheusRemoteWriteTLSReachesWirePayload(t *testing.T) {
+	const resolved = "https://prometheus-server.monitoring.svc.cluster.local:9090/api/v1/write"
+	p := NewPipelineData()
+	p.Outputs["default/prometheus-remote-write-tls"] = gnmicv1alpha1.OutputSpec{
+		Type:   PrometheusWriteOutputType,
+		Config: *rawJSON(`{"timeout":"10s","tls":{"skip-verify":true}}`),
+	}
+	p.ResolvedOutputAddresses["default/prometheus-remote-write-tls"] = []string{resolved}
+	p.Inputs["default/kafka"] = gnmicv1alpha1.InputSpec{
+		Type:   "kafka",
+		Config: *rawJSON(`{"topic":"telemetry","sasl":{"user":"kafka-user"}}`),
+	}
+
+	plan, err := NewPlanBuilder("c", nil).AddPipeline("p", p).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dist := DistributeTargets(plan, 2, nil)
+	if len(dist.PerPodPlans) != 2 {
+		t.Fatalf("pods = %d", len(dist.PerPodPlans))
+	}
+	for i, podPlan := range dist.PerPodPlans {
+		body, err := json.Marshal(podPlan)
+		if err != nil {
+			t.Fatalf("pod %d marshal: %v", i, err)
+		}
+		var got struct {
+			Outputs map[string]map[string]any `json:"outputs"`
+			Inputs  map[string]map[string]any `json:"inputs"`
+		}
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		out := got.Outputs["default/prometheus-remote-write-tls"]
+		tlsCfg, _ := out["tls"].(map[string]any)
+		if tlsCfg["skip-verify"] != true || out["url"] != resolved {
+			t.Fatalf("pod %d output = %#v", i, out)
+		}
+		sasl, _ := got.Inputs["default/kafka"]["sasl"].(map[string]any)
+		if sasl["user"] != "kafka-user" {
+			t.Fatalf("pod %d input = %#v", i, got.Inputs["default/kafka"])
+		}
 	}
 }
 

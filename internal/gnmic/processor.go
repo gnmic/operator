@@ -4,18 +4,18 @@ import (
 	"fmt"
 
 	gnmicv1alpha1 "github.com/gnmic/operator/api/v1alpha1"
-	"gopkg.in/yaml.v2"
 )
 
 // buildProcessorConfig creates a gNMIc processor config map from a ProcessorSpec
 func buildProcessorConfig(spec *gnmicv1alpha1.ProcessorSpec) (map[string]any, error) {
 	config := make(map[string]any)
 
-	// parse the config YAML/JSON
-	if spec.Config.Raw != nil {
-		if err := yaml.Unmarshal(spec.Config.Raw, &config); err != nil {
+	if len(spec.Config.Raw) > 0 {
+		decoded, err := decodeConfig(spec.Config.Raw)
+		if err != nil {
 			return nil, err
 		}
+		config = decoded
 	}
 	result := map[string]any{
 		spec.Type: config,

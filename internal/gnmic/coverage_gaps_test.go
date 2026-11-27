@@ -200,7 +200,7 @@ func TestFormatServiceAddress_AllCases(t *testing.T) {
 	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: PrometheusWriteOutputType, Config: *rawJSON(":\n")}, "host", 9090); got != "http://host:9090" {
 		t.Fatalf("prom write bad yaml: %q", got)
 	}
-	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: PrometheusWriteOutputType, Config: *rawJSON("tls: true")}, "host", 9090); got != "https://host:9090" {
+	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: PrometheusWriteOutputType, Config: *rawJSON(`{"tls":true}`)}, "host", 9090); got != "https://host:9090" {
 		t.Fatalf("prom write https: %q", got)
 	}
 	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: InfluxDBOutputType}, "host", 8086); got != "http://host:8086" {
@@ -209,7 +209,7 @@ func TestFormatServiceAddress_AllCases(t *testing.T) {
 	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: InfluxDBOutputType, Config: *rawJSON("{")}, "host", 8086); got != "http://host:8086" {
 		t.Fatalf("influx bad yaml: %q", got)
 	}
-	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: InfluxDBOutputType, Config: *rawJSON("tls: {}")}, "host", 8086); got != "https://host:8086" {
+	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: InfluxDBOutputType, Config: *rawJSON(`{"tls":{}}`)}, "host", 8086); got != "https://host:8086" {
 		t.Fatalf("influx https: %q", got)
 	}
 	if got := FormatServiceAddress(&gnmicv1alpha1.OutputSpec{Type: TCPOutputType}, "host", 9999); got != "host:9999" {
@@ -230,7 +230,7 @@ func TestBuildInputConfig_ErrorsAndMinimal(t *testing.T) {
 		Config: *rawJSON("["),
 	}, nil, nil)
 	if err == nil {
-		t.Fatal("expected yaml error")
+		t.Fatal("expected json error")
 	}
 	in, err := buildInputConfig(&gnmicv1alpha1.InputSpec{Type: "nats"}, nil, nil)
 	if err != nil || in["type"] != "nats" {
@@ -244,7 +244,7 @@ func TestBuildProcessorConfig_Errors(t *testing.T) {
 		Config: *rawJSON("["),
 	})
 	if err == nil {
-		t.Fatal("expected yaml error")
+		t.Fatal("expected json error")
 	}
 }
 
@@ -271,7 +271,7 @@ func TestPlanBuilder_Extended(t *testing.T) {
 	p2 := NewPipelineData()
 	p2.InputProcessors["default/iproc"] = gnmicv1alpha1.ProcessorSpec{
 		Type:   "event-jq",
-		Config: apiextensionsv1.JSON{Raw: []byte(`filter: .`)},
+		Config: apiextensionsv1.JSON{Raw: []byte(`{"filter":"."}`)},
 	}
 	p2.Inputs["default/in"] = gnmicv1alpha1.InputSpec{Type: "kafka"}
 	p2.Outputs["default/out"] = gnmicv1alpha1.OutputSpec{Type: FileOutputType}
@@ -315,7 +315,7 @@ func TestPlanBuilder_Extended(t *testing.T) {
 	p5.Subscriptions["default/sub"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/"}, Mode: "ONCE"}
 	_, err = NewPlanBuilder("c", nil).AddPipeline("p", p5).Build()
 	if err == nil {
-		t.Fatal("expected output yaml error")
+		t.Fatal("expected output json error")
 	}
 
 	// input build error
@@ -325,7 +325,7 @@ func TestPlanBuilder_Extended(t *testing.T) {
 	p6.Subscriptions["default/sub"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/"}, Mode: "ONCE"}
 	_, err = NewPlanBuilder("c", nil).AddPipeline("p", p6).Build()
 	if err == nil {
-		t.Fatal("expected input yaml error")
+		t.Fatal("expected input json error")
 	}
 
 	// processor build error (output processor)
@@ -335,7 +335,7 @@ func TestPlanBuilder_Extended(t *testing.T) {
 	p7.Subscriptions["default/sub"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/"}, Mode: "ONCE"}
 	_, err = NewPlanBuilder("c", nil).AddPipeline("p", p7).Build()
 	if err == nil {
-		t.Fatal("expected processor yaml error")
+		t.Fatal("expected processor json error")
 	}
 
 	// tunnel policy creds fetch error
@@ -601,8 +601,8 @@ func TestPlanBuilder_DedupAndBranches(t *testing.T) {
 	p2.Subscriptions["default/sub"] = gnmicv1alpha1.SubscriptionSpec{Paths: []string{"/other"}, Mode: "ONCE"}
 	p2.Outputs["default/out"] = gnmicv1alpha1.OutputSpec{Type: FileOutputType}
 	p2.Inputs["default/in"] = gnmicv1alpha1.InputSpec{Type: "kafka"}
-	p2.OutputProcessors["default/shared"] = gnmicv1alpha1.ProcessorSpec{Type: "event-jq", Config: apiextensionsv1.JSON{Raw: []byte(`filter: .`)}}
-	p2.InputProcessors["default/shared"] = gnmicv1alpha1.ProcessorSpec{Type: "event-jq", Config: apiextensionsv1.JSON{Raw: []byte(`filter: .`)}}
+	p2.OutputProcessors["default/shared"] = gnmicv1alpha1.ProcessorSpec{Type: "event-jq", Config: apiextensionsv1.JSON{Raw: []byte(`{"filter":"."}`)}}
+	p2.InputProcessors["default/shared"] = gnmicv1alpha1.ProcessorSpec{Type: "event-jq", Config: apiextensionsv1.JSON{Raw: []byte(`{"filter":"."}`)}}
 
 	plan, err := NewPlanBuilder("c", &mockCredsFetcher{creds: &Credentials{Username: "u"}}).
 		AddPipeline("one", p1).
