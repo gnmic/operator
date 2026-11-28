@@ -21,6 +21,7 @@ const (
 	LabelCertType            = "operator.gnmic.dev/cert-type"
 	LabelValueCertTypeClient = "client"
 	LabelValueCertTypeTunnel = "tunnel"
+	LabelValueCertTypeAPI    = "api"
 )
 
 const (
