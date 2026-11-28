@@ -94,34 +94,6 @@ func TestPrometheusServiceNameFitsTheServiceLimit(t *testing.T) {
 	}
 }
 
-// #36: a user-supplied POD_NAME plus the API TLS path used to yield two entries.
-func TestEnsurePodNameEnvIsSingleAndDownwardAPI(t *testing.T) {
-	user := []corev1.EnvVar{{Name: "FOO", Value: "bar"}, {Name: "POD_NAME", Value: "wrong"}}
-	got := ensurePodNameEnv(user)
-	got = ensurePodNameEnv(got) // the tunnel path calls it again
-
-	count := 0
-	for _, e := range got {
-		if e.Name != "POD_NAME" {
-			continue
-		}
-		count++
-		if e.Value != "" || e.ValueFrom == nil || e.ValueFrom.FieldRef == nil || e.ValueFrom.FieldRef.FieldPath != "metadata.name" {
-			t.Fatalf("POD_NAME must come from the downward API, got %+v", e)
-		}
-	}
-	if count != 1 {
-		t.Fatalf("POD_NAME appears %d times: %+v", count, got)
-	}
-	if got[0].Name != "FOO" || len(got) != 2 {
-		t.Fatalf("other variables disturbed: %+v", got)
-	}
-
-	if got := ensurePodNameEnv(nil); len(got) != 1 || got[0].Name != "POD_NAME" {
-		t.Fatalf("absent POD_NAME not added: %+v", got)
-	}
-}
-
 // #37: a Pipeline with an empty clusterRef enqueued a request for the bare
 // "gnmic-" prefix, driving the not-found cleanup path for a Cluster that never
 // existed.

@@ -21,6 +21,7 @@ const (
 	LabelCertType            = "operator.gnmic.dev/cert-type"
 	LabelValueCertTypeClient = "client"
 	LabelValueCertTypeTunnel = "tunnel"
+	LabelValueCertTypeAPI    = "api"
 
 	// AnnotationBootstrapConfig is a checksum of the collector bootstrap file.
 	// The file is mounted with a subPath, which Kubernetes does not refresh, so
