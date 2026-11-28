@@ -18,12 +18,15 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 
 	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -96,6 +99,17 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 		needsUpdate = true
 	}
 
+	// The bootstrap file is a subPath mount, so a ConfigMap update does not
+	// reach a running pod. Changing this annotation changes the pod template
+	// and rolls the StatefulSet onto the new file.
+	if current.Spec.Template.Annotations == nil {
+		current.Spec.Template.Annotations = map[string]string{}
+	}
+	if hash := desired.Spec.Template.Annotations[AnnotationBootstrapConfig]; current.Spec.Template.Annotations[AnnotationBootstrapConfig] != hash {
+		current.Spec.Template.Annotations[AnnotationBootstrapConfig] = hash
+		needsUpdate = true
+	}
+
 	// update volumes if they changed (needed when scaling with TLS enabled, or
 	// when clientTLS / api.tls / tunnel TLS is added or removed after create)
 	// projected volumes include per-pod certificate secrets, so they change when replicas change
@@ -117,6 +131,10 @@ func (r *ClusterReconciler) reconcileStatefulSet(ctx context.Context, cluster *g
 		}
 		if !envVarsEqual(currentCtr.Env, desiredCtr.Env) {
 			currentCtr.Env = desiredCtr.Env
+			needsUpdate = true
+		}
+		if !containerPortsEqual(currentCtr.Ports, desiredCtr.Ports) {
+			currentCtr.Ports = desiredCtr.Ports
 			needsUpdate = true
 		}
 	}
@@ -190,21 +208,24 @@ func volumeMountsEqual(a, b []corev1.VolumeMount) bool {
 	return true
 }
 
-// envVarsEqual compares env var names (value/valueFrom identity ignored beyond presence).
+// envVarsEqual compares the env vars the operator owns, including value and
+// valueFrom. A name-only check left an edited variable at its old value, and
+// the pod template never changed.
 func envVarsEqual(a, b []corev1.EnvVar) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	aNames := make(map[string]struct{}, len(a))
-	for _, e := range a {
-		aNames[e.Name] = struct{}{}
-	}
-	for _, e := range b {
-		if _, ok := aNames[e.Name]; !ok {
-			return false
-		}
-	}
-	return true
+	return apiequality.Semantic.DeepEqual(a, b)
+}
+
+// containerPortsEqual compares the collector ports the operator owns. They are
+// set when the StatefulSet is created and otherwise stay at the old numbers.
+func containerPortsEqual(a, b []corev1.ContainerPort) bool {
+	return apiequality.Semantic.DeepEqual(a, b)
+}
+
+// bootstrapConfigHash identifies the rendered collector config. It is stored on
+// the pod template so a change rolls the StatefulSet.
+func bootstrapConfigHash(data map[string]string) string {
+	sum := sha256.Sum256([]byte(data[gNMIcConfigFile]))
+	return hex.EncodeToString(sum[:])
 }
 
 // reconcileConfigMap creates or updates the ConfigMap only if content changed
@@ -567,6 +588,9 @@ func (r *ClusterReconciler) buildStatefulSet(cluster *gnmicv1alpha1.Cluster) (*a
 				Template: corev1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: labels,
+						Annotations: map[string]string{
+							AnnotationBootstrapConfig: bootstrapConfigHash(configMap.Data),
+						},
 					},
 					Spec: corev1.PodSpec{
 						InitContainers: initContainers,
